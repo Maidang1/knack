@@ -27,13 +27,17 @@ Knack 识别 Claude、Codex、Cursor、Factory、Gemini、OpenCode、Pi、Goose 
 
 生效视图目前按「项目 → 全局 → 共享池 → 内置」推演同名覆盖关系。实际加载行为仍以各 Agent 的规则为准。依赖图中的正文引用包含推断结果。
 
+## 下载安装
+
+在 [Releases](https://github.com/Maidang1/knack/releases/latest) 下载最新版本：macOS 使用通用 `.dmg`，Windows 按架构选择 `.exe`，Linux 按架构选择 `.deb` 或 `.tar.gz`。Linux 归档用户需同时下载 `install.sh`，与归档放在同一目录后运行 `sh install.sh`。`SHA256SUMS` 提供下载文件的 SHA-256 校验和。
+
 ## 从源码运行
 
 需要 Go 1.27.3 或更新版本。当前已在 macOS Apple Silicon 上验证运行；CI 为 Windows、Linux 和 macOS 生成安装包，Windows、Linux 的实际桌面运行仍需在目标系统验证。
 
 - macOS：使用系统桌面框架。
 - Windows：创建技能软链需要开启开发者模式，或以管理员身份运行。
-- Linux：需要 GTK 3 桌面环境及相应运行库。Knack 使用原生 UI，打包配置已关闭 WebView，不要求 WebKitGTK。
+- Linux：需要 GTK 3 桌面环境、相应运行库及支持中文的字体（Ubuntu/Debian 可安装 `fonts-noto-cjk`）。Knack 使用原生 UI，打包配置已关闭 WebView，不要求 WebKitGTK。
 
 在项目根目录运行：
 
@@ -86,7 +90,9 @@ Linux 可直接安装 `.deb`；使用归档时，将对应架构目录里的 `in
 
 MyGo 使用纯 Go 构建，Windows 与 Linux 包由 Ubuntu runner 交叉编译，Windows 打包前自动安装 NSIS。macOS 通用包由 macOS runner 构建。各平台的包都使用 `mygo.json` 中的版本号和图标。
 
-此流程上传 Actions 产物，不会创建 GitHub Release。不需要签名密钥；macOS 包使用临时签名（ad hoc），未经过 Apple 公证，Windows 包未做代码签名，下载后系统可能提示验证发布者。
+普通推送、PR 和手动运行只上传 Actions 产物。发布时，将 `mygo.json` 中的版本号与 `.github/releases/v<版本号>.md` 发布说明一并提交，再推送对应的 `v<版本号>` 标签。所有平台检查与打包成功后，流程核对标签版本、收集全部安装包、Linux 安装脚本和 `SHA256SUMS`，先上传到草稿 Release，再正式发布。
+
+不需要签名密钥；macOS 包使用临时签名（ad hoc），未经过 Apple 公证，Windows 包未做代码签名，下载后系统可能提示验证发布者。
 
 ### 开始使用
 

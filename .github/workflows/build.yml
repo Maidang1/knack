@@ -31,6 +31,12 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - name: Install Chinese fonts for rendering tests
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y fonts-noto-cjk
+          fc-match ':lang=zh-cn'
       - name: Test
         run: go test ./... -skip '^TestLiveHome$'
       - name: Vet
@@ -90,3 +96,66 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 14
+
+  release:
+    name: Publish release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG_NAME: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: knack-*
+          path: packages
+      - name: Verify version and collect release assets
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import shutil
+
+          version = json.loads(pathlib.Path("mygo.json").read_text())["version"]
+          tag = os.environ["TAG_NAME"]
+          if tag != f"v{version}":
+              raise SystemExit(f"Tag {tag} does not match mygo.json version {version}")
+          if not pathlib.Path(f".github/releases/{tag}.md").is_file():
+              raise SystemExit(f"Missing release notes for {tag}")
+          packages = pathlib.Path("packages")
+          assets = pathlib.Path("release-assets")
+          assets.mkdir()
+          names = [f"knack-{version}.dmg", "install.sh"]
+          for arch in ("amd64", "arm64"):
+              names += [f"knack-setup-{version}-{arch}.exe",
+                        f"knack-{version}-linux-{arch}.tar.gz",
+                        f"knack_{version}_{arch}.deb"]
+          for name in names:
+              matches = sorted(packages.rglob(name))
+              expected = 2 if name == "install.sh" else 1
+              if len(matches) != expected or any(p.stat().st_size == 0 for p in matches):
+                  raise SystemExit(f"Missing, empty or duplicate asset: {name}")
+              if any(p.read_bytes() != matches[0].read_bytes() for p in matches[1:]):
+                  raise SystemExit(f"Conflicting asset: {name}")
+              shutil.copyfile(matches[0], assets / name)
+          checksums = "".join(
+              f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n"
+              for p in sorted(assets.iterdir()))
+          (assets / "SHA256SUMS").write_text(checksums)
+          print(checksums)
+          PY
+      - name: Create draft with all assets, then publish
+        run: |
+          gh release create "$TAG_NAME" release-assets/* --verify-tag --draft \
+            --title "Knack $TAG_NAME" --notes-file ".github/releases/$TAG_NAME.md"
+          gh release edit "$TAG_NAME" --draft=false --latest
