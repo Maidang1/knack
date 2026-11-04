@@ -7,8 +7,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"skill-manager/internal/manage"
-	"skill-manager/internal/skill"
+	"knack/internal/manage"
+	"knack/internal/skill"
 )
 
 func TestViewCacheReusesRowsAndRefreshes(t *testing.T) {

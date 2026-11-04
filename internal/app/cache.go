@@ -1,8 +1,8 @@
 package app
 
 import (
-	"skill-manager/internal/repair"
-	"skill-manager/internal/skill"
+	"knack/internal/repair"
+	"knack/internal/skill"
 )
 
 // viewCache lasts for one immutable scan result. Mutations still validate

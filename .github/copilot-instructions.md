@@ -1,4 +1,4 @@
-# Skill Manager
+# Knack
 
 ## Commands
 
@@ -44,3 +44,5 @@ Format changed Go files with `gofmt` before testing.
 - Keep user-facing UI text in Chinese to match the existing interface. New destructive or replacement actions require the existing confirmation-dialog flow and should return `manage.Record` values so the toast-based undo path remains available.
 - Tests use temporary homes and real filesystem fixtures (`SKILL.md` directories and symlinks). Use `ui.NewTester` for app interactions; do not make standard tests depend on the real home directory. `TestLiveHome` is opt-in via `SKILL_MANAGER_LIVE=1`. `tt.Image()` returns the rendered frame, so a throwaway test can `png.Encode` it to check layout visually.
 - In `ui.Tester`, elements are found by their text, so an icon-bearing `ui.Button(c, "").Label(x)` must contain a `ui.Text` child equal to `x`.
+- For platform filesystem checks, use `internal/fsutil` so Windows directory junctions are recognized alongside symlinks. Compute relative link targets from resolved parent directories; Windows links across volumes are the exception to relative targets and use absolute paths. Stage replacement links before moving existing entries, and keep original link objects in undo payloads to preserve directory-link types and allow restoration without creating new links.
+- Fixed discovery also includes Windows Goose's `%APPDATA%\Block\goose\config\skills`. Redirected `APPDATA` applies only when discovering the current user's home; scans of temporary or alternate homes must stay isolated from real user configuration.

@@ -22,7 +22,7 @@ func TestBuildEffectiveLayersAndShadowing(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(proj, "empty"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink("/tmp/skill-manager-nope", filepath.Join(claude, "gone")); err != nil {
+	if err := os.Symlink(filepath.Join(home, "missing"), filepath.Join(claude, "gone")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -84,20 +84,29 @@ func TestBuildEffectiveLayersAndShadowing(t *testing.T) {
 }
 
 func TestProjectRoot(t *testing.T) {
-	home := "/h"
-	claude := Root{ID: "claude", Path: "/h/.claude/skills", Role: RoleAgent}
-	if r, ok := ProjectRoot(home, claude, "/h/code/p"); !ok || r.Path != "/h/code/p/.claude/skills" {
+	home := t.TempDir()
+	work := filepath.Join(home, "code", "p")
+	claude := Root{ID: "claude", Path: filepath.Join(home, ".claude", "skills"), Role: RoleAgent}
+	if r, ok := ProjectRoot(home, claude, work); !ok || r.Path != filepath.Join(work, ".claude", "skills") {
 		t.Fatalf("claude: %v %v", r, ok)
 	}
-	if _, ok := ProjectRoot(home, claude, "/h"); ok {
+	if _, ok := ProjectRoot(home, claude, home); ok {
 		t.Fatal("home is not a project")
 	}
 	if _, ok := ProjectRoot(home, claude, ""); ok {
 		t.Fatal("no directory chosen")
 	}
-	nested := Root{ID: "opencode", Path: "/h/.config/opencode/skills", Role: RoleAgent}
-	if _, ok := ProjectRoot(home, nested, "/h/code/p"); ok {
+	nested := Root{ID: "opencode", Path: filepath.Join(home, ".config", "opencode", "skills"), Role: RoleAgent}
+	if _, ok := ProjectRoot(home, nested, work); ok {
 		t.Fatal("nested agent folder has no known project folder")
+	}
+	external := Root{ID: windowsGooseID, Path: filepath.Join(home, ".redirected", "skills"), Role: RoleAgent}
+	if _, ok := ProjectRoot(home, external, work); ok {
+		t.Fatal("Windows Goose config has no known project folder")
+	}
+	outside := Root{ID: "external", Path: filepath.Join(home, "..", "skills"), Role: RoleAgent}
+	if _, ok := ProjectRoot(home, outside, work); ok {
+		t.Fatal("a directory outside home is not an agent dot folder")
 	}
 }
 

@@ -1,0 +1,92 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CGO_ENABLED: "0"
+
+jobs:
+  check:
+    name: Tests and checks (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-24.04, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Test
+        run: go test ./... -skip '^TestLiveHome$'
+      - name: Vet
+        run: go vet ./...
+      - name: Check MyGo UI lifetimes
+        if: runner.os == 'macOS'
+        run: go tool mygo vet .
+
+  build:
+    name: Package ${{ matrix.name }}
+    needs: check
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            runner: macos-latest
+            platforms: darwin/universal
+            artifact: knack-macos-universal
+            path: dist/darwin-universal/*.dmg
+          - name: Windows
+            runner: ubuntu-24.04
+            platforms: windows/amd64,windows/arm64
+            artifact: knack-windows
+            path: dist/windows-*/knack-setup-*.exe
+          - name: Linux
+            runner: ubuntu-24.04
+            platforms: linux/amd64,linux/arm64
+            artifact: knack-linux
+            path: |
+              dist/linux-*/*.tar.gz
+              dist/linux-*/*.deb
+              dist/linux-*/install.sh
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Install NSIS for Windows installers
+        if: matrix.name == 'Windows'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y nsis
+      - name: Build packages
+        env:
+          TARGET_PLATFORMS: ${{ matrix.platforms }}
+        run: go tool mygo build -platform "$TARGET_PLATFORMS"
+      - name: Upload packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.path }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

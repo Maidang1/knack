@@ -107,7 +107,7 @@ func TestRemoveEntry(t *testing.T) {
 				if err := os.RemoveAll(path); err != nil {
 					t.Fatal(err)
 				}
-				if err := os.Symlink("/missing-restore-target", path); err != nil {
+				if err := os.Symlink(filepath.Join(home, "missing-restore-target"), path); err != nil {
 					t.Fatal(err)
 				}
 			}

@@ -6,8 +6,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"skill-manager/internal/skill"
-	"skill-manager/internal/store"
+	"knack/internal/skill"
+	"knack/internal/store"
 )
 
 // agentRoots lists every discovered agent, shown or not.

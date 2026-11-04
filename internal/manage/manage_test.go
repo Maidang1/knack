@@ -47,7 +47,8 @@ func TestRetargetBrokenAndRestore(t *testing.T) {
 	undo := filepath.Join(t.TempDir(), "undo")
 	writeSkill(t, pool)
 	link := filepath.Join(root, "observe")
-	if err := os.Symlink("/tmp/missing-observe", link); err != nil {
+	missing := filepath.Join(t.TempDir(), "missing-observe")
+	if err := os.Symlink(missing, link); err != nil {
 		t.Fatal(err)
 	}
 	rec, err := Retarget(root, link, pool, undo)
@@ -64,7 +65,7 @@ func TestRetargetBrokenAndRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "/tmp/missing-observe" {
+	if got != missing {
 		t.Fatalf("restored target %s", got)
 	}
 }
@@ -87,7 +88,8 @@ func TestLinkIntoPoolReplacesBroken(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "gamma")
 	writeSkill(t, target)
 	broken := filepath.Join(poolRoot, "gamma")
-	if err := os.Symlink("/tmp/missing-gamma", broken); err != nil {
+	missing := filepath.Join(t.TempDir(), "missing-gamma")
+	if err := os.Symlink(missing, broken); err != nil {
 		t.Fatal(err)
 	}
 	rec, err := LinkIntoPool(poolRoot, "gamma", target, undo)
@@ -104,7 +106,7 @@ func TestLinkIntoPoolReplacesBroken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "/tmp/missing-gamma" {
+	if got != missing {
 		t.Fatalf("restored %s", got)
 	}
 }

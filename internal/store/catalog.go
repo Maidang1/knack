@@ -8,7 +8,7 @@ import (
 	"slices"
 	"time"
 
-	"skill-manager/internal/skill"
+	"knack/internal/skill"
 )
 
 const catalogVersion = 2

@@ -7,7 +7,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
-	"skill-manager/internal/app"
+	"knack/internal/app"
 )
 
 func main() {
@@ -21,7 +21,7 @@ func main() {
 	}
 	mygo.App.WhenReady(func() {
 		win := mygo.NewWindow(mygo.WindowOptions{
-			Title:     "Skill Manager",
+			Title:     "Knack",
 			Width:     1180,
 			Height:    760,
 			MinWidth:  880,

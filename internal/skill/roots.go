@@ -3,8 +3,11 @@ package skill
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
+
+	"knack/internal/fsutil"
 )
 
 // knownNames are the skill directories on this machine, named the way the
@@ -67,26 +70,51 @@ var knownNames = map[string]string{
 	".zencoder/skills":                       "Zencoder",
 }
 
-// Discover lists skill directories under home: the shared pool, each
-// agent's skills folder, and the copies apps ship themselves. It does not
-// hash anything.
+const windowsGooseID = "goose-windows-skills"
+
+// Discover lists fixed skill directories for home, including Windows Goose's
+// application config directory. It does not hash anything.
 func Discover(home string) []Root {
+	var currentHome, appData string
+	if runtime.GOOS == "windows" {
+		currentHome, _ = os.UserHomeDir()
+		appData = os.Getenv("APPDATA")
+	}
+	return discover(home, runtime.GOOS, currentHome, appData)
+}
+
+func discover(home, platform, currentHome, appData string) []Root {
 	home = filepath.Clean(home)
 	seen := map[string]Root{}
-	add := func(path string) {
-		path = filepath.Clean(path)
-		if _, ok := seen[path]; ok {
-			return
+	add := func(root Root) {
+		path := filepath.Clean(root.Path)
+		for existing := range seen {
+			if fsutil.EqualPath(existing, path) {
+				return
+			}
 		}
 		st, err := os.Stat(path)
 		if os.IsNotExist(err) || err == nil && !st.IsDir() {
 			return
 		}
 		// Keep inaccessible fixed roots so Scan can report their error.
-		seen[path] = rootAt(home, path)
+		root.Path = path
+		seen[path] = root
 	}
 	for rel := range knownNames {
-		add(filepath.Join(home, filepath.FromSlash(rel)))
+		add(rootAt(home, filepath.Join(home, filepath.FromSlash(rel))))
+	}
+	if platform == "windows" {
+		config := filepath.Join(home, "AppData", "Roaming")
+		// Only the actual current user's home may use a redirected APPDATA.
+		// Temporary or alternate homes must stay scoped to their own tree.
+		if currentHome != "" && fsutil.EqualPath(home, currentHome) && filepath.IsAbs(appData) {
+			config = appData
+		}
+		add(Root{
+			ID: windowsGooseID, Name: "Goose", Role: RoleAgent,
+			Path: filepath.Join(config, "Block", "goose", "config", "skills"),
+		})
 	}
 	roots := make([]Root, 0, len(seen))
 	for _, r := range seen {

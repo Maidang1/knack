@@ -9,8 +9,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync/atomic"
 	"time"
+
+	"knack/internal/fsutil"
 )
 
 // Record describes one change, enough to reverse it.
@@ -53,41 +56,26 @@ func RelinkDir(skillsRoot, entryPath, poolSkill, undoRoot string) (Record, error
 	if err != nil {
 		return Record{}, err
 	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+	if fsutil.IsLink(entryPath, info) || !info.IsDir() {
 		return Record{}, errors.New("这不是一份实体目录，不能按副本改成软链")
 	}
 	rec, err := begin(undoRoot, opRelink, entryPath)
 	if err != nil {
 		return Record{}, err
 	}
-	rec.Payload = filepath.Join(rec.Dir, "payload")
-	if err := os.Rename(entryPath, rec.Payload); err != nil {
-		_ = os.RemoveAll(rec.Dir)
-		return Record{}, err
-	}
 	rel, abs, err := relativeLink(entryPath, poolSkill)
 	if err != nil {
-		_ = os.Rename(rec.Payload, entryPath)
-		_ = os.RemoveAll(rec.Dir)
+		discardEmptyRecord(rec)
 		return Record{}, err
 	}
-	if err := os.Symlink(rel, entryPath); err != nil {
-		if back := os.Rename(rec.Payload, entryPath); back != nil {
-			return Record{}, fmt.Errorf("创建软链失败（%v），原目录还在 %s", err, rec.Payload)
-		}
-		_ = os.RemoveAll(rec.Dir)
-		return Record{}, err
-	}
+	rec.Payload = filepath.Join(rec.Dir, "payload")
 	rec.NewTarget = rel
 	rec.NewTargetAbs = abs
-	if err := save(rec); err != nil {
-		return rec, err
-	}
-	return rec, nil
+	return installLink(rec, os.Symlink)
 }
 
-// Retarget points an existing symlink at poolSkill. The previous target is
-// kept on the record so it can be put back.
+// Retarget points an existing symlink at poolSkill, keeping the original
+// filesystem object in the undo payload.
 func Retarget(skillsRoot, entryPath, poolSkill, undoRoot string) (Record, error) {
 	if err := assertChild(skillsRoot, entryPath); err != nil {
 		return Record{}, err
@@ -95,7 +83,7 @@ func Retarget(skillsRoot, entryPath, poolSkill, undoRoot string) (Record, error)
 	if err := sameName(entryPath, poolSkill); err != nil {
 		return Record{}, err
 	}
-	if filepath.Clean(entryPath) == filepath.Clean(poolSkill) {
+	if fsutil.EqualPath(entryPath, poolSkill) {
 		return Record{}, errors.New("不能把共享池里的条目指向它自己")
 	}
 	if err := requireSkill(poolSkill); err != nil {
@@ -117,24 +105,13 @@ func Retarget(skillsRoot, entryPath, poolSkill, undoRoot string) (Record, error)
 		return Record{}, err
 	}
 	rec.OldTarget = old
-	if err := os.Remove(entryPath); err != nil {
-		_ = os.RemoveAll(rec.Dir)
-		return Record{}, err
-	}
-	if err := os.Symlink(rel, entryPath); err != nil {
-		_ = os.Symlink(old, entryPath)
-		_ = os.RemoveAll(rec.Dir)
-		return Record{}, err
-	}
+	rec.Payload = filepath.Join(rec.Dir, "payload")
 	rec.NewTarget = rel
 	rec.NewTargetAbs = abs
-	if err := save(rec); err != nil {
-		return rec, err
-	}
-	return rec, nil
+	return installLink(rec, os.Symlink)
 }
 
-// RemoveLink deletes a symlink and remembers its target.
+// RemoveLink moves a symlink into its undo payload without following it.
 func RemoveLink(skillsRoot, entryPath, undoRoot string) (Record, error) {
 	if err := assertChild(skillsRoot, entryPath); err != nil {
 		return Record{}, err
@@ -148,12 +125,14 @@ func RemoveLink(skillsRoot, entryPath, undoRoot string) (Record, error) {
 		return Record{}, err
 	}
 	rec.OldTarget = old
-	if err := os.Remove(entryPath); err != nil {
-		_ = os.RemoveAll(rec.Dir)
+	rec.Payload = filepath.Join(rec.Dir, "payload")
+	if err := save(rec); err != nil {
+		discardEmptyRecord(rec)
 		return Record{}, err
 	}
-	if err := save(rec); err != nil {
-		return rec, err
+	if err := os.Rename(entryPath, rec.Payload); err != nil {
+		discardEmptyRecord(rec)
+		return Record{}, err
 	}
 	return rec, nil
 }
@@ -168,7 +147,7 @@ func RemoveDir(skillsRoot, entryPath, undoRoot string) (Record, error) {
 	if err != nil {
 		return Record{}, err
 	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+	if fsutil.IsLink(entryPath, info) || !info.IsDir() {
 		return Record{}, errors.New("这不是一个目录")
 	}
 	rec, err := begin(undoRoot, opRemoveD, entryPath)
@@ -176,12 +155,13 @@ func RemoveDir(skillsRoot, entryPath, undoRoot string) (Record, error) {
 		return Record{}, err
 	}
 	rec.Payload = filepath.Join(rec.Dir, "payload")
-	if err := os.Rename(entryPath, rec.Payload); err != nil {
-		_ = os.RemoveAll(rec.Dir)
+	if err := save(rec); err != nil {
+		discardEmptyRecord(rec)
 		return Record{}, err
 	}
-	if err := save(rec); err != nil {
-		return rec, err
+	if err := os.Rename(entryPath, rec.Payload); err != nil {
+		discardEmptyRecord(rec)
+		return Record{}, err
 	}
 	return rec, nil
 }
@@ -205,7 +185,7 @@ func linkInto(root, name, target, undoRoot, where string) (Record, error) {
 	root = filepath.Clean(root)
 	target = filepath.Clean(target)
 	dest := filepath.Join(root, name)
-	if filepath.Clean(target) == dest {
+	if fsutil.EqualPath(target, dest) {
 		return Record{}, errors.New("不能把" + where + "条目指向它自己")
 	}
 	if st, err := os.Stat(target); err != nil || !st.IsDir() {
@@ -216,48 +196,34 @@ func linkInto(root, name, target, undoRoot, where string) (Record, error) {
 	}
 	var old string
 	if info, err := os.Lstat(dest); err == nil {
-		if info.Mode()&os.ModeSymlink == 0 {
+		if !fsutil.IsLink(dest, info) {
 			return Record{}, errors.New(where + "里已经有这个 skill")
 		}
-		if _, err := os.Stat(dest); err == nil {
+		if _, err := os.Stat(dest); !os.IsNotExist(err) {
 			return Record{}, errors.New(where + "里已经有这个 skill")
 		}
 		old, err = os.Readlink(dest)
 		if err != nil {
 			return Record{}, err
 		}
-		if err := os.Remove(dest); err != nil {
-			return Record{}, err
-		}
+	} else if !os.IsNotExist(err) {
+		return Record{}, err
 	}
 	rel, abs, err := relativeLink(dest, target)
 	if err != nil {
-		if old != "" {
-			_ = os.Symlink(old, dest)
-		}
 		return Record{}, err
 	}
 	rec, err := begin(undoRoot, opLinkPool, dest)
 	if err != nil {
-		if old != "" {
-			_ = os.Symlink(old, dest)
-		}
 		return Record{}, err
 	}
 	rec.OldTarget = old
-	if err := os.Symlink(rel, dest); err != nil {
-		if old != "" {
-			_ = os.Symlink(old, dest)
-		}
-		_ = os.RemoveAll(rec.Dir)
-		return Record{}, err
+	if old != "" {
+		rec.Payload = filepath.Join(rec.Dir, "payload")
 	}
 	rec.NewTarget = rel
 	rec.NewTargetAbs = abs
-	if err := save(rec); err != nil {
-		return rec, err
-	}
-	return rec, nil
+	return installLink(rec, os.Symlink)
 }
 
 // Restore reverses one record. It refuses when the path no longer matches
@@ -268,57 +234,34 @@ func Restore(r Record) error {
 		if err := restoreInvocation(r); err != nil {
 			return err
 		}
-	case opRelink:
-		if err := expectLink(r.LinkPath, r.NewTargetAbs); err != nil {
-			return err
-		}
-		if err := os.Remove(r.LinkPath); err != nil {
-			return err
-		}
-		if err := os.Rename(r.Payload, r.LinkPath); err != nil {
-			return fmt.Errorf("软链已去掉，但原目录没能从 %s 移回：%w", r.Payload, err)
-		}
-	case opRetarget:
-		if err := expectLink(r.LinkPath, r.NewTargetAbs); err != nil {
-			return err
-		}
-		if err := os.Remove(r.LinkPath); err != nil {
-			return err
-		}
-		if err := os.Symlink(r.OldTarget, r.LinkPath); err != nil {
+	case opRelink, opRetarget, opLinkPool:
+		if err := restoreLinkChange(r); err != nil {
 			return err
 		}
 	case opRemoveL:
 		if err := removalRoot(filepath.Dir(r.LinkPath)); err != nil {
 			return err
 		}
-		if _, err := os.Lstat(r.LinkPath); err == nil {
-			return errors.New("原位置已经有东西，没有把软链放回去")
+		if err := expectAbsent(r.LinkPath); err != nil {
+			return err
 		}
-		if err := os.Symlink(r.OldTarget, r.LinkPath); err != nil {
+		if r.Payload != "" {
+			err := os.Rename(r.Payload, r.LinkPath)
+			if err != nil {
+				return err
+			}
+		} else if err := os.Symlink(r.OldTarget, r.LinkPath); err != nil {
 			return err
 		}
 	case opRemoveD:
 		if err := removalRoot(filepath.Dir(r.LinkPath)); err != nil {
 			return err
 		}
-		if _, err := os.Lstat(r.LinkPath); err == nil {
-			return errors.New("原位置已经有东西，没有把目录移回去")
+		if err := expectAbsent(r.LinkPath); err != nil {
+			return err
 		}
 		if err := os.Rename(r.Payload, r.LinkPath); err != nil {
 			return err
-		}
-	case opLinkPool:
-		if err := expectLink(r.LinkPath, r.NewTargetAbs); err != nil {
-			return err
-		}
-		if err := os.Remove(r.LinkPath); err != nil {
-			return err
-		}
-		if r.OldTarget != "" {
-			if err := os.Symlink(r.OldTarget, r.LinkPath); err != nil {
-				return err
-			}
 		}
 	default:
 		return errors.New("不认识的撤销记录")
@@ -350,7 +293,7 @@ func save(r Record) error {
 func assertChild(root, child string) error {
 	root = filepath.Clean(root)
 	child = filepath.Clean(child)
-	if filepath.Dir(child) != root {
+	if !fsutil.EqualPath(filepath.Dir(child), root) {
 		return fmt.Errorf("拒绝修改 %s：它不是 %s 的直接子项", child, root)
 	}
 	return plainName(filepath.Base(child))
@@ -360,17 +303,17 @@ func plainName(name string) error {
 	if name == "" || name == "." || name == ".." || name != filepath.Base(name) {
 		return errors.New("拒绝修改这个路径")
 	}
-	if name == ".system" {
+	if fsutil.EqualPath(name, ".system") {
 		return errors.New("不会改 .system 里的自带 skill")
 	}
 	return nil
 }
 
 func sameName(entryPath, poolSkill string) error {
-	if filepath.Base(entryPath) != filepath.Base(poolSkill) {
+	if !fsutil.EqualPath(filepath.Base(entryPath), filepath.Base(poolSkill)) {
 		return errors.New("名字和共享池里的条目不一致")
 	}
-	if filepath.Clean(entryPath) == filepath.Clean(poolSkill) {
+	if fsutil.EqualPath(entryPath, poolSkill) {
 		return errors.New("这就是共享池里的那一份")
 	}
 	return nil
@@ -388,20 +331,36 @@ func requireSkill(poolSkill string) error {
 }
 
 func relativeLink(linkPath, target string) (rel, abs string, err error) {
-	abs = filepath.Clean(target)
-	rel, err = filepath.Rel(filepath.Dir(linkPath), abs)
+	abs, err = physicalParentPath(target)
+	if err != nil {
+		return "", "", err
+	}
+	parent, err := filepath.EvalSymlinks(filepath.Dir(linkPath))
+	if err != nil {
+		return "", "", err
+	}
+	parent, err = filepath.Abs(parent)
+	if err != nil {
+		return "", "", err
+	}
+	rel, err = relativeTarget(parent, abs)
 	if err != nil {
 		return "", "", err
 	}
 	return rel, abs, nil
 }
 
-func sameLink(linkPath, raw, poolSkill string) bool {
-	abs := raw
-	if !filepath.IsAbs(raw) {
-		abs = filepath.Join(filepath.Dir(linkPath), raw)
+func relativeTarget(parent, target string) (string, error) {
+	rel, err := filepath.Rel(parent, target)
+	if err != nil && runtime.GOOS == "windows" && !fsutil.EqualPath(filepath.VolumeName(parent), filepath.VolumeName(target)) {
+		return target, nil
 	}
-	return filepath.Clean(abs) == filepath.Clean(poolSkill)
+	return rel, err
+}
+
+func sameLink(linkPath, raw, poolSkill string) bool {
+	abs, err := linkTarget(linkPath, raw)
+	return err == nil && equalTarget(abs, poolSkill)
 }
 
 func expectLink(linkPath, wantAbs string) error {
@@ -409,12 +368,46 @@ func expectLink(linkPath, wantAbs string) error {
 	if err != nil {
 		return errors.New("撤销时这条已经不是软链了")
 	}
-	abs := raw
-	if !filepath.IsAbs(raw) {
-		abs = filepath.Join(filepath.Dir(linkPath), raw)
+	abs, err := linkTarget(linkPath, raw)
+	if err != nil {
+		return err
 	}
-	if filepath.Clean(abs) != filepath.Clean(wantAbs) {
+	if !equalTarget(abs, wantAbs) {
 		return errors.New("撤销时软链已经指向别处")
 	}
 	return nil
+}
+
+func linkTarget(linkPath, raw string) (string, error) {
+	if filepath.IsAbs(raw) {
+		return filepath.Clean(raw), nil
+	}
+	parent, err := filepath.EvalSymlinks(filepath.Dir(linkPath))
+	if err != nil {
+		return "", err
+	}
+	return filepath.Abs(filepath.Join(parent, raw))
+}
+
+func equalTarget(a, b string) bool {
+	if real, err := physicalParentPath(a); err == nil {
+		a = real
+	}
+	if real, err := physicalParentPath(b); err == nil {
+		b = real
+	}
+	return fsutil.EqualPath(a, b)
+}
+
+func physicalParentPath(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	parent, err := filepath.EvalSymlinks(filepath.Dir(abs))
+	if err != nil {
+		return "", err
+	}
+	// Keep the final pool slot, even when it links to a repository directory.
+	return filepath.Join(parent, filepath.Base(abs)), nil
 }

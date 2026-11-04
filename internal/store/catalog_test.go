@@ -3,9 +3,10 @@ package store
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
-	"skill-manager/internal/skill"
+	"knack/internal/skill"
 )
 
 func TestCatalogRoundTripAndScope(t *testing.T) {
@@ -47,7 +48,11 @@ func TestCatalogRoundTripAndScope(t *testing.T) {
 			t.Fatal("used cache for other scope")
 		}
 	}
-	if st, err := os.Stat(path); err != nil || st.Mode().Perm() != 0o600 {
+	wantPerm := os.FileMode(0o600)
+	if runtime.GOOS == "windows" {
+		wantPerm = 0o666
+	}
+	if st, err := os.Stat(path); err != nil || st.Mode().Perm() != wantPerm {
 		t.Fatal("cache permissions")
 	}
 	if err := os.WriteFile(path, []byte("not json"), 0o600); err != nil {

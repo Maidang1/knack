@@ -1,4 +1,4 @@
-module skill-manager
+module knack
 
 go 1.27.3
 

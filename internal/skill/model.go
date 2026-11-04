@@ -1,6 +1,6 @@
 // Package skill reads skill directories on disk. The shared pool and each
 // agent directory are the source of truth; this package does not consult
-// the skills-manager database.
+// the Knack database.
 package skill
 
 import "time"
@@ -71,6 +71,7 @@ type Entry struct {
 
 	Name         string
 	Path         string
+	SlotPath     string // physical parent plus basename; final link is not resolved
 	Kind         Kind
 	System       bool // under a .system directory, or the root is read-only
 	Vacant       bool // directory has nothing but ignored junk

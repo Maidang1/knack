@@ -10,7 +10,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"skill-manager/internal/store"
+	"knack/internal/store"
 )
 
 func repoMenuChoice(t *testing.T, tt *ui.Tester, path, choice string) {

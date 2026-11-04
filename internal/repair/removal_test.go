@@ -6,8 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"skill-manager/internal/manage"
-	"skill-manager/internal/skill"
+	"knack/internal/fsutil"
+	"knack/internal/manage"
+	"knack/internal/skill"
 )
 
 func removalFixture(t *testing.T) (string, string, string) {
@@ -23,7 +24,7 @@ func removalFixture(t *testing.T) (string, string, string) {
 func removalEntry(t *testing.T, snap *skill.Snapshot, path string) skill.Entry {
 	t.Helper()
 	for _, e := range snap.Entries {
-		if e.Path == path {
+		if fsutil.EqualPath(e.Path, path) {
 			return e
 		}
 	}
@@ -34,12 +35,8 @@ func removalEntry(t *testing.T, snap *skill.Snapshot, path string) skill.Entry {
 func TestRemovalFor(t *testing.T) {
 	t.Run("eligible and protected entries", func(t *testing.T) {
 		home, pool, agent := removalFixture(t)
-		if err := os.Symlink(filepath.Join(pool, "alpha"), filepath.Join(agent, "alias")); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Symlink("/no-such-removal-target", filepath.Join(agent, "broken")); err != nil {
-			t.Fatal(err)
-		}
+		makeSymlink(t, filepath.Join(pool, "alpha"), filepath.Join(agent, "alias"))
+		makeSymlink(t, filepath.Join(home, "no-such-removal-target"), filepath.Join(agent, "broken"))
 		if err := os.Mkdir(filepath.Join(agent, "empty"), 0755); err != nil {
 			t.Fatal(err)
 		}
@@ -70,21 +67,15 @@ func TestRemovalFor(t *testing.T) {
 	t.Run("alias and chained references", func(t *testing.T) {
 		home, pool, agent := removalFixture(t)
 		alias := filepath.Join(agent, "other-name")
-		if err := os.Symlink(filepath.Join(pool, "alpha"), alias); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Symlink(alias, filepath.Join(agent, "chain")); err != nil {
-			t.Fatal(err)
-		}
+		makeSymlink(t, filepath.Join(pool, "alpha"), alias)
+		makeSymlink(t, alias, filepath.Join(agent, "chain"))
 		snap := skill.Scan(skill.Discover(home), nil)
 		r := RemovalFor(snap, removalEntry(t, snap, filepath.Join(pool, "alpha")))
 		if !strings.Contains(r.Err, "other-name") || !strings.Contains(r.Err, "chain") {
 			t.Fatalf("missed references: %+v", r)
 		}
 		local := filepath.Join(agent, "local")
-		if err := os.Symlink(local, filepath.Join(pool, "local-alias")); err != nil {
-			t.Fatal(err)
-		}
+		makeSymlink(t, local, filepath.Join(pool, "local-alias"))
 		snap = skill.Scan(skill.Discover(home), nil)
 		if RemovalFor(snap, removalEntry(t, snap, local)).Err == "" {
 			t.Fatal("removed referenced real directory")
@@ -119,20 +110,14 @@ func TestRemovalFor(t *testing.T) {
 		source := filepath.Join(t.TempDir(), "source")
 		writeSkill(t, source, "source")
 		selected := filepath.Join(pool, "source")
-		if err := os.Symlink(source, selected); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Symlink(source, filepath.Join(agent, "bypass")); err != nil {
-			t.Fatal(err)
-		}
+		makeSymlink(t, source, selected)
+		makeSymlink(t, source, filepath.Join(agent, "bypass"))
 		snap := skill.Scan(skill.Discover(home), nil)
 		r := RemovalFor(snap, removalEntry(t, snap, selected))
 		if r.Err != "" || r.Label != "从共享池移除" {
 			t.Fatalf("bypass blocked link: %+v", r)
 		}
-		if err := os.Symlink(selected, filepath.Join(agent, "through")); err != nil {
-			t.Fatal(err)
-		}
+		makeSymlink(t, selected, filepath.Join(agent, "through"))
 		snap = skill.Scan(skill.Discover(home), nil)
 		r = RemovalFor(snap, removalEntry(t, snap, selected))
 		if !strings.Contains(r.Err, "through") || strings.Contains(r.Err, "bypass") {
@@ -142,17 +127,13 @@ func TestRemovalFor(t *testing.T) {
 	t.Run("broken pool and empty reference safety", func(t *testing.T) {
 		home, pool, agent := removalFixture(t)
 		broken := filepath.Join(pool, "dead")
-		if err := os.Symlink("/no-such-removal-target", broken); err != nil {
-			t.Fatal(err)
-		}
+		makeSymlink(t, filepath.Join(home, "no-such-removal-target"), broken)
 		empty := filepath.Join(pool, "empty")
 		if err := os.Mkdir(empty, 0755); err != nil {
 			t.Fatal(err)
 		}
 		for _, path := range []string{broken, empty} {
-			if err := os.Symlink(path, filepath.Join(agent, "alias-"+filepath.Base(path))); err != nil {
-				t.Fatal(err)
-			}
+			makeSymlink(t, path, filepath.Join(agent, "alias-"+filepath.Base(path)))
 		}
 		snap := skill.Scan(skill.Discover(home), nil)
 		for _, path := range []string{broken, empty} {
@@ -267,17 +248,13 @@ func TestApplyRemoval(t *testing.T) {
 	t.Run("changed target", func(t *testing.T) {
 		home, pool, agent := removalFixture(t)
 		path := filepath.Join(agent, "alias")
-		if err := os.Symlink(filepath.Join(pool, "alpha"), path); err != nil {
-			t.Fatal(err)
-		}
+		makeSymlink(t, filepath.Join(pool, "alpha"), path)
 		snap := skill.Scan(skill.Discover(home), nil)
 		e := removalEntry(t, snap, path)
 		if err := os.Remove(path); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Symlink(filepath.Join(agent, "local"), path); err != nil {
-			t.Fatal(err)
-		}
+		makeSymlink(t, filepath.Join(agent, "local"), path)
 		if _, err := ApplyRemoval(e, home, nil, filepath.Join(home, "undo")); err == nil {
 			t.Fatal("removed retargeted link")
 		}
@@ -287,9 +264,7 @@ func TestApplyRemoval(t *testing.T) {
 		path := filepath.Join(pool, "alpha")
 		snap := skill.Scan(skill.Discover(home), nil)
 		e := removalEntry(t, snap, path)
-		if err := os.Symlink(path, filepath.Join(agent, "new-ref")); err != nil {
-			t.Fatal(err)
-		}
+		makeSymlink(t, path, filepath.Join(agent, "new-ref"))
 		if _, err := ApplyRemoval(e, home, nil, filepath.Join(home, "undo")); err == nil {
 			t.Fatal("removed newly referenced skill")
 		}

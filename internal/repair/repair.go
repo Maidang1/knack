@@ -8,8 +8,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"skill-manager/internal/manage"
-	"skill-manager/internal/skill"
+	"knack/internal/fsutil"
+	"knack/internal/manage"
+	"knack/internal/skill"
 )
 
 // Op is the kind of change a fix makes.
@@ -288,7 +289,7 @@ func Apply(f Fix, undoRoot string) (manage.Record, error) {
 		if err != nil {
 			return manage.Record{}, err
 		}
-		if current.TreeHash != e.TreeHash || pool.TreeHash != f.TargetHash || pool.Path != f.Target {
+		if current.TreeHash != e.TreeHash || pool.TreeHash != f.TargetHash || !fsutil.EqualPath(pool.Path, f.Target) {
 			return manage.Record{}, errors.New("这份副本或共享池已变化，请重新比较后确认")
 		}
 		return manage.RelinkDir(e.RootPath, e.Path, f.Target, undoRoot)

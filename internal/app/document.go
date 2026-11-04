@@ -6,8 +6,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"skill-manager/internal/repair"
-	"skill-manager/internal/skill"
+	"knack/internal/repair"
+	"knack/internal/skill"
 )
 
 type documentState struct {

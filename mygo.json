@@ -1,6 +1,10 @@
 {
-  "name": "Skill Manager",
-  "slug": "skill-manager",
-  "identifier": "dev.local.skill-manager",
-  "version": "0.1.0"
+  "name": "Knack",
+  "slug": "knack",
+  "identifier": "dev.local.knack",
+  "version": "0.1.0",
+  "icon": "resources/icon.png",
+  "linux": {
+    "webview": false
+  }
 }

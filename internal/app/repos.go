@@ -9,8 +9,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"skill-manager/internal/manage"
-	"skill-manager/internal/store"
+	"knack/internal/manage"
+	"knack/internal/store"
 )
 
 type repoDialogState struct {

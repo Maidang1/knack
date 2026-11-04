@@ -6,9 +6,9 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"skill-manager/internal/manage"
-	"skill-manager/internal/repair"
-	"skill-manager/internal/skill"
+	"knack/internal/manage"
+	"knack/internal/repair"
+	"knack/internal/skill"
 )
 
 // Choices only apply to the visible result of the current, fresh scan.

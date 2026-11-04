@@ -5,7 +5,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"skill-manager/internal/skill"
+	"knack/internal/skill"
 )
 
 const (

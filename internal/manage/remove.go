@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"knack/internal/fsutil"
 )
 
 // RemoveEntry removes a link or moves a directory into a persisted undo record.
@@ -22,7 +24,7 @@ func RemoveEntry(root, entryPath, undoRoot string) (Record, error) {
 	}
 	op := opRemoveD
 	var old string
-	if info.Mode()&os.ModeSymlink != 0 {
+	if fsutil.IsLink(entryPath, info) {
 		op = opRemoveL
 		old, err = os.Readlink(entryPath)
 		if err != nil {
@@ -36,20 +38,14 @@ func RemoveEntry(root, entryPath, undoRoot string) (Record, error) {
 		return Record{}, err
 	}
 	rec.OldTarget = old
-	if op == opRemoveD {
-		rec.Payload = filepath.Join(rec.Dir, "payload")
-	}
+	rec.Payload = filepath.Join(rec.Dir, "payload")
 	if err := save(rec); err != nil {
-		_ = os.RemoveAll(rec.Dir)
+		discardEmptyRecord(rec)
 		return Record{}, err
 	}
-	if op == opRemoveL {
-		err = os.Remove(entryPath)
-	} else {
-		err = os.Rename(entryPath, rec.Payload)
-	}
+	err = os.Rename(entryPath, rec.Payload)
 	if err != nil {
-		_ = os.RemoveAll(rec.Dir)
+		discardEmptyRecord(rec)
 		return Record{}, err
 	}
 	return rec, nil
@@ -68,7 +64,7 @@ func removalRoot(root string) error {
 	if err != nil {
 		return err
 	}
-	if filepath.Clean(real) != filepath.Join(parent, filepath.Base(abs)) {
+	if !fsutil.EqualPath(real, filepath.Join(parent, filepath.Base(abs))) {
 		return errors.New("skills 根目录经过软链指向其他位置，不能修改")
 	}
 	// Agent folders may not redirect writes into another app's installation.
@@ -81,10 +77,10 @@ func removalRoot(root string) error {
 			if err != nil {
 				return err
 			}
-			if info.Mode()&os.ModeSymlink != 0 {
+			if fsutil.IsLink(dir, info) {
 				return errors.New("agent 目录经过软链指向其他位置，不能修改")
 			}
-			if dir == p {
+			if fsutil.EqualPath(dir, p) {
 				break
 			}
 		}

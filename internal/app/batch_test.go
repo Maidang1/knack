@@ -8,8 +8,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"skill-manager/internal/repair"
-	"skill-manager/internal/skill"
+	"knack/internal/repair"
+	"knack/internal/skill"
 )
 
 func issueBatchFixture(t *testing.T) (*App, *ui.Tester) {

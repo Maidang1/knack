@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 )
 
@@ -75,10 +76,7 @@ func TestSetInvocation(t *testing.T) {
 		if err != nil || modes["beta"] != InvocationManual || modes["other"] != InvocationNameOnly {
 			t.Fatalf("preferences %v, %v", modes, err)
 		}
-		st, err := os.Stat(path)
-		if err != nil || st.Mode().Perm() != 0o640 {
-			t.Fatalf("mode %v, %v", st, err)
-		}
+		assertInvocationMode(t, path, 0o640)
 		backup, err := os.ReadFile(rec.Payload)
 		if err != nil || string(backup) != original {
 			t.Fatalf("backup %q, %v", backup, err)
@@ -113,10 +111,7 @@ func TestSetInvocation(t *testing.T) {
 			if err != nil || got != mode {
 				t.Fatalf("got %s, %v", got, err)
 			}
-			st, err := os.Stat(rec.LinkPath)
-			if err != nil || st.Mode().Perm() != 0o600 {
-				t.Fatalf("new mode %v, %v", st, err)
-			}
+			assertInvocationMode(t, rec.LinkPath, 0o600)
 			if err := Restore(rec); err != nil {
 				t.Fatal(err)
 			}
@@ -276,4 +271,20 @@ func readInvocationFixture(t *testing.T, path string) map[string]json.RawMessage
 		t.Fatal(err)
 	}
 	return fields
+}
+
+func assertInvocationMode(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	st, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := st.Mode().Perm()
+	if runtime.GOOS == "windows" {
+		if got&0o200 != want&0o200 {
+			t.Fatalf("writable bit = %o, want %o", got, want)
+		}
+	} else if got != want {
+		t.Fatalf("mode = %o, want %o", got, want)
+	}
 }

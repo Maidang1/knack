@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"knack/internal/fsutil"
 )
 
 // Layer is one place an agent looks for a skill. When two layers hold the
@@ -107,11 +109,11 @@ func (v *EffectiveView) Overridden() int {
 // Agents whose folder is nested deeper, or a workDir that is home itself,
 // have none.
 func ProjectRoot(home string, agent Root, workDir string) (Root, bool) {
-	if workDir == "" || agent.Role != RoleAgent {
+	if workDir == "" || agent.Role != RoleAgent || agent.ID == windowsGooseID {
 		return Root{}, false
 	}
 	home, workDir = filepath.Clean(home), filepath.Clean(workDir)
-	if workDir == home {
+	if fsutil.EqualPath(workDir, home) {
 		return Root{}, false
 	}
 	rel, err := filepath.Rel(home, agent.Path)
@@ -119,7 +121,7 @@ func ProjectRoot(home string, agent Root, workDir string) (Root, bool) {
 		return Root{}, false
 	}
 	parts := strings.Split(filepath.ToSlash(rel), "/")
-	if len(parts) != 2 || !strings.HasPrefix(parts[0], ".") || parts[1] != "skills" {
+	if len(parts) != 2 || parts[0] == "." || parts[0] == ".." || !strings.HasPrefix(parts[0], ".") || parts[1] != "skills" {
 		return Root{}, false
 	}
 	return Root{
@@ -166,7 +168,7 @@ func dotFolder(home, path string) string {
 		return ""
 	}
 	first, _, _ := strings.Cut(filepath.ToSlash(rel), "/")
-	if !strings.HasPrefix(first, ".") {
+	if first == "." || first == ".." || !strings.HasPrefix(first, ".") {
 		return ""
 	}
 	return first
@@ -246,7 +248,7 @@ func BuildEffective(snap *Snapshot, home string, agent Root, workDir string) (*E
 // that wins, from the SKILL.md timestamps. Linked copies resolve to the
 // same directory and say so instead.
 func AgeNote(winner, other Entry) string {
-	if winner.RealPath != "" && winner.RealPath == other.RealPath {
+	if winner.RealPath != "" && fsutil.EqualPath(winner.RealPath, other.RealPath) {
 		return "指向同一个目录"
 	}
 	a, b := winner.DocModTime, other.DocModTime

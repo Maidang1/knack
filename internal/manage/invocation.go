@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"knack/internal/fsutil"
 )
 
 // Invocation is the user's Claude Code skill invocation preference.
@@ -238,7 +240,7 @@ func checkInvocationPath(path string) error {
 		if err != nil {
 			return err
 		}
-		if st.Mode()&os.ModeSymlink != 0 {
+		if fsutil.IsLink(p, st) {
 			return errors.New("不会通过软链读写 Claude 设置")
 		}
 	}

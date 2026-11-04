@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"knack/internal/fsutil"
 )
 
 // TreeHash is a sha256 of the skill directory: every regular file's
@@ -41,7 +43,7 @@ func TreeHash(root string) (string, error) {
 			return infoErr
 		}
 		switch {
-		case info.Mode()&os.ModeSymlink != 0:
+		case fsutil.IsLink(path, info):
 			tgt, readErr := os.Readlink(path)
 			if readErr != nil {
 				return readErr

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Knack</title>
+  <desc>A calm, flat cartoon capybara holding skill cards, with simple dot eyes and warm neutral colors.</desc>
+
+  <rect x="64" y="64" width="896" height="896" rx="204" fill="#FFD4B8"/>
+
+  <!-- A long blunt snout and small ear distinguish the capybara in profile. -->
+  <g stroke-linecap="round" stroke-linejoin="round">
+    <rect x="341" y="558" width="342" height="266" rx="120" fill="#C4B09D" stroke="#78685C" stroke-width="12"/>
+    <ellipse cx="373" cy="302" rx="43" ry="49" transform="rotate(-13 373 302)" fill="#C4B09D" stroke="#78685C" stroke-width="12"/>
+    <path d="M359 287Q372 274 385 287" fill="none" stroke="#8A7A6D" stroke-width="9"/>
+
+    <path d="M332 317C367 294 415 300 463 307L630 317C709 321 761 362 776 427L797 494C809 541 784 580 742 593L638 621C588 649 526 659 450 650C357 641 291 586 280 505L272 410C268 366 290 337 332 317Z" fill="#C4B09D" stroke="#78685C" stroke-width="12"/>
+    <ellipse cx="531" cy="426" rx="11" ry="14" fill="#342920"/>
+    <ellipse cx="770" cy="493" rx="9" ry="12" transform="rotate(-15 770 493)" fill="#5C483B"/>
+    <path d="M733 545H773" fill="none" stroke="#5C483B" stroke-width="8"/>
+
+    <!-- Keep the skill-library symbol and restrained sage accent. -->
+    <g stroke="#78685C" stroke-width="8">
+      <rect x="378" y="651" width="268" height="153" rx="27" transform="rotate(-9 512 727)" fill="#B2D4C1"/>
+      <rect x="372" y="683" width="280" height="151" rx="29" fill="#FEF8EE"/>
+    </g>
+    <g fill="none" stroke="#5E8C73" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M472 738L512 718L552 738L512 759Z" fill="#5E8C73" stroke="none"/>
+      <path d="M472 761L512 782L552 761"/>
+      <path d="M472 785L512 806L552 785"/>
+    </g>
+    <ellipse cx="369" cy="716" rx="32" ry="37" transform="rotate(-22 369 716)" fill="#C4B09D" stroke="#78685C" stroke-width="8"/>
+    <ellipse cx="655" cy="716" rx="32" ry="37" transform="rotate(22 655 716)" fill="#C4B09D" stroke="#78685C" stroke-width="8"/>
+  </g>
+</svg>

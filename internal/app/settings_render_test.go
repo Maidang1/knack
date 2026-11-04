@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
-	"skill-manager/internal/skill"
+	"knack/internal/skill"
 )
 
 func TestSettingsGearOutline(t *testing.T) {

@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"knack/internal/fsutil"
 )
 
 const (
@@ -137,7 +139,8 @@ func scanEntry(root Root, name, path string, system bool, c *cache) (Entry, bool
 		return e, false
 	}
 	e.EntryModTime = info.ModTime()
-	if info.Mode()&os.ModeSymlink != 0 {
+	e.SlotPath, _ = physicalSlot(path)
+	if fsutil.IsLink(path, info) {
 		return scanLink(e, c), true
 	}
 	if !info.IsDir() {
@@ -156,7 +159,17 @@ func scanLink(e Entry, c *cache) Entry {
 	if filepath.IsAbs(tgt) {
 		e.LinkAbs = filepath.Clean(tgt)
 	} else {
-		e.LinkAbs = filepath.Clean(filepath.Join(filepath.Dir(e.Path), tgt))
+		parent, err := filepath.EvalSymlinks(filepath.Dir(e.Path))
+		if err != nil {
+			e.Kind, e.MetaErr = KindLink, err.Error()
+			return e
+		}
+		e.LinkAbs = filepath.Clean(filepath.Join(parent, tgt))
+	}
+	// Normalize target ancestors too, but preserve the final pool slot even
+	// when that slot is itself a link to a configured repository.
+	if slot, err := physicalSlot(e.LinkAbs); err == nil {
+		e.LinkAbs = slot
 	}
 	st, err := os.Stat(e.Path)
 	if err != nil {
@@ -181,6 +194,14 @@ func scanLink(e Entry, c *cache) Entry {
 	e.RealPath = real
 	fillFromDir(&e, real, c)
 	return e
+}
+
+func physicalSlot(path string) (string, error) {
+	parent, err := filepath.EvalSymlinks(filepath.Dir(path))
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(parent, filepath.Base(path)), nil
 }
 
 func scanDir(e Entry, dir string, c *cache) Entry {

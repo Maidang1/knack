@@ -9,7 +9,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"skill-manager/internal/skill"
+	"knack/internal/skill"
 )
 
 func graphFixture(t *testing.T) (*App, *ui.Tester) {

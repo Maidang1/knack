@@ -72,7 +72,7 @@ func TestScanRelationsAndRepos(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(pool, "blank"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink("/tmp/missing-baocut-test", filepath.Join(pool, "gone")); err != nil {
+	if err := os.Symlink(filepath.Join(home, "missing-baocut"), filepath.Join(pool, "gone")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -82,10 +82,10 @@ func TestScanRelationsAndRepos(t *testing.T) {
 	linkRel(t, claude, "alpha", filepath.Join(pool, "alpha"))
 	copySkill(t, filepath.Join(pool, "beta"), filepath.Join(claude, "beta"))
 	writeSkill(t, filepath.Join(claude, "cloud"), "cloud v1")
-	if err := os.Symlink("/tmp/missing-baocut-test", filepath.Join(claude, "gone")); err != nil {
+	if err := os.Symlink(filepath.Join(home, "missing-baocut"), filepath.Join(claude, "gone")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink("/tmp/missing-observe-test", filepath.Join(claude, "observe")); err != nil {
+	if err := os.Symlink(filepath.Join(home, "missing-observe"), filepath.Join(claude, "observe")); err != nil {
 		t.Fatal(err)
 	}
 	writeSkill(t, filepath.Join(claude, "extra"), "only claude")
@@ -116,7 +116,12 @@ func TestScanRelationsAndRepos(t *testing.T) {
 		t.Fatalf("builtin missing: %+v", roots)
 	}
 	for _, r := range roots {
-		if filepath.Base(filepath.Dir(r.Path)) == "abc" || strings.Contains(r.Path, "marketplaces") || strings.Contains(r.Path, "extensions") || strings.Contains(r.Path, "/tmp/") || strings.Contains(r.Path, "/.tmp/") || strings.Contains(r.Path, "/.unknown/") || strings.Contains(r.Path, "/other/") {
+		rel, err := filepath.Rel(home, r.Path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rel = "/" + filepath.ToSlash(rel) + "/"
+		if strings.Contains(rel, "/marketplace-cache/") || strings.Contains(rel, "/marketplaces/") || strings.Contains(rel, "/extensions/") || strings.Contains(rel, "/tmp/") || strings.Contains(rel, "/.tmp/") || strings.Contains(rel, "/.unknown/") || strings.Contains(rel, "/other/") {
 			t.Fatalf("install cache was discovered: %s", r.Path)
 		}
 	}

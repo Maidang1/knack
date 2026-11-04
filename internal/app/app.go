@@ -1,4 +1,4 @@
-// Package app is the Skill Manager window. It reads skill directories on
+// Package app is the Knack window. It reads skill directories on
 // disk, and only changes them after a confirmation that can be undone.
 package app
 
@@ -10,10 +10,10 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
-	"skill-manager/internal/manage"
-	"skill-manager/internal/repair"
-	"skill-manager/internal/skill"
-	"skill-manager/internal/store"
+	"knack/internal/manage"
+	"knack/internal/repair"
+	"knack/internal/skill"
+	"knack/internal/store"
 )
 
 // App is the window's state. New does not scan; Attach starts the first scan
@@ -104,6 +104,7 @@ type ask struct {
 }
 
 // New loads the repo list for home. A missing config file is an empty list.
+// Keep the original data directories so Knack retains existing settings and undo records.
 func New(home string) *App {
 	home = filepath.Clean(home)
 	a := &App{

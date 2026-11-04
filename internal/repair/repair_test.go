@@ -1,13 +1,27 @@
 package repair
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
+	"syscall"
 	"testing"
 
-	"skill-manager/internal/manage"
-	"skill-manager/internal/skill"
+	"knack/internal/fsutil"
+	"knack/internal/manage"
+	"knack/internal/skill"
 )
+
+func makeSymlink(t *testing.T, target, path string) {
+	t.Helper()
+	if err := os.Symlink(target, path); err != nil {
+		if runtime.GOOS == "windows" && (os.IsPermission(err) || errors.Is(err, syscall.Errno(1314))) {
+			t.Skipf("Windows symlink permission unavailable: %v", err)
+		}
+		t.Fatal(err)
+	}
+}
 
 func writeSkill(t *testing.T, dir, desc string) {
 	t.Helper()
@@ -30,12 +44,8 @@ func fixture(t *testing.T) (home string, snap *skill.Snapshot) {
 	}
 	writeSkill(t, filepath.Join(claude, "same"), "pool same")
 	writeSkill(t, filepath.Join(claude, "stale"), "different")
-	if err := os.Symlink("/tmp/repair-missing", filepath.Join(claude, "fixme")); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink("/tmp/repair-missing-pool", filepath.Join(pool, "dead")); err != nil {
-		t.Fatal(err)
-	}
+	makeSymlink(t, filepath.Join(home, "repair-missing"), filepath.Join(claude, "fixme"))
+	makeSymlink(t, filepath.Join(home, "repair-missing-pool"), filepath.Join(pool, "dead"))
 	if err := os.MkdirAll(filepath.Join(claude, "blank"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +115,7 @@ func TestApplyAllAndRestore(t *testing.T) {
 		t.Fatalf("%d records for %d fixes", len(recs), len(safe))
 	}
 	claude := filepath.Join(home, ".claude", "skills")
-	if info, err := os.Lstat(filepath.Join(claude, "same")); err != nil || info.Mode()&os.ModeSymlink == 0 {
+	if info, err := os.Lstat(filepath.Join(claude, "same")); err != nil || !fsutil.IsLink(filepath.Join(claude, "same"), info) {
 		t.Fatalf("same was not relinked: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(claude, "fixme", "SKILL.md")); err != nil {

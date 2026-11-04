@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 
-	"skill-manager/internal/manage"
-	"skill-manager/internal/skill"
+	"knack/internal/fsutil"
+	"knack/internal/manage"
+	"knack/internal/skill"
 )
 
 // Removal describes removing one slot, not deleting a symlink's source.
@@ -35,8 +37,8 @@ const (
 // RemovalFor checks both ordinary removals and the existing broken/empty fixes.
 func RemovalFor(snap *skill.Snapshot, e skill.Entry) Removal {
 	if snap == nil || e.System || (e.RootRole != skill.RoleAgent && e.RootRole != skill.RolePool) ||
-		filepath.Dir(filepath.Clean(e.Path)) != filepath.Clean(e.RootPath) ||
-		e.Name != filepath.Base(e.Path) || strings.HasPrefix(e.Name, ".") {
+		!fsutil.EqualPath(filepath.Dir(filepath.Clean(e.Path)), e.RootPath) ||
+		!fsutil.EqualPath(e.Name, filepath.Base(e.Path)) || strings.HasPrefix(e.Name, ".") {
 		return Removal{}
 	}
 	switch e.Kind {
@@ -113,7 +115,7 @@ func ApplyRemovalLinks(e skill.Entry, home string, repos []string, undoRoot stri
 		}
 		found := false
 		for _, root := range roots {
-			if filepath.Clean(root.Path) == filepath.Clean(expected.Path) {
+			if fsutil.EqualPath(root.Path, expected.Path) {
 				found = true
 				break
 			}
@@ -124,7 +126,7 @@ func ApplyRemovalLinks(e skill.Entry, home string, repos []string, undoRoot stri
 	}
 	found := false
 	for _, root := range roots {
-		if filepath.Clean(root.Path) == filepath.Clean(e.RootPath) {
+		if fsutil.EqualPath(root.Path, e.RootPath) {
 			found = true
 			break
 		}
@@ -136,14 +138,14 @@ func ApplyRemovalLinks(e skill.Entry, home string, repos []string, undoRoot stri
 	var current skill.Entry
 	present := false
 	for _, candidate := range snap.Entries {
-		if filepath.Clean(candidate.Path) == filepath.Clean(e.Path) {
+		if fsutil.EqualPath(candidate.Path, e.Path) {
 			current, present = candidate, true
 			break
 		}
 	}
 	if !present || current.RootRole != e.RootRole || current.RootID != e.RootID || current.System != e.System ||
-		current.Kind != e.Kind || current.LinkTarget != e.LinkTarget || current.LinkAbs != e.LinkAbs ||
-		current.RealPath != e.RealPath || !current.EntryModTime.Equal(e.EntryModTime) ||
+		current.Kind != e.Kind || current.LinkTarget != e.LinkTarget || !fsutil.EqualPath(current.LinkAbs, e.LinkAbs) ||
+		!fsutil.EqualPath(current.RealPath, e.RealPath) || !current.EntryModTime.Equal(e.EntryModTime) ||
 		current.HasDocument != e.HasDocument || current.DocSize != e.DocSize || !current.DocModTime.Equal(e.DocModTime) {
 		return nil, errors.New("这份 skill 已变化，请重新扫描后确认")
 	}
@@ -189,7 +191,7 @@ func removalReferences(snap *skill.Snapshot, target skill.Entry) (links []skill.
 	targetPath := filepath.Join(parent, filepath.Base(target.Path))
 	var refs []string
 	for _, e := range snap.Entries {
-		if filepath.Clean(e.Path) == filepath.Clean(target.Path) {
+		if fsutil.EqualPath(e.Path, target.Path) {
 			continue
 		}
 		inspect := func(path, label string) error {
@@ -210,7 +212,7 @@ func removalReferences(snap *skill.Snapshot, target skill.Entry) (links []skill.
 		}
 	}
 	for _, e := range snap.Entries {
-		if e.RootID != target.RootID || e.Name == target.Name {
+		if e.RootID != target.RootID || fsutil.EqualPath(e.Name, target.Name) {
 			continue
 		}
 		for _, req := range e.Requires {
@@ -232,14 +234,29 @@ func pathTraverses(path, target string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	pending := strings.Split(strings.TrimPrefix(path, string(filepath.Separator)), string(filepath.Separator))
-	current := string(filepath.Separator)
+	target, err = filepath.Abs(target)
+	if err != nil {
+		return false, err
+	}
+	var targetInfo os.FileInfo
+	if runtime.GOOS == "windows" {
+		// Lstat preserves the slot while SameFile recognizes 8.3 aliases.
+		// On Unix, distinct hardlinks to a symlink must remain distinct slots.
+		targetInfo, err = os.Lstat(target)
+		if err != nil && !os.IsNotExist(err) {
+			return false, err
+		}
+	}
+	current, pending := traversalParts(path)
 	links := 0
+	if fsutil.EqualPath(current, target) {
+		return true, nil
+	}
 	for len(pending) > 0 {
 		part := pending[0]
 		pending = pending[1:]
 		current = filepath.Join(current, part)
-		if current == target || strings.HasPrefix(current, target+string(filepath.Separator)) {
+		if fsutil.EqualPath(current, target) {
 			return true, nil
 		}
 		info, err := os.Lstat(current)
@@ -249,7 +266,10 @@ func pathTraverses(path, target string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		if info.Mode()&os.ModeSymlink == 0 {
+		if runtime.GOOS == "windows" && targetInfo != nil && os.SameFile(targetInfo, info) {
+			return true, nil
+		}
+		if !fsutil.IsLink(current, info) {
 			continue
 		}
 		links++
@@ -262,11 +282,32 @@ func pathTraverses(path, target string) (bool, error) {
 		}
 		next := raw
 		if !filepath.IsAbs(next) {
-			next = filepath.Join(filepath.Dir(current), next)
+			if len(next) > 0 && os.IsPathSeparator(next[0]) {
+				// A Windows rooted target inherits the link's volume.
+				next = filepath.VolumeName(current) + next
+			} else {
+				next = filepath.Join(filepath.Dir(current), next)
+			}
 		}
-		next = filepath.Clean(next)
-		pending = append(strings.Split(strings.TrimPrefix(next, string(filepath.Separator)), string(filepath.Separator)), pending...)
-		current = string(filepath.Separator)
+		root, parts := traversalParts(next)
+		pending = append(parts, pending...)
+		current = root
+		if fsutil.EqualPath(current, target) {
+			return true, nil
+		}
 	}
 	return false, nil
+}
+
+// traversalParts splits an absolute path without treating a drive or UNC share
+// as an ordinary component. The same root is used after each link expansion.
+func traversalParts(path string) (string, []string) {
+	path = filepath.Clean(path)
+	volume := filepath.VolumeName(path)
+	rest := strings.TrimLeft(path[len(volume):], string(filepath.Separator))
+	root := volume + string(filepath.Separator)
+	if rest == "" {
+		return root, nil
+	}
+	return root, strings.Split(rest, string(filepath.Separator))
 }

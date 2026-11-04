@@ -1,9 +1,10 @@
 package skill
 
 import (
-	"path/filepath"
 	"slices"
 	"strings"
+
+	"knack/internal/fsutil"
 )
 
 func analyze(s *Snapshot) {
@@ -142,7 +143,8 @@ func pointsAtPool(e, pool Entry) bool {
 	if e.LinkAbs == "" || pool.Path == "" {
 		return false
 	}
-	return filepath.Clean(e.LinkAbs) == filepath.Clean(pool.Path)
+	return fsutil.EqualPath(e.LinkAbs, pool.Path) ||
+		pool.SlotPath != "" && fsutil.EqualPath(e.LinkAbs, pool.SlotPath)
 }
 
 func brokenDetail(e Entry) string {
