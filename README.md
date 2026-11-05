@@ -141,3 +141,7 @@ go tool mygo vet .
 ```
 
 标准测试使用临时目录。读取真实用户目录的 `TestLiveHome` 测试默认跳过，可通过 `SKILL_MANAGER_LIVE=1 go test ./internal/skill -run '^TestLiveHome$'` 手动运行。
+
+## 开源协议
+
+本项目采用 [MIT License](LICENSE)，允许使用、修改和分发，包括商业用途。分发时须保留版权及许可声明。
