@@ -255,6 +255,30 @@ func controlsBandHeight(bar ui.TitleBar) float32 {
 	return h
 }
 
+// SidebarSection sizes its header from the system font and disclosure arrow.
+// Align that header's center with the 24-point tabs, including CJK fallbacks.
+func (a *App) sidebarTopInset(c *ui.Context) float32 {
+	t := c.Theme()
+	title := "浏览"
+	collapsible := false
+	if a.hidden["issues"] && a.hidden["pool"] {
+		collapsible = true
+		switch {
+		case len(a.roots(skill.RoleAgent)) > 0:
+			title = "Agent"
+		case len(a.roots(skill.RoleBuiltin)) > 0:
+			title = "自带"
+		default:
+			return 6 // The custom repository header has a fixed 24-point height.
+		}
+	}
+	_, height := c.MeasureText(0, ui.Span{Text: title, Size: t.FontSize - 1, Weight: 600})
+	if collapsible {
+		height = max(height, t.Space(4))
+	}
+	return max(0, 6+12-t.Space(1)-height/2)
+}
+
 func (a *App) sidebar(c *ui.Context) {
 	t := c.Theme()
 	frosted := a.frosted(c)
@@ -269,8 +293,6 @@ func (a *App) sidebar(c *ui.Context) {
 			ui.Box(c).Grow(1)
 			a.sidebarToggle(c)
 		})
-		// The section header supplies its own 4-point top inset; leave
-		// only 6 above it to match the content header's 10-point inset.
 		side := ui.Sidebar(c, &a.page, func() {
 			if !a.hidden["issues"] || !a.hidden["pool"] {
 				ui.SidebarSection(c, "浏览", nil, func() {
@@ -306,7 +328,7 @@ func (a *App) sidebar(c *ui.Context) {
 				})
 			}
 			a.repoSection(c)
-		}).Grow(1).Padding(6, t.Space(2.5), t.Space(2.5), t.Space(2.5)).Label("位置")
+		}).Grow(1).Padding(a.sidebarTopInset(c), t.Space(2.5), t.Space(2.5), t.Space(2.5)).Label("位置")
 		if frosted {
 			side.Background(ui.Transparent)
 		}

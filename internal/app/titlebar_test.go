@@ -241,6 +241,36 @@ func TestSidebarHeaderAlignment(t *testing.T) {
 	}
 }
 
+func TestSidebarHeaderAlignmentWithLargeFont(t *testing.T) {
+	home := t.TempDir()
+	writeSkill(t, filepath.Join(home, ".claude", "skills", "alpha"), "alpha")
+	for _, hideBrowse := range []bool{false, true} {
+		t.Run(fmt.Sprintf("hideBrowse=%t", hideBrowse), func(t *testing.T) {
+			a := New(home)
+			a.startScan()
+			a.page = effectivePage
+			a.hidden["issues"], a.hidden["pool"] = hideBrowse, hideBrowse
+			tt := ui.NewTester(func(c *ui.Context) {
+				theme := *c.Theme()
+				theme.FontSize = 18
+				ui.Themed(c, &theme).Fill().Children(func() { a.View(c) })
+			}, 1180, 760)
+			heading := "浏览"
+			if hideBrowse {
+				heading = "Agent"
+			}
+			side, sideOK := tt.Find(heading)
+			count, countOK := tt.Find("1 项生效")
+			if !sideOK || !countOK {
+				t.Fatal("missing sidebar or list heading")
+			}
+			if d := side.Y + side.H/2 - count.Y - count.H/2; d < -1 || d > 1 {
+				t.Fatalf("large font misaligned headings: sidebar=%+v, list=%+v", side, count)
+			}
+		})
+	}
+}
+
 func TestTitleBarDragTargets(t *testing.T) {
 	home := t.TempDir()
 	writeSkill(t, filepath.Join(home, ".claude", "skills", "alpha"), "alpha")
