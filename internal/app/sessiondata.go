@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"knack/internal/insight"
 	"knack/internal/session"
 )
 
@@ -83,6 +84,7 @@ type sessionDetailData struct {
 	skills, tools []callCount
 	concerns      []sessionConcern
 	toolCount     int
+	diag          *insight.SessionDiagnosis // built when first shown
 }
 
 func sessionID(s session.Session) string { return string(s.Agent) + ":" + s.ID }

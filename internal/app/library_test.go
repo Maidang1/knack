@@ -150,3 +150,39 @@ func containsPrefix(texts []string, prefix string) bool {
 	}
 	return false
 }
+
+// On a tall window the totals stay put and each list scrolls on its own.
+func TestUsagePageSplitScroll(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		a := agentPageFixture(t)
+		tt := ui.NewTester(a.View, 1280, usageSplitHeight)
+		tt.SetDark(dark)
+		click(t, tt, "用量与耗时")
+		left, okLeft := tt.Find("用量左栏")
+		right, okRight := tt.Find("用量右栏")
+		if !okLeft || !okRight || right.X <= left.X {
+			t.Fatalf("lists not side by side: %+v %+v", left, right)
+		}
+		at := func(label string) float32 {
+			r, ok := tt.Find(label)
+			if !ok {
+				t.Fatalf("missing %s: %q", label, tt.Texts())
+			}
+			return r.Y
+		}
+		head, models, skills := at("耗时构成"), at("模型输出速率"), at("Skill 调用排行")
+		tt.Scroll(left.X+left.W/2, left.Y+40, 0, 120)
+		if at("耗时构成") != head || at("Skill 调用排行") != skills {
+			t.Fatal("scrolling the left list moved the totals or the right list")
+		}
+		if at("模型输出速率") >= models {
+			t.Fatal("left list did not scroll")
+		}
+		exportSessionPreview(t, tt, fmt.Sprintf("usage-split-dark-%t.png", dark))
+		// A short window scrolls as one page.
+		tt = ui.NewTester(a.View, 1280, 600)
+		if _, ok := tt.Find("用量左栏"); ok {
+			t.Fatal("short window split the page")
+		}
+	}
+}

@@ -57,6 +57,9 @@ func (a *App) railSidebar(c *ui.Context) {
 				if !a.hidden[usagePage] {
 					a.railItem(c, usagePage, "chart", "用量与耗时", ui.Color{})
 				}
+				if !a.hidden[insightsPage] {
+					a.railItem(c, insightsPage, "wave", "诊断", ui.Color{})
+				}
 				if agents := a.sidebarAgents(); len(agents) > 0 {
 					railDivider(c)
 					for _, root := range agents {
@@ -114,7 +117,7 @@ func (a *App) railItem(c *ui.Context, id, icon, label string, dot ui.Color) ui.E
 	railContent(c, item, func() {
 		color := token(t, "ink-2")
 		if a.page == id {
-			color = t.Text
+			color = token(t, "accent-ink")
 		}
 		ui.Icon(c, glyph(icon)).FontSize(17).TextColor(color)
 	})
@@ -137,7 +140,7 @@ func (a *App) railRow(c *ui.Context, id, label string) ui.Element {
 	item := ui.SidebarItem(c.Key("rail:"+id), id, nil, "").Label(label).Tooltip(label).Size(36, 32).Padding(0).Gap(0).
 		Radius(7).AlignItems(ui.Center).Justify(ui.Center)
 	if a.page == id {
-		item.Background(token(t, "raised")).Border(1, t.Border)
+		item.Background(token(t, "selected"))
 	}
 	return item
 }

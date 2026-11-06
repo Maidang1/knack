@@ -189,7 +189,7 @@ func TestHideBrowseItems(t *testing.T) {
 	a := New(home)
 	tt := ui.NewTester(a.View, 1200, 860)
 	click(t, tt, "重新扫描")
-	a.setAgentsShown([]string{"overview", "sessions", "issues", libraryPage, graphPage, usagePage}, false)
+	a.setAgentsShown([]string{"overview", "sessions", "issues", libraryPage, graphPage, usagePage, insightsPage}, false)
 	if a.page != "pool" {
 		t.Fatalf("page=%s", a.page)
 	}

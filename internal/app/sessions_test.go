@@ -29,7 +29,7 @@ func TestSessionPalette(t *testing.T) {
 			if sessionColor(name, false) != ui.Hex(pair[0]) || pair[0] == pair[1] {
 				t.Fatal("missing theme-specific palette")
 			}
-			for _, background := range []string{"#161618", "#1e1e21", "#2a2a2e", "#2e2e33"} {
+			for _, background := range []string{tokens["bg"][1], tokens["surface"][1], tokens["hover"][1], tokens["selected"][1]} {
 				x, y := luminance(sessionColor(name, true)), luminance(ui.Hex(background))
 				if x < y {
 					x, y = y, x
@@ -92,7 +92,7 @@ func TestSessionBrowser(t *testing.T) {
 				// short window puts the waterfall below the fold: scroll each part to
 				// the top before measuring it.
 				content, _ := tt.Find("会话详情内容")
-				for _, label := range []string{"会话详情内容", "阶段占比条", "每轮耗时图表", "单轮步骤瀑布图"} {
+				for _, label := range []string{"会话详情内容", "阶段占比条", "轮次列表", "单轮步骤瀑布图"} {
 					if r, _ := tt.Find(label); r.Y > content.Y {
 						tt.Scroll(content.X+content.W/2, content.Y+content.H/2, 0, r.Y-content.Y)
 					}
@@ -115,16 +115,16 @@ func TestSessionBrowser(t *testing.T) {
 					t.Fatal("page did not open on the concern's turn")
 				}
 				if _, ok := tt.Find("本轮有耗时异常"); !ok {
-					t.Fatal("turn chart hides the concern")
+					t.Fatal("turn list hides the concern")
 				}
-				// The chart's bars take the arrows, and the choice follows the focus.
+				// The list's rows take the arrows, and the choice follows the focus.
 				focusSessionControl(t, tt, turnLabel(d.turns[0]))
 				if a.sessions.selectedTurn != d.turns[0].turn.ID {
 					t.Fatal("focusing a bar did not choose its turn")
 				}
-				tt.Key(0, ui.KeyRight)
+				tt.Key(0, ui.KeyDown)
 				if !tt.Focused(turnLabel(d.turns[1])) || a.sessions.selectedTurn != d.turns[1].turn.ID {
-					t.Fatal("turn chart arrow navigation")
+					t.Fatal("turn list arrow navigation")
 				}
 				tt.Key(0, ui.KeyEscape)
 				if a.sessions.open {

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"knack/internal/session"
 	"knack/internal/skill"
 )
 
@@ -107,7 +106,7 @@ func TestSessionOverview(t *testing.T) {
 				for y := int(chart.Y); y < int(chart.Y+chart.H); y++ {
 					for x := int(chart.X); x < int(chart.X+chart.W); x++ {
 						pixel := im.RGBAAt(x, y)
-						want := agentColor(session.Claude, dark)
+						want := chartColor(d.series, 0, dark)
 						if pixel.R == want.R && pixel.G == want.G && pixel.B == want.B {
 							bars++
 						}

@@ -48,7 +48,7 @@ func (a *App) sidebar(c *ui.Context) {
 			if !a.hidden[graphPage] {
 				a.navItem(c, graphPage, "graph", "依赖图", "")
 			}
-			if !a.hidden["sessions"] || !a.hidden[usagePage] {
+			if !a.hidden["sessions"] || !a.hidden[usagePage] || !a.hidden[insightsPage] {
 				sideHeading(c, "会话")
 			}
 			if !a.hidden["sessions"] {
@@ -60,6 +60,9 @@ func (a *App) sidebar(c *ui.Context) {
 			}
 			if !a.hidden[usagePage] {
 				a.navItem(c, usagePage, "chart", "用量与耗时", "")
+			}
+			if !a.hidden[insightsPage] {
+				a.navItem(c, insightsPage, "wave", "诊断", "")
 			}
 			if agents := a.sidebarAgents(); len(agents) > 0 {
 				sideHeading(c, "AGENTS")
@@ -102,7 +105,7 @@ func (a *App) sidebarSearch(c *ui.Context) {
 		}
 		field.Children(func() {
 			if a.query == "" {
-				ui.Text(c, "⌘K").Font(monoFont).FontSize(11).TextColor(token(t, "ink-3")).Shrink(0)
+				ui.Text(c, "⌘K").FontSize(11.5).TextColor(token(t, "ink-3")).Shrink(0)
 			}
 		})
 	})
@@ -121,17 +124,17 @@ func (a *App) listPage() bool {
 }
 
 func sideHeading(c *ui.Context, title string) {
-	ui.Text(c, title).Padding(14, 8, 4, 8).FontSize(11).FontWeight(600).LetterSpacing(0.3).
+	ui.Text(c, title).Padding(14, 8, 4, 8).FontSize(11.5).FontWeight(600).LetterSpacing(0.3).
 		TextColor(token(c.Theme(), "ink-3")).SingleLine()
 }
 
 // sideRow styles a SidebarItem as the design's row. Stock items fill the
-// chosen row with the accent; the design raises it instead.
+// chosen row with the solid accent; the design uses its pale wash instead.
 func (a *App) sideRow(c *ui.Context, id, label string) ui.Element {
 	t := c.Theme()
 	item := ui.SidebarItem(c.Key(id), id, nil, "").Label(label).Height(28).Padding(0, 8).Gap(9).TextColor(t.Text)
 	if a.page == id {
-		item.Background(token(t, "raised")).Border(1, t.Border)
+		item.Background(token(t, "selected"))
 	}
 	return item
 }
@@ -143,7 +146,7 @@ func (a *App) navItem(c *ui.Context, id, icon, label, count string) ui.Element {
 		ui.Row(c).Grow(1000).Margin(0, 0, 0, -9).Gap(9).AlignItems(ui.Center).Children(func() {
 			glyphColor := token(t, "ink-2")
 			if a.page == id {
-				glyphColor = t.Text
+				glyphColor = token(t, "accent-ink")
 			}
 			ui.Icon(c, glyph(icon)).FontSize(16).TextColor(glyphColor)
 			a.sideLabel(c, id, label)
@@ -163,7 +166,7 @@ func (a *App) sideLabel(c *ui.Context, id, label string) {
 
 func sideCount(c *ui.Context, count string) {
 	if count != "" {
-		ui.Text(c, count).Font(monoFont).FontSize(11.5).TextColor(token(c.Theme(), "ink-3")).Shrink(0).SingleLine()
+		ui.Text(c, count).FontFeatures("tnum").FontSize(12).TextColor(token(c.Theme(), "ink-3")).Shrink(0).SingleLine()
 	}
 }
 
@@ -174,7 +177,7 @@ func alertBadge(c *ui.Context, count string) {
 	}
 	t := c.Theme()
 	ui.Box(c).Padding(1, 6).Radius(9).Background(t.Danger).Shrink(0).Children(func() {
-		ui.Text(c, count).Font(monoFont).FontSize(11).FontWeight(600).TextColor(token(t, "on-ink")).SingleLine()
+		ui.Text(c, count).FontFeatures("tnum").FontSize(11.5).FontWeight(600).TextColor(token(t, "on-ink")).SingleLine()
 	})
 }
 
@@ -277,7 +280,7 @@ func (a *App) sidebarFooter(c *ui.Context) {
 		} else {
 			ui.Box(c).Size(7, 7).Radius(4).Shrink(0).Background(token(t, color))
 		}
-		ui.Text(c, status).Grow(1).MinWidth(0).FontSize(11.5).TextColor(token(t, "ink-2")).SingleLine()
+		ui.Text(c, status).Grow(1).MinWidth(0).FontSize(12).TextColor(token(t, "ink-2")).SingleLine()
 		ui.Toolbar(c, func() {
 			scan := iconButton(c, "refresh", "重新扫描", "重新扫描（⌘R）").Disabled(busy || a.mutating)
 			if scan.Clicked() {
@@ -330,7 +333,7 @@ func iconButton(c *ui.Context, icon, label, tip string) ui.Element {
 	if b.Hovered() {
 		b.Background(t.SurfaceHover)
 	}
-	b.Children(func() { ui.Icon(c, glyph(icon)).FontSize(14).TextColor(token(t, "ink-3")) })
+	b.Children(func() { ui.Icon(c, glyph(icon)).FontSize(15).TextColor(token(t, "ink-3")) })
 	return b
 }
 

@@ -40,8 +40,18 @@ func dayDescription(day overviewDay, series []session.Agent) string {
 	return text
 }
 
-// dailyChart stacks each day's Token by Agent. The chosen day is in full
-// color and the others recede, so the caption below reads as its legend.
+// chartColor is the violet step of the daily chart's j-th series, largest
+// first; the shared "其他" series stays neutral.
+func chartColor(series []session.Agent, j int, dark bool) ui.Color {
+	if series[j] == "" || j >= 3 {
+		return sessionColor("data-neutral", dark)
+	}
+	return sessionColor(fmt.Sprintf("chart-%d", j+1), dark)
+}
+
+// dailyChart stacks each day's Token by Agent in steps of violet. The chosen
+// day is in full color and the others recede, so the caption below reads as
+// its legend.
 func (a *App) dailyChart(c *ui.Context, d *overviewData) {
 	t := c.Theme()
 	dark := t.Dark
@@ -56,16 +66,16 @@ func (a *App) dailyChart(c *ui.Context, d *overviewData) {
 	}
 	ui.Column(c).Gap(14).Children(func() {
 		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "每日 Token").FontSize(14).FontWeight(600).Grow(1).SingleLine()
-			for _, id := range d.series {
-				legendItem(c, agentColor(id, dark), seriesName(id))
+			ui.Text(c, "每日 Token").FontSize(15).FontWeight(600).Grow(1).SingleLine()
+			for j, id := range d.series {
+				legendItem(c, chartColor(d.series, j, dark), seriesName(id))
 			}
 		})
 		ui.Column(c).Gap(6).Children(func() {
 			ui.Row(c).Height(160).Gap(8).AlignItems(ui.Stretch).Children(func() {
-				ui.Column(c).Width(30).Shrink(0).Justify(ui.SpaceBetween).Children(func() {
+				ui.Column(c).Width(36).Shrink(0).Justify(ui.SpaceBetween).AlignItems(ui.End).Children(func() {
 					for _, v := range []int64{peak, peak * 2 / 3, peak / 3, 0} {
-						number(c, tokenNumber(v)).FontSize(10).TextColor(muted)
+						number(c, axisNumber(v)).FontSize(11).TextColor(muted)
 					}
 				})
 				ui.Row(c).Grow(1).Gap(4).AlignItems(ui.Stretch).FocusGroup(ui.Horizontal).Label("每日 Token 图表").Children(func() {
@@ -84,7 +94,7 @@ func (a *App) dailyChart(c *ui.Context, d *overviewData) {
 								if h <= 0 {
 									continue
 								}
-								color := agentColor(d.series[j], dark)
+								color := chartColor(d.series, j, dark)
 								if !on {
 									color = fade(color, 110)
 								}
@@ -112,8 +122,8 @@ func (a *App) dailyChart(c *ui.Context, d *overviewData) {
 			}
 			ui.Row(c).Gap(8).Padding(8, 12).Radius(8).Background(t.Surface).Border(1, t.Border).AlignItems(ui.Center).Shrink(0).
 				Children(func() {
-					ui.Text(c, dayLabel(day.date)).FontSize(12).FontWeight(600).SingleLine()
-					ui.Text(c, caption).FontSize(12).TextColor(t.TextMuted).SingleLine().MinWidth(0).Tooltip(caption)
+					ui.Text(c, dayLabel(day.date)).FontSize(13).FontWeight(600).SingleLine()
+					ui.Text(c, caption).FontSize(13).TextColor(t.TextMuted).SingleLine().MinWidth(0).Tooltip(caption)
 				})
 		}
 	})
@@ -176,10 +186,10 @@ func axisTicks(c *ui.Context, n, selected int, pill bool, label func(int) string
 		}
 		on := i == selected
 		cell(from, to).Justify(align).Children(func() {
-			text := number(c, label(i)).FontSize(10.5).TextColor(muted).SingleLine()
+			text := number(c, label(i)).FontSize(11).TextColor(muted).SingleLine()
 			switch {
 			case on && pill:
-				text.TextColor(token(t, "on-ink")).FontWeight(600).Padding(1, 6).Radius(4).Background(t.Text)
+				text.TextColor(t.AccentText).FontWeight(600).Padding(1, 6).Radius(4).Background(t.Accent)
 			case on:
 				text.TextColor(t.Text).FontWeight(600)
 			}
@@ -217,4 +227,16 @@ func filteredDayDescription(day overviewDay, d *overviewData) string {
 		return dayDescription(day, d.series)
 	}
 	return fmt.Sprintf("%s · %s · %s Token", day.date, d.agent, tokenNumber(day.total()))
+}
+
+// axisNumber is a tick of the token axis: whole units past ten, so a tick
+// fits the axis without an ellipsis (462M, not 462.1M).
+func axisNumber(n int64) string {
+	switch {
+	case n >= 10_000_000:
+		return fmt.Sprintf("%dM", (n+500_000)/1_000_000)
+	case n >= 10_000:
+		return fmt.Sprintf("%dK", (n+500)/1000)
+	}
+	return tokenNumber(n)
 }

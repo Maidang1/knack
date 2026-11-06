@@ -94,11 +94,17 @@ func TestSettingsPaintAfterGraphZoom(t *testing.T) {
 								t.Fatalf("unreachable %s: %+v", label, r)
 							}
 							painted := 0
-							// Ignore control borders and look for foreground ink.
-							for y := int((r.Y + 5) * 2); y < int((r.Y+r.H-5)*2); y++ {
-								for x := int((r.X + 5) * 2); x < int((r.X+r.W-5)*2); x++ {
-									p := im.RGBAAt(x, y)
-									if dark && p.R > 130 && p.G > 130 && p.B > 130 || !dark && p.R < 150 && p.G < 150 && p.B < 150 {
+							// Ignore control borders and look for foreground that stands
+							// off the label's own fill, whatever color that fill is.
+							gray := func(x, y int) int {
+								p := im.RGBAAt(x, y)
+								return (int(p.R)*2126 + int(p.G)*7152 + int(p.B)*722) / 10000
+							}
+							x0, y0 := int((r.X+5)*2), int((r.Y+5)*2)
+							fill := gray(x0, y0)
+							for y := y0; y < int((r.Y+r.H-5)*2); y++ {
+								for x := x0; x < int((r.X+r.W-5)*2); x++ {
+									if d := gray(x, y) - fill; d > 90 || d < -90 {
 										painted++
 									}
 								}

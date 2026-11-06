@@ -34,7 +34,7 @@ func (a *App) agentTabs(c *ui.Context, root skill.Root) {
 	if logSupport(agent) == "" {
 		counts[1] = fmt.Sprint(len(a.sessionRows()))
 	}
-	ui.Row(c).Shrink(0).Padding(0, 32).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
+	ui.Row(c).Shrink(0).Padding(10, 32).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
 		underlineTabs(c, "agent-tabs:"+a.page, "Agent 页面标签", "Agent ", &a.state(a.page).agentTab, []string{"技能", "会话", "用量"}, counts)
 	})
 }
@@ -58,7 +58,7 @@ func (a *App) agentMeta(c *ui.Context, root skill.Root) {
 		}
 	}
 	text := strings.Join(parts, " · ")
-	ui.Text(c, text).FontSize(12).TextColor(token(t, "ink-3")).SingleLine().Shrink(1).MinWidth(0).Tooltip(root.Path)
+	ui.Text(c, text).FontSize(13).TextColor(token(t, "ink-3")).SingleLine().Shrink(1).MinWidth(0).Tooltip(root.Path)
 }
 
 // noLogs stands in for the sessions and usage of an Agent whose logs can
@@ -112,62 +112,83 @@ func (a *App) usageBody(c *ui.Context, key string, agent session.Agent) {
 		color = agentColor(agent, t.Dark)
 	}
 	d := a.overviewData()
-	width, _ := c.Size()
+	width, height := c.Size()
+	sum := d.summary
+	known := sum.Requests > sum.UnmeteredRequests
+	reason := "当前范围没有可识别的请求用量"
+	skillNote := ""
+	if agent != "" {
+		info := session.LookupAgent(agent)
+		reason = cmp.Or(info.UsageNote, reason)
+		skillNote = skillSupport(agent)
+	}
+	unsupported := agent != "" && logSupport(agent) != ""
+	// head is the period's totals; it stays put while the lists below scroll.
+	head := func() {
+		if unsupported {
+			ui.Text(c, logSupport(agent)).FontSize(13).TextColor(t.TextMuted)
+			return
+		}
+		if a.sessions.err != "" {
+			ui.Text(c, a.sessions.err).FontSize(11.5).TextColor(t.Warning)
+		}
+		if note := session.LookupAgent(agent).TimingNote; agent != "" && note != "" {
+			ui.Text(c, note).FontSize(11.5).TextColor(muted)
+		}
+		a.tokenMix(c, sum, known, reason, color)
+		a.usageTiming(c, agent, d)
+	}
+	models, skills, tools := a.agentCalls(agent, sum)
+	left := func() {
+		a.sessionModelSpeeds(c, &sessionDetailData{models: models}, color)
+		if known {
+			a.dailyChart(c, d)
+		} else {
+			ui.Column(c).Gap(6).Children(func() {
+				overviewTitle(c, "每日 Token")
+				ui.Text(c, "暂不支持 · "+reason).FontSize(12).TextColor(t.TextMuted)
+			})
+		}
+	}
+	right := func() {
+		ui.Column(c).Label("Skill 调用排行").Children(func() {
+			a.sessionCalls(c, "常用技能", skills, skillNote != "", t.Text)
+			if skillNote != "" {
+				ui.Text(c, skillNote).FontSize(11.5).TextColor(muted).MaxLines(3)
+			}
+		})
+		ui.Column(c).Label("工具调用排行").Children(func() {
+			a.sessionCalls(c, "常用工具", tools, false, sessionColor("phase-tool", t.Dark))
+		})
+		ui.Row(c).Padding(12, 14).Gap(8).Radius(8).Background(t.SurfaceHover).Children(func() {
+			ui.Icon(c, glyph("info")).FontSize(13).TextColor(muted).Shrink(0)
+			ui.Text(c, "Token 与首页同一口径：请求按完成日期、工具和 Skill 按调用日期归属。子 Agent 只计一次，速率为估算。技能按调用名统计，没出现在排行里不代表从未使用。").
+				FontSize(12).LineHeight(1.5).TextColor(t.TextMuted).Grow(1).MinWidth(0)
+		})
+	}
+	wide := width-a.sidebarWidth() >= 900
+	if wide && height >= usageSplitHeight && !unsupported {
+		// The totals stay put; the two lists below scroll on their own.
+		ui.Column(c).Grow(1).MinHeight(0).Label("Agent 用量内容").Children(func() {
+			ui.Column(c).Shrink(0).Padding(24, 32, 20, 32).Gap(28).Children(head)
+			ui.Row(c).Grow(1).MinHeight(0).Gap(32).Padding(0, 24, 0, 32).AlignItems(ui.Stretch).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Children(func() {
+				ui.Scroll(c.Key(key + ":left")).Grow(1).MinWidth(0).Label("用量左栏").Children(func() {
+					ui.Column(c).Padding(20, 8, 36, 0).Gap(32).Children(left)
+				})
+				ui.Scroll(c.Key(key + ":right")).Width(388).Shrink(0).Label("用量右栏").Children(func() {
+					ui.Column(c).Padding(20, 8, 36, 0).Gap(28).Children(right)
+				})
+			})
+		})
+		return
+	}
 	ui.Scroll(c.Key(key)).Grow(1).MinHeight(0).Label("Agent 用量内容").Children(func() {
 		ui.Column(c).Padding(24, 32, 36, 32).Gap(28).Children(func() {
-			if reason := logSupport(agent); agent != "" && reason != "" {
-				ui.Text(c, reason).FontSize(13).TextColor(t.TextMuted)
+			head()
+			if unsupported {
 				return
 			}
-			if a.sessions.err != "" {
-				ui.Text(c, a.sessions.err).FontSize(11).TextColor(t.Warning)
-			}
-			sum := d.summary
-			known := sum.Requests > sum.UnmeteredRequests
-			reason := "当前范围没有可识别的请求用量"
-			skillNote := ""
-			if agent != "" {
-				info := session.LookupAgent(agent)
-				reason = cmp.Or(info.UsageNote, reason)
-				skillNote = skillSupport(agent)
-				if info.TimingNote != "" {
-					ui.Text(c, info.TimingNote).FontSize(11).TextColor(muted)
-				}
-			}
-			if sum.Incomplete {
-				ui.Text(c, "当前统计不完整；数值仅包含已识别的本地记录。").FontSize(11).TextColor(t.Warning)
-			}
-			a.tokenMix(c, sum, known, reason, color)
-			a.usageTiming(c, agent, d)
-			models, skills, tools := a.agentCalls(agent, sum)
-			left := func() {
-				a.sessionModelSpeeds(c, &sessionDetailData{models: models}, color)
-				if known {
-					a.dailyChart(c, d)
-				} else {
-					ui.Column(c).Gap(6).Children(func() {
-						overviewTitle(c, "每日 Token")
-						ui.Text(c, "暂不支持 · "+reason).FontSize(11.5).TextColor(t.TextMuted)
-					})
-				}
-			}
-			right := func() {
-				ui.Column(c).Label("Skill 调用排行").Children(func() {
-					a.sessionCalls(c, "常用技能", skills, skillNote != "", t.Text)
-					if skillNote != "" {
-						ui.Text(c, skillNote).FontSize(11).TextColor(muted).MaxLines(3)
-					}
-				})
-				ui.Column(c).Label("工具调用排行").Children(func() {
-					a.sessionCalls(c, "常用工具", tools, false, sessionColor("phase-tool", t.Dark))
-				})
-				ui.Row(c).Padding(12, 14).Gap(8).Radius(8).Background(t.SurfaceHover).Children(func() {
-					ui.Icon(c, glyph("info")).FontSize(13).TextColor(muted).Shrink(0)
-					ui.Text(c, "Token 与首页同一口径：请求按完成日期、工具和 Skill 按调用日期归属。子 Agent 只计一次，速率为估算。技能按调用名统计，没出现在排行里不代表从未使用。").
-						FontSize(11.5).LineHeight(1.5).TextColor(t.TextMuted).Grow(1).MinWidth(0)
-				})
-			}
-			if width-a.sidebarWidth() >= 900 {
+			if wide {
 				ui.Row(c).Gap(40).AlignItems(ui.Start).Children(func() {
 					ui.Column(c).Grow(1).MinWidth(0).Gap(32).Children(left)
 					ui.Column(c).Width(380).Shrink(0).Gap(28).Children(right)
@@ -180,6 +201,10 @@ func (a *App) usageBody(c *ui.Context, key string, agent session.Agent) {
 	})
 }
 
+// Below this window height the fixed totals would leave the lists too
+// little room, so the whole page scrolls instead.
+const usageSplitHeight = 720
+
 // tokenMix is the period's tokens as one number and one stacked bar, each
 // kind in a shade of the Agent's color.
 func (a *App) tokenMix(c *ui.Context, sum session.Summary, known bool, reason string, color ui.Color) {
@@ -187,13 +212,29 @@ func (a *App) tokenMix(c *ui.Context, sum session.Summary, known bool, reason st
 	ui.Column(c).Gap(10).Label("Agent Token 明细").Children(func() {
 		overviewTitle(c, "Token 构成 · "+periodText(a.sessions.period))
 		if !known {
-			ui.Text(c, "暂不支持 · "+reason).FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "暂不支持 · "+reason).FontSize(13).TextColor(t.TextMuted)
 			return
 		}
 		ui.Row(c).Gap(10).AlignItems(ui.End).Children(func() {
 			number(c, tokenNumber(sum.Tokens.Total())).FontSize(30).FontWeight(600).Label(tokenNumber(sum.Tokens.Total()) + " Token")
 			if sum.CacheHitKnown {
-				ui.Textf(c, "缓存命中 %.0f%%", sum.CacheHit*100).FontSize(12).TextColor(t.Success).Padding(0, 0, 4, 0)
+				ui.Textf(c, "缓存命中 %.0f%%", sum.CacheHit*100).FontSize(13).TextColor(t.Success).Padding(0, 0, 4, 0)
+			}
+			ui.Spacer(c)
+			cost := a.insightData().Cost
+			if cost.Total > 0 || cost.UnpricedTokens.Total() > 0 {
+				text := "估算 " + dollars(cost.Total)
+				if cost.UnpricedTokens.Total() > 0 {
+					text += " · " + tokenNumber(cost.UnpricedTokens.Total()) + " Token 未定价"
+				}
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Padding(0, 0, 4, 0).Children(func() {
+					number(c, text).FontSize(13).TextColor(t.TextMuted).Tooltip("按 Anthropic 官方 API 价格估算，未定价的模型不计入")
+					overviewLink(c, "费用明细 →", func() {
+						a.sessions.agent = cmp.Or(a.sessionAgentFilter(), allAgents)
+						a.page = insightsPage
+						a.insights.tab = tabCost
+					})
+				})
 			}
 		})
 		deep := blend(color, ui.Hex("#000000"), 0.72)
@@ -226,8 +267,8 @@ func (a *App) tokenMix(c *ui.Context, sum session.Summary, known bool, reason st
 			for _, part := range parts {
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 					ui.Box(c).Size(8, 8).Radius(2).Background(part.color)
-					ui.Text(c, part.name).FontSize(12).TextColor(t.TextMuted)
-					number(c, tokenNumber(part.value)).FontSize(12)
+					ui.Text(c, part.name).FontSize(13).TextColor(t.TextMuted)
+					number(c, tokenNumber(part.value)).FontSize(13)
 				})
 			}
 		})

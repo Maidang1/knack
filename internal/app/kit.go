@@ -38,7 +38,7 @@ func segmentedTrack(c *ui.Context, label string, selected *int, fill bool, label
 				tab.Background(token(t, "raised")).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.06))
 			}
 			tab.Children(func() {
-				label := ui.Text(c, text).FontSize(12).SingleLine()
+				label := ui.Text(c, text).FontSize(13).SingleLine()
 				if on {
 					label.FontWeight(600)
 				} else {
@@ -54,10 +54,29 @@ func segmentedTrack(c *ui.Context, label string, selected *int, fill bool, label
 	return changed
 }
 
+// selectedRow is a list item, filled when chosen with a pale wash of the
+// accent under ink text rather than an inverted block, so the row reads the
+// same chosen or not.
+func selectedRow(c *ui.Context, selected bool) ui.Element {
+	r := ui.Row(c).Radius(6)
+	if selected {
+		r.Background(token(c.Theme(), "selected"))
+	}
+	return r
+}
+
+// quietList is the theme of a list whose rows draw their own choice
+// (selectedRow): the list's accent fill is clear, and its text stays ink.
+func quietList(t *ui.Theme) *ui.Theme {
+	lt := *t
+	lt.Accent, lt.AccentText = ui.Transparent, t.Text
+	return &lt
+}
+
 // outlineButton is a small secondary action: white face, strong hairline.
 func outlineButton(c *ui.Context, key any, text string) ui.Element {
 	t := c.Theme()
-	b := ui.Button(c.Key(key), text).Height(26).Padding(0, 10).Radius(6).FontSize(12).FontWeight(400).
+	b := ui.Button(c.Key(key), text).Height(26).Padding(0, 10).Radius(6).FontSize(13).FontWeight(400).
 		Background(t.Surface).Border(1, token(t, "line-strong")).Shrink(0)
 	if b.Hovered() {
 		b.Background(t.SurfaceHover)
@@ -68,20 +87,20 @@ func outlineButton(c *ui.Context, key any, text string) ui.Element {
 // selectStyle gives a Select the design's dropdown face.
 func selectStyle(c *ui.Context, e ui.Element) ui.Element {
 	t := c.Theme()
-	return e.Height(28).Radius(7).Background(t.Surface).Border(1, token(t, "line-strong")).FontSize(12)
+	return e.Height(28).Radius(7).Background(t.Surface).Border(1, token(t, "line-strong")).FontSize(13)
 }
 
 // sectionHead titles a block of a page, with a quiet trailing link.
 func sectionHead(c *ui.Context, title, link string, onLink func()) {
 	t := c.Theme()
 	ui.Row(c).Padding(0, 0, 8, 0).Gap(12).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, title).FontSize(14).FontWeight(600).Grow(1).MinWidth(0).SingleLine()
+		ui.Text(c, title).FontSize(15).FontWeight(600).Grow(1).MinWidth(0).SingleLine()
 		if link != "" {
 			b := ui.ButtonBase(c.Key("link:"+title)).Label(link).Padding(2, 0)
 			b.Children(func() {
-				text := ui.Text(c, link).FontSize(12).TextColor(t.TextMuted).SingleLine()
+				text := ui.Text(c, link).FontSize(13).TextColor(token(t, "accent-ink")).SingleLine()
 				if b.Hovered() {
-					text.TextColor(t.Text)
+					text.Underline()
 				}
 			})
 			if b.Clicked() {
@@ -96,22 +115,22 @@ func sectionHead(c *ui.Context, title, link string, onLink func()) {
 func legendItem(c *ui.Context, color ui.Color, name string) {
 	ui.Row(c).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
 		ui.Box(c).Size(8, 8).Radius(2).Background(color)
-		ui.Text(c, name).FontSize(12).TextColor(c.Theme().TextMuted).SingleLine()
+		ui.Text(c, name).FontSize(13).TextColor(c.Theme().TextMuted).SingleLine()
 	})
 }
 
-// inkButton is the page's one primary action: ink face, on-ink label.
-func inkButton(c *ui.Context, key any, icon, text string) ui.Element {
+// primaryButton is the page's one primary action: accent face, white label.
+func primaryButton(c *ui.Context, key any, icon, text string) ui.Element {
 	t := c.Theme()
-	b := ui.ButtonBase(c.Key(key)).Height(28).Padding(0, 12).Gap(6).Radius(7).AlignItems(ui.Center).Background(t.Text).Label(text).Shrink(0)
+	b := ui.ButtonBase(c.Key(key)).Height(28).Padding(0, 12).Gap(6).Radius(7).AlignItems(ui.Center).Background(t.Accent).Label(text).Shrink(0)
 	if b.Hovered() {
-		b.Background(t.TextMuted)
+		b.Background(t.AccentHover)
 	}
 	b.Children(func() {
 		if icon != "" {
-			ui.Icon(c, glyph(icon)).FontSize(14).TextColor(token(t, "on-ink"))
+			ui.Icon(c, glyph(icon)).FontSize(15).TextColor(t.AccentText)
 		}
-		ui.Text(c, text).FontSize(12.5).FontWeight(600).TextColor(token(t, "on-ink")).SingleLine()
+		ui.Text(c, text).FontSize(13).FontWeight(600).TextColor(t.AccentText).SingleLine()
 	})
 	return b
 }
@@ -126,7 +145,7 @@ func emptyState(c *ui.Context, label, icon string, tone ui.Color, title, body st
 		})
 		ui.Text(c, title).FontSize(15).FontWeight(600).TextAlign(ui.Center)
 		if body != "" {
-			ui.Text(c, body).FontSize(12.5).LineHeight(1.6).TextColor(t.TextMuted).MaxWidth(380).TextAlign(ui.Center)
+			ui.Text(c, body).FontSize(13).LineHeight(1.6).TextColor(t.TextMuted).MaxWidth(380).TextAlign(ui.Center)
 		}
 		if actions != nil {
 			ui.Row(c).Gap(8).Margin(6, 0, 0, 0).Children(actions)
@@ -134,57 +153,38 @@ func emptyState(c *ui.Context, label, icon string, tone ui.Color, title, body st
 	})
 }
 
-// chipTabs is a row of rounded filters, each with its count; the chosen one
-// is ink. It reports a change.
+// chipTabs is a segmented control of filters, each with its count, as a
+// macOS scope bar is. It reports a change.
 func chipTabs(c *ui.Context, label string, selected *int, labels []string, counts []int) bool {
-	t := c.Theme()
-	tabs := ui.TabsBase(c.Key("chips:"+label), selected, len(labels))
-	tabs.List.Gap(6).Label(label).Shrink(0).Wrap().Children(func() {
-		for i, text := range labels {
-			on := i == *selected
-			tab := tabs.Tab(i).Height(26).Padding(0, 10).Gap(6).Radius(13).AlignItems(ui.Center).Label(text)
-			if on {
-				tab.Background(t.Text)
-			} else {
-				tab.Border(1, token(t, "line-strong"))
-				if tab.Hovered() {
-					tab.Background(t.SurfaceHover)
-				}
-			}
-			tab.Children(func() {
-				name := ui.Text(c, text).FontSize(12).SingleLine()
-				count := number(c, fmt.Sprint(counts[i])).FontSize(10.5)
-				if on {
-					name.TextColor(token(t, "on-ink")).FontWeight(600)
-					count.TextColor(token(t, "on-ink"))
-				} else {
-					count.TextColor(token(t, "ink-3"))
-				}
-			})
-		}
-	})
-	changed := tabs.List.Changed()
-	if changed {
-		c.Invalidate()
+	shown := make([]string, len(counts))
+	for i, n := range counts {
+		shown[i] = fmt.Sprint(n)
 	}
-	return changed
+	return countedSegments(c, "chips:"+label, label, "", selected, labels, shown)
 }
 
-// underlineTabs is a row of tabs marked by an ink rule under the chosen
-// one, each with its count. Tabs are labelled prefix + name. It reports a
-// change.
+// underlineTabs switches the views of a page: a segmented control, each
+// segment with its count, labelled prefix + name. It reports a change.
 func underlineTabs(c *ui.Context, key, label, prefix string, selected *int, names, counts []string) bool {
+	return countedSegments(c, key, label, prefix, selected, names, counts)
+}
+
+// countedSegments is the segmented track of segmented, with a quiet count
+// after each name. A chosen segment is raised; its count stays gray, so
+// the name carries the choice.
+func countedSegments(c *ui.Context, key, label, prefix string, selected *int, names, counts []string) bool {
 	t := c.Theme()
 	tabs := ui.TabsBase(c.Key(key), selected, len(names))
-	tabs.List.Gap(20).Label(label).Children(func() {
+	tabs.List.Gap(2).Padding(2).Radius(7).Background(t.SurfaceHover).Label(label).Shrink(0).AlignSelf(ui.Start).Wrap()
+	tabs.List.Children(func() {
 		for i, name := range names {
-			on := *selected == i
-			tab := tabs.Tab(i).Padding(9, 0, 8, 0).Gap(5).AlignItems(ui.Center).Label(prefix + name)
-			tab.Draw(func(p *ui.Painter, r ui.Rect) {
-				if on {
-					p.Fill(ui.Rect{X: r.X, Y: r.Y + r.H - 2, W: r.W, H: 2}, t.Text, 1)
-				}
-			})
+			on := i == *selected
+			tab := tabs.Tab(i).Height(24).Padding(0, 10).Gap(5).Radius(5).AlignItems(ui.Center).Label(prefix + name)
+			if on {
+				tab.Background(token(t, "raised")).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.06))
+			} else if tab.Hovered() {
+				tab.Background(token(t, "pressed"))
+			}
 			tab.Children(func() {
 				text := ui.Text(c, name).FontSize(13).SingleLine()
 				if on {
@@ -193,7 +193,7 @@ func underlineTabs(c *ui.Context, key, label, prefix string, selected *int, name
 					text.TextColor(t.TextMuted)
 				}
 				if i < len(counts) && counts[i] != "" {
-					number(c, counts[i]).FontSize(11).TextColor(token(t, "ink-3"))
+					number(c, counts[i]).FontSize(11.5).TextColor(token(t, "ink-3"))
 				}
 			})
 		}
