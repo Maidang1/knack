@@ -88,12 +88,20 @@ func TestSessionBrowser(t *testing.T) {
 				if d.phases.away != time.Minute || d.phases.unknown != time.Second {
 					t.Fatalf("away/unknown attribution %+v", d.phases)
 				}
+				// Where the parts fall depends on the platform's font metrics, and the
+				// short window puts the waterfall below the fold: scroll each part to
+				// the top before measuring it.
+				content, _ := tt.Find("会话详情内容")
 				for _, label := range []string{"会话详情内容", "阶段占比条", "每轮耗时图表", "单轮步骤瀑布图"} {
+					if r, _ := tt.Find(label); r.Y > content.Y {
+						tt.Scroll(content.X+content.W/2, content.Y+content.H/2, 0, r.Y-content.Y)
+					}
 					r, ok := tt.Find(label)
 					if !ok || r.W < 80 || r.X < 0 || r.X+r.W > float32(width)+1 {
 						t.Fatalf("clipped %s: %+v", label, r)
 					}
 				}
+				tt.Scroll(content.X+content.W/2, content.Y+content.H/2, 0, -2000)
 				exportSessionPreview(t, tt, fmt.Sprintf("session-page-%d-dark-%t.png", width, dark))
 				var revealed string
 				a.revealFn = func(path string) { revealed = path }
