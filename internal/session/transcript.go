@@ -127,6 +127,7 @@ type transcriptReader struct {
 	// Codex: entries since the last usage record belong to the next response.
 	pending []int
 	timing  map[string][2]time.Time
+	system  bool // the base system prompt was shown; resumed logs repeat it
 }
 
 func (tr *transcriptReader) add(e Entry) int {
@@ -266,6 +267,17 @@ func (factoryFormat) replay(tr *transcriptReader, o object, at time.Time) {
 func (codexFormat) replay(tr *transcriptReader, o object, at time.Time) {
 	pl := obj(o, "payload")
 	switch str(o, "type") {
+	case "session_meta":
+		// The base system prompt Codex sent with every request. Older logs
+		// store it as a string, newer ones as {"text": ...}.
+		text := str(obj(pl, "base_instructions"), "text")
+		if text == "" {
+			text = str(pl, "base_instructions")
+		}
+		if strings.TrimSpace(text) != "" && !tr.system {
+			tr.system = true
+			tr.add(Entry{Kind: EntryContext, Start: at, End: at, Name: "系统提示词", Text: text})
+		}
 	case "turn_context":
 		tr.model = str(pl, "model")
 	case "token_usage_record":
@@ -337,7 +349,7 @@ func (codexFormat) replay(tr *transcriptReader, o object, at time.Time) {
 			if input == "" {
 				input = jsonText(first2(pl["action"], pl["arguments"], pl["input"]))
 			}
-			name := first(str(pl, "name"), strings.TrimSuffix(str(pl, "type"), "_call"))
+			name := first(codexToolName(pl), strings.TrimSuffix(str(pl, "type"), "_call"))
 			i := tr.add(Entry{Kind: EntryTool, Start: at, ToolID: id, Name: name, Input: prettyJSON(input)})
 			tr.tools[id] = i
 			tr.pending = append(tr.pending, i)

@@ -57,6 +57,9 @@ func (a *App) railSidebar(c *ui.Context) {
 				if !a.hidden[usagePage] {
 					a.railItem(c, usagePage, "chart", "用量与耗时", ui.Color{})
 				}
+				if !a.hidden[insightsPage] {
+					a.railItem(c, insightsPage, "wave", "诊断", ui.Color{})
+				}
 				if agents := a.sidebarAgents(); len(agents) > 0 {
 					railDivider(c)
 					for _, root := range agents {

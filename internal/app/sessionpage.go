@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"time"
 
@@ -63,10 +64,18 @@ func (a *App) sessionPage(c *ui.Context, d *sessionDetailData, width float32) {
 			}
 			a.sessionPhases(c, d)
 			index := a.sessionTurnIndex(d)
-			if index < 0 {
+			switch {
+			case index < 0:
 				ui.Text(c, "没有可识别的轮次").FontSize(13).TextColor(t.TextMuted)
-			} else {
-				a.turnChart(c, d, index)
+			case inner >= 860:
+				// The turns on the left, the chosen turn's steps beside them.
+				ui.Row(c).Gap(24).AlignItems(ui.Start).Children(func() {
+					ui.Column(c).Width(turnListWidth).Shrink(0).Gap(2).Children(func() { a.turnList(c, d, index) })
+					ui.Column(c).Grow(1).MinWidth(0).Gap(10).Padding(0, 0, 0, 24).BorderWidth(0, 0, 0, 1).BorderColor(t.Border).
+						Children(func() { a.turnDetail(c, d, index) })
+				})
+			default:
+				ui.Column(c).Gap(2).Children(func() { a.turnList(c, d, index) })
 				ui.Column(c).Gap(10).Children(func() { a.turnDetail(c, d, index) })
 			}
 			a.sessionExtras(c, d, inner)
@@ -281,75 +290,6 @@ func legendValue(c *ui.Context, color ui.Color, name, value, share, tip string) 
 	})
 }
 
-// turnChart is a bar per turn at a common scale, stacked by phase. The
-// chosen turn is in full color; the arrows move the choice.
-func (a *App) turnChart(c *ui.Context, d *sessionDetailData, index int) {
-	t := c.Theme()
-	muted := token(t, "ink-3")
-	content := a.sessionReplay(d).ready()
-	concerns := turnConcerns(d)
-	peak := time.Duration(0)
-	for _, turn := range d.turns {
-		peak = max(peak, turn.active.total)
-	}
-	ui.Column(c).Gap(6).Children(func() {
-		ui.Row(c).Gap(12).AlignItems(ui.Center).Padding(0, 0, 4, 0).Children(func() {
-			ui.Text(c, "每轮耗时").FontSize(14).FontWeight(600).Grow(1)
-			ui.Text(c, "←→ 切换轮次").FontSize(11.5).TextColor(muted)
-		})
-		ui.Row(c).Height(76).Gap(4).AlignItems(ui.Stretch).FocusGroup(ui.Horizontal).Label("每轮耗时图表").Children(func() {
-			for i, turn := range d.turns {
-				on := i == index
-				prompt, _ := turnPrompt(turn, content)
-				b := ui.ButtonBase(c.Key("turn:" + turn.turn.ID)).Grow(1).Basis(0).MinWidth(0).Column().AlignItems(ui.Center).Justify(ui.Start).
-					Label(turnLabel(turn)).Tooltip(fmt.Sprintf("第 %d 轮 · %s\n%s", i+1, activeText(turn), prompt))
-				if on && a.sessions.focusTurn {
-					b.Focus()
-					a.sessions.focusTurn = false
-				}
-				p := turn.active
-				b.Draw(func(painter *ui.Painter, r ui.Rect) {
-					top := r.Y + 16
-					height := r.H - 16
-					w := min(r.W, 44)
-					x := r.X + (r.W-w)/2
-					if peak <= 0 || p.total <= 0 {
-						painter.Fill(ui.Rect{X: x, Y: r.Y + r.H - 2, W: w, H: 2}, t.SurfaceHover, 1)
-						return
-					}
-					h := max(2, float32(float64(p.total)/float64(peak))*height)
-					y := top + height
-					part := func(value time.Duration, color ui.Color) {
-						if value <= 0 {
-							return
-						}
-						seg := float32(float64(value)/float64(p.total)) * h
-						y -= seg
-						if !on {
-							color = fade(color, 110)
-						}
-						painter.Fill(ui.Rect{X: x, Y: y, W: w, H: seg}, color, 0)
-					}
-					for i, value := range p.values {
-						part(value, sessionColor(phaseKeys[i], t.Dark))
-					}
-					part(p.unknown, t.SurfaceHover)
-				})
-				if concerns[i] != nil {
-					b.Children(func() { ui.Icon(c, glyph("issues")).FontSize(11).TextColor(t.Warning).Label("本轮有耗时异常") })
-				}
-				if b.Clicked() || b.Focused() && !on {
-					a.chooseSessionTurn(d, i)
-					c.Invalidate()
-				}
-			}
-		})
-		ui.Row(c).Gap(4).Children(func() {
-			axisTicks(c, len(d.turns), index, true, func(i int) string { return fmt.Sprint(i + 1) })
-		})
-	})
-}
-
 // turnDetail is the chosen turn: what was asked, then every step on the
 // turn's own time axis.
 func (a *App) turnDetail(c *ui.Context, d *sessionDetailData, index int) {
@@ -359,6 +299,7 @@ func (a *App) turnDetail(c *ui.Context, d *sessionDetailData, index int) {
 	replay := a.sessionReplay(d)
 	content := replay.ready()
 	axis := newStepAxis(turn, a.foldLongSteps)
+	groups := subagentGroups(turn.steps)
 	permissions := 0
 	for _, s := range turn.steps {
 		if s.tool != nil && s.tool.PermissionWait || s.wait != nil && s.wait.Kind == "permission" {
@@ -368,6 +309,13 @@ func (a *App) turnDetail(c *ui.Context, d *sessionDetailData, index int) {
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		ui.Textf(c, "第 %d 轮", index+1).FontSize(15).FontWeight(600).Shrink(0)
 		parts := []string{activeText(turn), fmt.Sprintf("%d 步", len(turn.steps))}
+		if n := len(turn.turn.Subagents); n > 0 {
+			sub := fmt.Sprintf("%d 个子 Agent", n)
+			if slices.ContainsFunc(groups, func(g int) bool { return g > 1 }) {
+				sub += " 并行"
+			}
+			parts = append(parts, sub)
+		}
 		if permissions > 0 {
 			parts = append(parts, fmt.Sprintf("%d 次权限确认", permissions))
 		}
@@ -403,7 +351,7 @@ func (a *App) turnDetail(c *ui.Context, d *sessionDetailData, index int) {
 					p.TextColor(t.TextMuted)
 				}
 				if n := content.context[turn.index]; n > 0 {
-					ui.Textf(c, "另有 %d 条自动注入的上下文，未展示", n).FontSize(11).TextColor(muted)
+					ui.Textf(c, "另有 %d 条自动注入的上下文，可在回放中展开", n).FontSize(11).TextColor(muted)
 				}
 			}
 		})
@@ -432,9 +380,23 @@ func (a *App) turnDetail(c *ui.Context, d *sessionDetailData, index int) {
 		}
 		// The choice can move while the rows run; the open step follows next frame.
 		chosen, open := a.sessions.selectedStep, a.sessions.stepOpen
+		// Sub-Agents that ran at the same time sit under one heading, indented.
+		groupEnd := -1
 		for i, step := range turn.steps {
-			a.stepRow(c, turn, i, step, axis, content)
-			if i == chosen && open {
+			if groups[i] > 1 {
+				subagentGroupRow(c, turn, turn.steps[i:i+groups[i]], axis)
+				groupEnd = i + groups[i]
+			}
+			indent := float32(0)
+			if i < groupEnd {
+				indent = subagentIndent
+			}
+			a.stepRow(c, turn, i, step, axis, content, indent)
+			switch {
+			case i != chosen || !open:
+			case step.child != nil:
+				a.subagentOpen(c, d, turn, step, axis, content, indent)
+			default:
 				ui.Column(c.Key("step-open")).Padding(4, 8, 12, 30).Children(func() {
 					ui.Column(c).Padding(2, 0, 2, 16).BorderWidth(0, 0, 0, 2).BorderColor(token(t, "line-strong")).
 						Children(func() { a.stepInspector(c, d, index, content) })
@@ -499,9 +461,11 @@ func stepFace(s sessionStep, content *replayIndex) (icon, name, detail string) {
 			icon, name = "alert", "请求失败"
 		}
 	case s.child != nil:
-		icon, name = "bot", "子 Agent"
-		if detail == "" {
-			detail = strings.TrimPrefix(s.name, "子 Agent · ")
+		// Named by its task when the dispatching call recorded one, with
+		// the kind of Agent beside it; else by its id.
+		icon, name, detail = "bot", "子 Agent", strings.TrimPrefix(s.name, "子 Agent · ")
+		if task, kind := subagentBrief(s, content); task != "" {
+			name, detail = task, kind
 		}
 	case s.tool != nil:
 		icon, name = toolIcon(s.tool.Name), s.tool.Name
@@ -545,7 +509,7 @@ func stepLabel(i int, step sessionStep) string {
 	return fmt.Sprintf("步骤 %d · %s · %s", i+1, step.name, stepDuration(step))
 }
 
-func (a *App) stepRow(c *ui.Context, turn sessionTurnView, i int, step sessionStep, axis stepAxis, content *replayIndex) {
+func (a *App) stepRow(c *ui.Context, turn sessionTurnView, i int, step sessionStep, axis stepAxis, content *replayIndex, indent float32) {
 	t := c.Theme()
 	selected := i == a.sessions.selectedStep
 	open := selected && a.sessions.stepOpen
@@ -570,14 +534,18 @@ func (a *App) stepRow(c *ui.Context, turn sessionTurnView, i int, step sessionSt
 		}
 	})
 	b.Children(func() {
-		ui.Row(c).Width(stepLabelWidth).Shrink(0).Gap(6).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).Width(stepLabelWidth).Shrink(0).Gap(6).Padding(0, 0, 0, indent).AlignItems(ui.Center).Children(func() {
 			chevron := "chevron-right"
 			if open {
 				chevron = "chevron-down"
 			}
 			ui.Icon(c, glyph(chevron)).FontSize(11).TextColor(token(t, "ink-3")).Shrink(0)
-			ui.Icon(c, glyph(icon)).FontSize(14).TextColor(t.TextMuted).Shrink(0)
-			n := ui.Text(c, name).FontSize(13).Shrink(0).SingleLine().MaxWidth(150)
+			glyphColor := t.TextMuted
+			if step.child != nil {
+				glyphColor = sessionColor("phase-sub", t.Dark)
+			}
+			ui.Icon(c, glyph(icon)).FontSize(14).TextColor(glyphColor).Shrink(0)
+			n := ui.Text(c, name).FontSize(13).Shrink(1).MinWidth(0).SingleLine().MaxWidth(150)
 			if selected {
 				n.FontWeight(600)
 			}
@@ -655,11 +623,20 @@ func (a *App) stepContentBlocks(c *ui.Context, turn sessionTurnView, s sessionSt
 		if len(entries) == 0 && len(content.calls[r.ID]) == 0 {
 			ui.Text(c, "日志没有记录这次请求的内容").FontSize(12).TextColor(t.TextMuted)
 		}
+		// Thinking logged as a signature-only block beside one with text
+		// shows once, as the text; signatures alone are noted once.
+		thought, noted := false, false
+		for _, e := range entries {
+			thought = thought || e.Kind == session.EntryThinking && strings.TrimSpace(e.Text) != ""
+		}
 		for i, e := range entries {
 			switch e.Kind {
 			case session.EntryThinking:
 				if strings.TrimSpace(e.Text) == "" {
-					ui.Text(c, "思考 · 日志只保存了签名，没有思考正文").FontSize(12).TextColor(t.TextMuted)
+					if !thought && !noted {
+						ui.Text(c, "思考 · 日志只保存了签名，没有思考正文").FontSize(12).TextColor(t.TextMuted)
+					}
+					noted = true
 					continue
 				}
 				a.replayText(c, fmt.Sprintf("%s:%d", key, i), "思考", e.Text, e.Truncated, proseBlock)

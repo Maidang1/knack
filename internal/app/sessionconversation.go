@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/egoist/mygo/ui"
 	"knack/internal/session"
@@ -147,8 +146,7 @@ func entryMatches(e session.Entry, query string) bool {
 	return query == "" || strings.Contains(strings.ToLower(e.Text), query) || strings.Contains(strings.ToLower(e.Input), query) || strings.Contains(strings.ToLower(e.Name), query)
 }
 
-// replayTurn shows one turn's entries. The Agent's name heads each run of
-// its entries, as a chat shows who speaks.
+// replayTurn shows one turn as its agent loop, then what it used.
 func (a *App) replayTurn(c *ui.Context, d *sessionDetailData, content *replayIndex, index int, query string) {
 	t := c.Theme()
 	muted := token(t, "ink-3")
@@ -159,77 +157,7 @@ func (a *App) replayTurn(c *ui.Context, d *sessionDetailData, content *replayInd
 		number(c, clockText(turn.turn.Start)+" · "+activeText(turn)).FontSize(12).TextColor(muted).Shrink(0)
 		ui.Box(c).Grow(1).Height(1).Background(t.Border)
 	})
-	models := map[string]string{}
-	thinking := map[string]time.Duration{}
-	for _, r := range turn.turn.Requests {
-		models[r.ID] = r.Model
-		if r.Thinking.Known {
-			thinking[r.ID] = r.Thinking.Value
-		}
-	}
-	tools := map[string]*session.ToolCall{}
-	for i := range turn.turn.Tools {
-		tools[turn.turn.Tools[i].ID] = &turn.turn.Tools[i]
-	}
-	speaker := ""
-	shown := 0
-	for i, e := range content.turns[index] {
-		if !entryMatches(e, query) {
-			continue
-		}
-		switch filter {
-		case replayToolsOnly:
-			if e.Kind != session.EntryTool {
-				continue
-			}
-		case replayRepliesOnly:
-			if e.Kind != session.EntryUser && e.Kind != session.EntryAssistant {
-				continue
-			}
-		}
-		key := fmt.Sprintf("%s:%d", turn.turn.ID, i)
-		switch e.Kind {
-		case session.EntryContext:
-			continue
-		case session.EntryUser:
-			speaker = "user"
-			shown++
-			replaySpeaker(c, "user", "你", "", t.SurfaceHover, func() {
-				a.replayText(c, "msg:"+key, "", e.Text, e.Truncated, proseBlock)
-			})
-			continue
-		case session.EntryEvent:
-			if e.RequestID == "" {
-				shown++
-				ui.Row(c).Gap(6).AlignItems(ui.Center).Padding(0, 0, 0, 36).Children(func() {
-					ui.Icon(c, glyph("alert")).FontSize(12).TextColor(muted)
-					text := e.Name
-					if e.Text != "" {
-						text += " · " + firstLine(e.Text)
-					}
-					number(c, stepClock(e.Start)+"  "+text).FontSize(11.5).TextColor(muted).SingleLine().MinWidth(0).Tooltip(e.Text)
-				})
-				continue
-			}
-		}
-		if speaker != "agent" {
-			speaker = "agent"
-			replaySpeaker(c, string(d.session.Agent), sessionAgentName(d.session.Agent), models[e.RequestID], agentColor(d.session.Agent, t.Dark), nil)
-		}
-		shown++
-		ui.Column(c).Padding(0, 0, 0, 36).Gap(8).Children(func() {
-			switch e.Kind {
-			case session.EntryThinking:
-				a.replayThinking(c, key, e, thinking[e.RequestID])
-			case session.EntryAssistant:
-				a.replayText(c, "msg:"+key, "", e.Text, e.Truncated, proseBlock)
-			case session.EntryTool:
-				a.replayTool(c, key, e, tools[e.ToolID])
-			case session.EntryEvent:
-				a.replayText(c, "msg:"+key, e.Name, e.Text, e.Truncated, proseBlock)
-			}
-		})
-	}
+	shown := a.replayLoop(c, d, content, index, query)
 	if shown == 0 {
 		msg := "本轮没有可回放的内容"
 		if query != "" || filter != replayAll {
@@ -244,11 +172,11 @@ func (a *App) replayTurn(c *ui.Context, d *sessionDetailData, content *replayInd
 			meta = append(meta, fmt.Sprintf("缓存命中 %.0f%%", 100*float64(turn.tokens.CacheRead)/float64(input)))
 		}
 	}
-	if n := content.context[index]; n > 0 {
-		meta = append(meta, fmt.Sprintf("另有 %d 条自动注入的上下文未展示", n))
-	}
 	if len(meta) > 0 {
 		number(c, strings.Join(meta, " · ")).FontSize(11).TextColor(muted).Padding(0, 0, 0, 36)
+	}
+	if n := content.context[index]; n > 0 && filter == replayAll && query == "" {
+		a.replayContext(c, turn.turn.ID, content.turns[index], n)
 	}
 	ui.Row(c).Gap(8).Justify(ui.End).Padding(10, 0, 0, 0).Children(func() {
 		if outlineButton(c, "replay-prev", "上一轮").Disabled(index == 0).Clicked() {
@@ -261,164 +189,6 @@ func (a *App) replayTurn(c *ui.Context, d *sessionDetailData, content *replayInd
 			a.sessions.focusTurn = true
 			c.Invalidate()
 		}
-	})
-}
-
-// replaySpeaker heads a message: an avatar, the speaker and the model.
-// who is "user" or the Agent's id, whose glyph marks its avatar when it has
-// one. body, when given, follows under the name.
-func replaySpeaker(c *ui.Context, who, name, model string, face ui.Color, body func()) {
-	t := c.Theme()
-	ui.Row(c).Gap(12).AlignItems(ui.Start).Margin(6, 0, 0, 0).Children(func() {
-		avatar := ui.Box(c).Size(24, 24).Radius(12).Shrink(0).Center().Background(face)
-		_, known := glyphs[who]
-		switch {
-		case who == "user":
-			avatar.Children(func() { ui.Icon(c, glyph("user")).FontSize(13).TextColor(t.TextMuted) })
-		case known:
-			avatar.Children(func() { ui.Icon(c, glyph(who)).FontSize(13).TextColor(ui.Hex("#FFFFFF")) })
-		default:
-			initial := strings.ToUpper(string([]rune(name)[:1]))
-			avatar.Children(func() { ui.Text(c, initial).FontSize(11).FontWeight(700).TextColor(ui.Hex("#FFFFFF")) })
-		}
-		ui.Column(c).Grow(1).MinWidth(0).Gap(6).Children(func() {
-			ui.Row(c).Gap(8).AlignItems(ui.Center).Height(24).Children(func() {
-				ui.Text(c, name).FontSize(12.5).FontWeight(600)
-				if model != "" {
-					number(c, model).FontSize(11).TextColor(token(t, "ink-3"))
-				}
-			})
-			if body != nil {
-				body()
-			}
-		})
-	})
-}
-
-// replayThinking is thinking folded to a chip, as the design shows it.
-func (a *App) replayThinking(c *ui.Context, key string, e session.Entry, measured time.Duration) {
-	t := c.Theme()
-	if a.sessions.expanded == nil {
-		a.sessions.expanded = map[string]bool{}
-	}
-	open := a.sessions.expanded["think:"+key]
-	took := measured
-	if !e.Start.IsZero() && e.End.After(e.Start) {
-		took = e.End.Sub(e.Start)
-	}
-	label := "思考"
-	if took >= time.Second {
-		label = "思考了 " + session.FormatDuration(took)
-	}
-	empty := strings.TrimSpace(e.Text) == ""
-	chip := ui.ButtonBase(c.Key("think:"+key)).Padding(3, 8).Gap(6).Radius(6).AlignItems(ui.Center).AlignSelf(ui.Start).Background(t.SurfaceHover).Label(label).Disabled(empty)
-	chip.Children(func() {
-		icon := "chevron-right"
-		if open {
-			icon = "chevron-down"
-		}
-		ui.Icon(c, glyph(icon)).FontSize(11).TextColor(token(t, "ink-3"))
-		ui.Box(c).Size(7, 7).Radius(2).Background(sessionColor("phase-think", t.Dark))
-		ui.Text(c, label).FontSize(12).TextColor(t.TextMuted)
-		if empty {
-			ui.Text(c, "· 日志只保存了签名").FontSize(12).TextColor(token(t, "ink-3"))
-		}
-	})
-	if chip.Clicked() {
-		a.sessions.expanded["think:"+key] = !open
-		c.Invalidate()
-	}
-	if open && !empty {
-		ui.Column(c).Padding(0, 0, 0, 12).BorderWidth(0, 0, 0, 2).BorderColor(t.Border).Children(func() {
-			a.replayText(c, "thinking:"+key, "", e.Text, e.Truncated, proseBlock)
-		})
-	}
-}
-
-// replayTool is a tool call as a card: what it was asked, folded until
-// opened to its input and output. Edits open to their diff.
-func (a *App) replayTool(c *ui.Context, key string, e session.Entry, tool *session.ToolCall) {
-	t := c.Theme()
-	muted := token(t, "ink-3")
-	if a.sessions.expanded == nil {
-		a.sessions.expanded = map[string]bool{}
-	}
-	open := a.sessions.expanded["tool:"+key]
-	name := e.Name
-	if name == "" {
-		name = "工具"
-	}
-	preview := inputPreview(e.Input)
-	diff := editDiff(e.Input)
-	card := ui.Column(c.Key("tool-card:"+key)).Radius(7).Background(t.Surface).Border(1, t.Border)
-	if open {
-		card.Border(1, token(t, "line-strong"))
-	}
-	card.Children(func() {
-		head := ui.ButtonBase(c.Key("tool:"+key)).Padding(7, 10).Gap(8).AlignItems(ui.Center).Radius(7).Label(name + " · " + preview)
-		if head.Hovered() {
-			head.Background(t.SurfaceHover)
-		}
-		head.Children(func() {
-			icon := "chevron-right"
-			if open {
-				icon = "chevron-down"
-			}
-			ui.Icon(c, glyph(icon)).FontSize(11).TextColor(muted).Shrink(0)
-			glyphName := toolIcon(name)
-			if tool != nil && tool.AgentID != "" {
-				glyphName = "bot"
-			}
-			ui.Icon(c, glyph(glyphName)).FontSize(14).TextColor(t.TextMuted).Shrink(0)
-			ui.Text(c, name).FontSize(13).FontWeight(600).Shrink(0).SingleLine()
-			number(c, preview).FontSize(12).TextColor(t.TextMuted).Grow(1).MinWidth(0).SingleLine().Tooltip(preview)
-			if len(diff) > 0 {
-				add, del := 0, 0
-				for _, l := range diff {
-					switch l.sign {
-					case '+':
-						add++
-					case '-':
-						del++
-					}
-				}
-				number(c, fmt.Sprintf("+%d -%d", add, del)).FontSize(11.5).TextColor(muted).Shrink(0)
-			}
-			if tool != nil && tool.PermissionWait {
-				ui.Row(c).Gap(4).Padding(1, 6).Radius(4).AlignItems(ui.Center).Background(token(t, "warn-bg")).Shrink(0).Children(func() {
-					ui.Icon(c, glyph("hand")).FontSize(11).TextColor(token(t, "warn-ink"))
-					ui.Text(c, "等你确认").FontSize(11).TextColor(token(t, "warn-ink"))
-				})
-			}
-			if e.Error || tool != nil && (tool.Failed || tool.Interrupted) {
-				ui.Row(c).Padding(1, 6).Radius(4).Background(token(t, "danger-bg")).Shrink(0).Children(func() {
-					ui.Text(c, "失败").FontSize(11).TextColor(t.Danger)
-				})
-			}
-			if tool != nil {
-				number(c, durationText(tool.Elapsed)).FontSize(11.5).TextColor(muted).Shrink(0)
-			}
-		})
-		if head.Clicked() {
-			a.sessions.expanded["tool:"+key] = !open
-			c.Invalidate()
-		}
-		if !open {
-			return
-		}
-		ui.Column(c).Padding(0, 10, 10, 10).Gap(10).Children(func() {
-			a.toolInput(c, "in:"+key, e.Input, diffPreviewLines)
-			switch {
-			case e.End.IsZero():
-				ui.Text(c, "没有记录输出").FontSize(12).TextColor(t.TextMuted)
-			default:
-				title := "输出"
-				if e.Error {
-					title = "输出 · 失败"
-				}
-				a.replayText(c, "out:"+key, title, e.Text, e.Truncated, terminalBlock)
-			}
-		})
 	})
 }
 
@@ -508,4 +278,36 @@ func diffBlock(c *ui.Context, lines []diffLine, limit int) {
 	if extra := len(lines) - len(shown); extra > 0 {
 		ui.Textf(c, "另有 %d 行改动未显示，可在会话详情中打开这一步查看全部", extra).FontSize(11).TextColor(token(t, "ink-3"))
 	}
+}
+
+// replayContext folds what the Agent injected without the person typing it:
+// system prompts, instruction files, reminders. It stays closed until asked.
+func (a *App) replayContext(c *ui.Context, turnID string, entries []session.Entry, n int) {
+	if a.sessions.expanded == nil {
+		a.sessions.expanded = map[string]bool{}
+	}
+	key := "ctx:" + turnID
+	open := a.sessions.expanded[key]
+	ui.Column(c).Gap(10).Padding(0, 0, 0, 36).Children(func() {
+		label := fmt.Sprintf("查看 %d 条自动注入的上下文", n)
+		if open {
+			label = "收起自动注入的上下文"
+		}
+		ui.Row(c).Children(func() {
+			overviewLink(c, label, func() { a.sessions.expanded[key] = !open })
+		})
+		if !open {
+			return
+		}
+		for i, e := range entries {
+			if e.Kind != session.EntryContext {
+				continue
+			}
+			title := e.Name
+			if title == "" {
+				title = "自动注入的上下文"
+			}
+			a.replayText(c, fmt.Sprintf("%s:%d", key, i), title, e.Text, e.Truncated, codeBlock)
+		}
+	})
 }

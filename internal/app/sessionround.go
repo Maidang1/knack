@@ -184,6 +184,11 @@ func turnEvents(content *replayIndex, turn int) []session.Entry {
 }
 
 func stepTrack(c *ui.Context, turn sessionTurnView, step sessionStep, axis stepAxis) {
+	stepSpan(c, turn, step, axis, sessionColor(phaseKeys[step.phase], c.Theme().Dark))
+}
+
+// stepSpan draws step's interval on the turn's axis in color.
+func stepSpan(c *ui.Context, turn sessionTurnView, step sessionStep, axis stepAxis, color ui.Color) {
 	t := c.Theme()
 	ui.Box(c).Grow(1).MinWidth(40).Height(16).Label("步骤时间条").Draw(func(p *ui.Painter, r ui.Rect) {
 		if axis.total <= 0 || turn.turn.Start.IsZero() {
@@ -199,7 +204,6 @@ func stepTrack(c *ui.Context, turn sessionTurnView, step sessionStep, axis stepA
 		x1, x2 := r.X+axis.at(from)*r.W, r.X+axis.at(to)*r.W
 		w := min(r.W, max(2, x2-x1))
 		x1 = min(x1, r.X+r.W-w)
-		color := sessionColor(phaseKeys[step.phase], t.Dark)
 		paintSpan := func(left, right float32, fill ui.Color) {
 			for _, cut := range axis.cuts {
 				center := r.X + (axis.at(cut.from)+axis.at(cut.to))/2*r.W

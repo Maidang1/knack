@@ -48,7 +48,7 @@ func (a *App) sidebar(c *ui.Context) {
 			if !a.hidden[graphPage] {
 				a.navItem(c, graphPage, "graph", "依赖图", "")
 			}
-			if !a.hidden["sessions"] || !a.hidden[usagePage] {
+			if !a.hidden["sessions"] || !a.hidden[usagePage] || !a.hidden[insightsPage] {
 				sideHeading(c, "会话")
 			}
 			if !a.hidden["sessions"] {
@@ -60,6 +60,9 @@ func (a *App) sidebar(c *ui.Context) {
 			}
 			if !a.hidden[usagePage] {
 				a.navItem(c, usagePage, "chart", "用量与耗时", "")
+			}
+			if !a.hidden[insightsPage] {
+				a.navItem(c, insightsPage, "wave", "诊断", "")
 			}
 			if agents := a.sidebarAgents(); len(agents) > 0 {
 				sideHeading(c, "AGENTS")

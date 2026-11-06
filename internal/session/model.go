@@ -66,6 +66,9 @@ type ToolCall struct {
 	Interrupted, Failed                  bool
 	TimedOutAfter                        time.Duration
 	AgentID                              string // explicit toolUseResult.agentId, never inferred from prompt text
+	// InputHash fingerprints the call's input so repeated identical calls
+	// can be found. It is a truncated SHA-256, never the input itself.
+	InputHash string `json:",omitempty"`
 }
 
 type SkillCall struct {

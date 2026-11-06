@@ -40,6 +40,7 @@ type App struct {
 	invocationErr string
 	sessions      sessionState
 	activity      *sessionActivity
+	insights      insightsState
 	skillPeriod   int
 
 	cache       viewCache
@@ -158,6 +159,7 @@ func New(home string) *App {
 		a.refreshInvocations()
 	}
 	a.loadSessions()
+	a.loadPrices()
 	return a
 }
 
@@ -187,6 +189,7 @@ func (a *App) startScan() {
 		return
 	}
 	a.rescanPending = false
+	a.loadPrices()
 	a.startSessionScan()
 	a.scanGen++
 	gen := a.scanGen

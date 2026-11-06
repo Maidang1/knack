@@ -11,7 +11,7 @@ type claudeFormat struct{ typedRecords }
 func (claudeFormat) Info() AgentInfo {
 	return AgentInfo{ID: Claude, Name: "Claude", Skills: true, OutputRate: true, PermissionWait: true, ToolOutcome: true}
 }
-func (claudeFormat) version() string { return "claude/1" }
+func (claudeFormat) version() string { return "claude/2" }
 func (claudeFormat) layout() layout {
 	return layout{roots: []string{".claude/projects"}, suffixes: []string{".jsonl"}}
 }
@@ -77,7 +77,7 @@ func (claudeFormat) parse(p *parser, o object, at time.Time) {
 		for _, b := range blocks(m) {
 			if str(b, "type") == "tool_use" {
 				hasTool = true
-				p.use(str(b, "id"), str(b, "name"), at, obj(b, "input"))
+				p.use(str(b, "id"), str(b, "name"), at, b["input"])
 			}
 		}
 		if flag(o, "isApiErrorMessage") {

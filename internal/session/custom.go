@@ -228,7 +228,7 @@ func (f customFormat) Info() AgentInfo {
 	return AgentInfo{ID: Agent(f.cfg.ID), Name: f.cfg.Name, OutputRate: true,
 		SkillNote: f.cfg.Name + " 是自定义 Agent，Skill 调用暂不支持"}
 }
-func (f customFormat) version() string { return "custom/" + f.hash }
+func (f customFormat) version() string { return "custom/2/" + f.hash }
 func (f customFormat) layout() layout {
 	return layout{roots: f.cfg.Roots, suffixes: f.cfg.Suffixes}
 }
@@ -427,7 +427,7 @@ func (f customFormat) parse(p *parser, o object, at time.Time) {
 		p.request(first(text(lookup(o, m.Request)), f.recordID(o)), text(lookup(o, m.Model)), at, tokens, known, 0, false)
 		calls := f.calls(o)
 		for _, c := range calls {
-			p.use(c.id, c.name, at, nil)
+			p.use(c.id, c.name, at, c.input)
 		}
 		if len(calls) == 0 && body != "" && !p.pendingTools() {
 			s.LastReply = at

@@ -153,7 +153,7 @@ func (a *App) contentBar(c *ui.Context) {
 		if a.page == graphPage {
 			a.graphLegend(c)
 		}
-		if a.page == "overview" || a.page == "sessions" || a.page == usagePage {
+		if a.page == "overview" || a.page == "sessions" || a.page == usagePage || a.page == insightsPage {
 			a.overviewToolbar(c)
 		} else if root, ok := a.agentPageRoot(); ok && a.state(a.page).agentTab != 0 && logSupport(session.Agent(agentKey(a.home, root.Path))) == "" {
 			segmented(c, "统计时间范围", &a.sessions.period, periodLabels...)
@@ -312,6 +312,11 @@ func (a *App) content(c *ui.Context) {
 		}
 		if a.page == usagePage {
 			a.usagePane(c)
+			a.statusBar(c)
+			return
+		}
+		if a.page == insightsPage {
+			a.insightsPane(c)
 			a.statusBar(c)
 			return
 		}
@@ -931,6 +936,8 @@ func (a *App) pageTitle() string {
 		return "依赖图"
 	case usagePage:
 		return "用量与耗时"
+	case insightsPage:
+		return "诊断"
 	default:
 		if path, ok := strings.CutPrefix(a.page, "repo:"); ok {
 			return a.repoLabel(path)
