@@ -43,6 +43,13 @@ type sessionState struct {
 	detailSource    *session.Snapshot
 	replay          []*replayState
 	expanded        map[string]bool // replay text blocks shown in full
+	replayList      ui.ListState    // every turn of the replay, one scroll
+	replayFor       string          // the session replayList scrolls
+	replayAt        string          // the turn the replay last scrolled to or showed at its top
+	replayTop       int             // the row at the top of the replay in the last frame
+	replayJumped    int             // frames left to see a scroll to replayAt through
+	replayAnchor    string          // the turn the side list last brought into view
+	anchorFocus     string          // the turn whose anchor has the focus
 	agentProblems   []string        // invalid definitions in agents.json
 }
 

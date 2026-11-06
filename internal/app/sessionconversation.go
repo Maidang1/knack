@@ -9,10 +9,10 @@ import (
 	"knack/internal/session"
 )
 
-// The conversation replay is the design's 对话回放: the turns down the side
-// and the chosen turn as it was, its messages, thinking and tool calls in
-// the order the log recorded them. Content is read on demand and only held
-// in memory.
+// The conversation replay is the design's 对话回放: every turn in one
+// scroll, its messages, thinking and tool calls in the order the log
+// recorded them, with the turns down the side as anchors into it. Content
+// is read on demand and only held in memory.
 
 const (
 	replayAll = iota
@@ -53,34 +53,96 @@ func (a *App) sessionConversation(c *ui.Context, d *sessionDetailData, width flo
 			})
 		})
 	})
-	key := "replay-body"
-	if index >= 0 {
-		key += ":" + d.turns[index].turn.ID
-	}
-	ui.Scroll(c.Key(key)).Grow(1).MinWidth(0).Label("对话回放").Children(func() {
-		ui.Row(c).Justify(ui.Center).Padding(20, 32, 40, 32).Children(func() {
-			ui.Column(c).Grow(1).MinWidth(0).MaxWidth(760).Gap(14).Children(func() {
-				ui.Row(c).Gap(8).Padding(8, 12).Radius(7).Background(t.SurfaceHover).AlignItems(ui.Center).Children(func() {
-					ui.Icon(c, glyph("lock")).FontSize(13).TextColor(t.TextMuted)
-					ui.Text(c, "正文从原始日志按需读取，只保留在内存，关闭后释放。").FontSize(13).TextColor(t.TextMuted).MinWidth(0)
-				})
-				switch {
-				case replay == nil || replay.err != "":
-					msg := "回放内容暂不可用"
-					if replay != nil && replay.err != "" {
-						msg = replay.err
-					}
-					ui.Text(c, msg).FontSize(13).TextColor(t.TextMuted)
-				case content == nil:
-					ui.Text(c, "正在读取对话内容…").FontSize(13).TextColor(t.TextMuted)
-				case index < 0:
-					ui.Text(c, "没有可识别的轮次").FontSize(13).TextColor(t.TextMuted)
-				default:
-					a.replayTurn(c, d, content, index, query)
-				}
+	ui.Column(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
+		ui.Row(c).Justify(ui.Center).Padding(16, 32, 8, 32).Shrink(0).Children(func() {
+			ui.Row(c).Grow(1).MaxWidth(760).Gap(8).Padding(8, 12).Radius(7).Background(t.SurfaceHover).AlignItems(ui.Center).Children(func() {
+				ui.Icon(c, glyph("lock")).FontSize(13).TextColor(t.TextMuted)
+				ui.Text(c, "正文从原始日志按需读取，只保留在内存，关闭后释放。").FontSize(13).TextColor(t.TextMuted).MinWidth(0)
 			})
 		})
+		notice := func(msg string) {
+			ui.Row(c).Justify(ui.Center).Padding(8, 32).Children(func() {
+				ui.Text(c, msg).FontSize(13).TextColor(t.TextMuted).Grow(1).MaxWidth(760)
+			})
+		}
+		switch {
+		case replay == nil || replay.err != "":
+			msg := "回放内容暂不可用"
+			if replay != nil && replay.err != "" {
+				msg = replay.err
+			}
+			notice(msg)
+		case content == nil:
+			notice("正在读取对话内容…")
+		case index < 0:
+			notice("没有可识别的轮次")
+		default:
+			a.replayTurns(c, d, content, index, query)
+		}
 	})
+}
+
+// replayTurns lays every turn the query matches down one list, building
+// only those in view. Choosing a turn on the side scrolls to it; scrolling
+// marks the turn at the top as the chosen one.
+func (a *App) replayTurns(c *ui.Context, d *sessionDetailData, content *replayIndex, index int, query string) {
+	s := &a.sessions
+	if id := sessionID(d.session); s.replayFor != id {
+		s.replayList, s.replayFor, s.replayAt, s.replayTop, s.replayJumped = ui.ListState{}, id, "", -1, 0
+	}
+	var rows []int
+	for i := range d.turns {
+		if query == "" || turnMatches(content, i, query) {
+			rows = append(rows, i)
+		}
+	}
+	if len(rows) == 0 {
+		ui.Text(c, "没有符合筛选的轮次").FontSize(13).TextColor(c.Theme().TextMuted).Padding(8, 32)
+		return
+	}
+	row := func(turn int) int {
+		for r, i := range rows {
+			if i >= turn {
+				return r
+			}
+		}
+		return len(rows) - 1
+	}
+	first, last := s.replayList.Visible()
+	switch {
+	case s.selectedTurn != s.replayAt:
+		s.replayList.ScrollTo(row(index), ui.Start)
+		s.replayAt, s.replayJumped = s.selectedTurn, 3
+	case last < first:
+	case s.replayJumped > 0:
+		// A scroll asked for while input is handled can be dropped: ask
+		// again until the turn is at the top, or the list ends before it
+		// could be. Where it landed is the top then.
+		if first == row(index) || last == len(rows)-1 || s.replayJumped == 1 {
+			s.replayTop, s.replayJumped = first, 0
+			break
+		}
+		s.replayList.ScrollTo(row(index), ui.Start)
+		s.replayJumped--
+		c.Invalidate()
+	case first != s.replayTop && first < len(rows):
+		s.replayTop = first
+		a.chooseSessionTurn(d, rows[first])
+		s.replayAt = s.selectedTurn
+	}
+	s.replayList.Key = func(r int) any {
+		if r < 0 || r >= len(rows) {
+			return nil
+		}
+		return d.turns[rows[r]].turn.ID
+	}
+	ui.List(c, &s.replayList, len(rows), func(r int) {
+		ui.Row(c).Justify(ui.Center).Padding(8, 32, 24, 32).Children(func() {
+			ui.Column(c).Grow(1).MinWidth(0).MaxWidth(760).Gap(14).Children(func() {
+				a.replayTurn(c, d, content, rows[r], query)
+			})
+		})
+	}).Grow(1).MinHeight(0).Background(ui.Transparent).Label("对话回放")
 }
 
 func (a *App) replayTurnList(c *ui.Context, d *sessionDetailData, content *replayIndex, index int, query string) {
@@ -101,6 +163,11 @@ func (a *App) replayTurnList(c *ui.Context, d *sessionDetailData, content *repla
 			if a.sessions.focusTurn {
 				b.Focus()
 				a.sessions.focusTurn = false
+			}
+			// The anchor follows the replay as it scrolls.
+			if a.sessions.replayAnchor != turn.turn.ID {
+				a.sessions.replayAnchor = turn.turn.ID
+				b.ScrollIntoView()
 			}
 		case b.Hovered():
 			b.Background(t.SurfaceHover)
@@ -125,7 +192,15 @@ func (a *App) replayTurnList(c *ui.Context, d *sessionDetailData, content *repla
 				})
 			})
 		})
-		if b.Clicked() || b.Focused() && !on {
+		// Moving the focus onto an anchor chooses its turn; an anchor that
+		// keeps the focus does not take the choice back from scrolling.
+		focused := b.Focused() && a.sessions.anchorFocus != turn.turn.ID
+		if b.Focused() {
+			a.sessions.anchorFocus = turn.turn.ID
+		} else if a.sessions.anchorFocus == turn.turn.ID {
+			a.sessions.anchorFocus = ""
+		}
+		if b.Clicked() || focused && !on {
 			a.chooseSessionTurn(d, i)
 			c.Invalidate()
 		}
@@ -163,7 +238,7 @@ func (a *App) replayTurn(c *ui.Context, d *sessionDetailData, content *replayInd
 		if query != "" || filter != replayAll {
 			msg = "本轮没有符合筛选的内容"
 		}
-		ui.Text(c, msg).FontSize(13).TextColor(t.TextMuted).Padding(0, 0, 0, 36)
+		ui.Text(c, msg).FontSize(13).TextColor(t.TextMuted).Padding(0, 0, 0, 22)
 	}
 	var meta []string
 	if turn.usage {
@@ -173,23 +248,11 @@ func (a *App) replayTurn(c *ui.Context, d *sessionDetailData, content *replayInd
 		}
 	}
 	if len(meta) > 0 {
-		number(c, strings.Join(meta, " · ")).FontSize(11.5).TextColor(muted).Padding(0, 0, 0, 36)
+		number(c, strings.Join(meta, " · ")).FontSize(11.5).TextColor(muted).Padding(0, 0, 0, 22)
 	}
 	if n := content.context[index]; n > 0 && filter == replayAll && query == "" {
 		a.replayContext(c, turn.turn.ID, content.turns[index], n)
 	}
-	ui.Row(c).Gap(8).Justify(ui.End).Padding(10, 0, 0, 0).Children(func() {
-		if outlineButton(c, "replay-prev", "上一轮").Disabled(index == 0).Clicked() {
-			a.chooseSessionTurn(d, index-1)
-			a.sessions.focusTurn = true
-			c.Invalidate()
-		}
-		if outlineButton(c, "replay-next", "下一轮").Disabled(index == len(d.turns)-1).Clicked() {
-			a.chooseSessionTurn(d, index+1)
-			a.sessions.focusTurn = true
-			c.Invalidate()
-		}
-	})
 }
 
 type diffLine struct {
@@ -288,7 +351,7 @@ func (a *App) replayContext(c *ui.Context, turnID string, entries []session.Entr
 	}
 	key := "ctx:" + turnID
 	open := a.sessions.expanded[key]
-	ui.Column(c).Gap(10).Padding(0, 0, 0, 36).Children(func() {
+	ui.Column(c).Gap(10).Padding(0, 0, 0, 22).Children(func() {
 		label := fmt.Sprintf("查看 %d 条自动注入的上下文", n)
 		if open {
 			label = "收起自动注入的上下文"

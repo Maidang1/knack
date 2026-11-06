@@ -57,26 +57,27 @@ func TestSessionReplay(t *testing.T) {
 				if !tt.HasText("PRIVATE_CODEX_PROMPT") || !tt.HasText("PRIVATE_CODEX_REPLY") || !tt.HasText("PRIVATE_SCRIPT") {
 					t.Fatalf("conversation lacks prompt, reply or tool call: %q", tt.Texts())
 				}
-				// The turn reads as the agent loop, each step in the order it ran.
-				order := []string{"用户输入", "第 1 次模型调用", "模型思考", "模型回复", "调用工具", "工具返回"}
+				// The turn reads as a transcript, each step in the order it ran.
+				order := []string{"PRIVATE_CODEX_PROMPT", "思考了 1s", "PRIVATE_CODEX_REPLY", "exec"}
 				last := float32(-1)
 				for _, step := range order {
 					r, ok := tt.Find(step)
 					if !ok || r.Y <= last {
-						t.Fatalf("loop step %s missing or out of order: %+v %q", step, r, tt.Texts())
+						t.Fatalf("step %s missing or out of order: %+v %q", step, r, tt.Texts())
 					}
 					last = r.Y
 				}
-				// Thinking shows its first line and opens in full; a tool's
-				// return shows its first line, its input opens from the call.
-				if !tt.HasText("PRIVATE_CODEX_REASONING") || !tt.HasText("PRIVATE_CODEX_TOOL_OUTPUT") {
-					t.Fatalf("loop hides thinking or tool output: %q", tt.Texts())
+				// Thinking shows its first line and opens in full; a tool call
+				// shows its argument and its output's first lines, and opens
+				// to its full input.
+				if !tt.HasText("PRIVATE_CODEX_REASONING") || !tt.HasText("PRIVATE_CODEX_TOOL_OUTPUT") || !tt.HasText("(PRIVATE_SCRIPT)") {
+					t.Fatalf("transcript hides thinking or tool output: %q", tt.Texts())
 				}
 				if _, ok := tt.Find("输入"); ok {
 					t.Fatal("tool input shown before the call was opened")
 				}
 				for _, text := range tt.Texts() {
-					if strings.HasPrefix(text, "模型思考 · ") {
+					if strings.HasPrefix(text, "思考了 1s · ") {
 						click(t, tt, text)
 						break
 					}
@@ -84,12 +85,7 @@ func TestSessionReplay(t *testing.T) {
 				if !anyExpanded(a, "think:") {
 					t.Fatalf("thinking did not open: %v", a.sessions.expanded)
 				}
-				for _, text := range tt.Texts() {
-					if strings.Contains(text, " · PRIVATE_SCRIPT") {
-						click(t, tt, text)
-						break
-					}
-				}
+				click(t, tt, "exec PRIVATE_SCRIPT")
 				if !tt.HasText("输入") {
 					t.Fatalf("tool call did not open to its input: %q", tt.Texts())
 				}
@@ -188,7 +184,7 @@ func TestReplayLoopClaudeThinking(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 		tt.Frame()
 	}
-	order := []string{"用户输入", "第 1 次模型调用", "模型思考", "调用工具", "工具返回", "第 2 次模型调用", "模型思考", "模型回复"}
+	order := []string{"思考", "Bash", "(LOOP_COMMAND)", "LOOP_OUTPUT", "LOOP_REPLY"}
 	var steps []string
 	for _, text := range tt.Texts() {
 		if slices.Contains(order, text) {
@@ -196,9 +192,10 @@ func TestReplayLoopClaudeThinking(t *testing.T) {
 		}
 	}
 	if strings.Join(steps, ",") != strings.Join(order, ",") {
-		t.Fatalf("loop steps %q, want %q", steps, order)
+		t.Fatalf("transcript steps %q, want %q", steps, order)
 	}
-	// The first request's text wins over its signature; the second has only a signature.
+	// The first request's text wins over its signature; the second has only
+	// a signature, and no time to show, so it does not show.
 	if !tt.HasText("LOOP_THOUGHT") || !tt.HasText("LOOP_OUTPUT") || !tt.HasText("LOOP_COMMAND") {
 		t.Fatalf("loop content missing: %q", tt.Texts())
 	}
@@ -208,7 +205,7 @@ func TestReplayLoopClaudeThinking(t *testing.T) {
 			n++
 		}
 	}
-	if n != 1 {
+	if n != 0 {
 		t.Fatalf("signature-only thinking shown %d times", n)
 	}
 	exportSessionPreview(t, tt, "replay-loop-claude.png")
@@ -253,5 +250,64 @@ func TestReplayInjectedContext(t *testing.T) {
 	click(t, tt, "收起自动注入的上下文")
 	if tt.HasText("CTX_SYSTEM_PROMPT") {
 		t.Fatal("context did not fold again")
+	}
+}
+
+// Every turn shows in one scroll: an anchor on the side scrolls to its
+// turn, and scrolling marks the turn at the top on the side.
+func TestReplayOneScroll(t *testing.T) {
+	a := New(t.TempDir())
+	start := time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
+	at := func(s int) string { return start.Add(time.Duration(s) * time.Second).Format(time.RFC3339) }
+	long := strings.Repeat("line\\n\\n", 40)
+	var lines []string
+	var turns []session.Turn
+	for i, name := range []string{"ALPHA", "BRAVO", "CHARLIE"} {
+		s := i * 100
+		lines = append(lines,
+			`{"type":"user","uuid":"u`+name+`","timestamp":"`+at(s)+`","message":{"role":"user","content":"PROMPT_`+name+`"}}`,
+			`{"type":"assistant","uuid":"a`+name+`","timestamp":"`+at(s+5)+`","message":{"id":"r`+name+`","model":"claude-test","content":[{"type":"text","text":"REPLY_`+name+`\n`+long+`END_`+name+`"}]}}`)
+		turns = append(turns, session.Turn{ID: "t" + name, Start: start.Add(time.Duration(s) * time.Second), End: start.Add(time.Duration(s+5) * time.Second)})
+	}
+	path := filepath.Join(t.TempDir(), "scroll.jsonl")
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root := session.Session{ID: "scroll", Agent: session.Claude, Path: path, Start: start, End: start.Add(205 * time.Second), Turns: turns}
+	a.sessions.snapshot = &session.Snapshot{Sessions: []session.Session{root}}
+	a.openSession(sessionID(root))
+	a.sessions.replayOpen = true
+	tt := ui.NewTester(a.View, 1180, 900)
+	for range 200 {
+		if tt.HasText("REPLY_ALPHA") {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+		tt.Frame()
+	}
+	if !tt.HasText("第 1 轮") || a.sessions.selectedTurn != "tALPHA" {
+		t.Fatalf("replay does not open at the first turn: %q", tt.Texts())
+	}
+	// The anchor scrolls the one list to its turn: at the top, or in view
+	// where the list ends first.
+	click(t, tt, "PROMPT_CHARLIE")
+	for range 5 {
+		tt.Frame()
+	}
+	head, ok := tt.Find("第 3 轮")
+	if !ok || head.Y < 100 || head.Y > 850 || a.sessions.selectedTurn != "tCHARLIE" {
+		t.Fatalf("anchor did not scroll to its turn: %+v %s %q", head, a.sessions.selectedTurn, tt.Texts())
+	}
+	exportSessionPreview(t, tt, "replay-one-scroll.png")
+	// Scrolling back up marks the turn now at the top.
+	for range 30 {
+		tt.Scroll(800, 500, 0, -200)
+		tt.Frame()
+		if a.sessions.selectedTurn == "tALPHA" {
+			break
+		}
+	}
+	if a.sessions.selectedTurn != "tALPHA" || !tt.HasText("第 1 轮") {
+		t.Fatalf("scrolling did not move the anchor: %s %q", a.sessions.selectedTurn, tt.Texts())
 	}
 }
