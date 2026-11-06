@@ -2,35 +2,43 @@ package app
 
 import "github.com/egoist/mygo/ui"
 
-// The design tokens of the Pencil file (knack.pen): neutral chrome in warm
-// grays with ink for emphasis and selection; color is kept for data and for
-// states that need attention. Each pair is light, dark.
+// The design tokens: cool neutral chrome with a faint violet cast, and one
+// violet accent for what is interactive or chosen (the primary action, the
+// selected row, focus). Data keeps its own hues (sessionPalette), none of
+// them violet, so the accent never reads as a series. Values are derived in
+// OKLCH (neutrals at hue 286, accent at 292) and stored as hex; text pairs
+// clear WCAG AA in both appearances. Each pair is light, dark.
 var tokens = map[string][2]string{
-	"bg":          {"#F6F6F4", "#161618"},
-	"surface":     {"#FFFFFF", "#1E1E21"},
-	"sidebar":     {"#EEEEEB", "#19191B"},
-	"line":        {"#E4E4E0", "#2C2C30"},
-	"line-strong": {"#D2D2CC", "#3C3C42"},
-	"ink":         {"#1A1A1C", "#EDEDEF"},
-	"ink-2":       {"#55555B", "#B4B4BA"},
-	"ink-3":       {"#8A8A90", "#85858C"},
-	"hover":       {"#E6E6E2", "#2A2A2E"},
-	"pressed":     {"#DCDCD7", "#34343A"},
-	"raised":      {"#FFFFFF", "#2E2E33"},
-	"on-ink":      {"#FFFFFF", "#161618"},
-	"focus":       {"#2F6BFF", "#5B8CFF"},
-	"ok":          {"#2F8F5B", "#5BC48A"},
-	"ok-bg":       {"#E7F3EC", "#1B3325"},
-	"warn":        {"#B7791F", "#E0A84A"},
-	"warn-bg":     {"#FBF1DE", "#33281A"},
-	"warn-ink":    {"#6B4A12", "#F2D49A"},
-	"warn-line":   {"#E6CF9F", "#5C4A22"},
-	"danger":      {"#C2412D", "#F07A63"},
-	"danger-bg":   {"#FBE9E5", "#3A201B"},
-	"diff-add":    {"#EAF5EE", "#1C3124"},
-	"diff-del":    {"#FBECEA", "#3A2220"},
-	"code-bg":     {"#1C1C1F", "#0E0E10"},
-	"code-ink":    {"#D4D4D8", "#D4D4D8"},
+	"bg":           {"#F8F8FA", "#0F0F14"},
+	"surface":      {"#FFFFFF", "#15151C"},
+	"sidebar":      {"#F2F2F6", "#111117"},
+	"line":         {"#E3E3E9", "#26262F"},
+	"line-strong":  {"#D2D2DA", "#363540"},
+	"ink":          {"#16161F", "#F0F0F3"},
+	"ink-2":        {"#4F4E5B", "#C3C3CC"},
+	"ink-3":        {"#6D6D79", "#9D9DA7"},
+	"hover":        {"#ECECF3", "#201F28"},
+	"pressed":      {"#E2E2EB", "#292934"},
+	"selected":     {"#EDEAFE", "#322853"},
+	"raised":       {"#FFFFFF", "#3F3E4A"},
+	"on-ink":       {"#FFFFFF", "#0F0F14"},
+	"accent":       {"#703FD5", "#7D53E1"},
+	"accent-hover": {"#6134BD", "#7046CF"},
+	"accent-ink":   {"#6335BE", "#B9A9FE"},
+	"accent-bg":    {"#F1EFFE", "#231E39"},
+	"on-accent":    {"#FFFFFF", "#FFFFFF"},
+	"ok":           {"#1C7F4C", "#65C98C"},
+	"ok-bg":        {"#E4F5E9", "#122D1D"},
+	"warn":         {"#A46603", "#EBAE51"},
+	"warn-bg":      {"#FDF1D9", "#32230E"},
+	"warn-ink":     {"#694413", "#F0D49B"},
+	"warn-line":    {"#E6D2A8", "#5E4925"},
+	"danger":       {"#C63A2A", "#F47C6B"},
+	"danger-bg":    {"#FFEBE7", "#3B1C1A"},
+	"diff-add":     {"#E5F7EB", "#152C1E"},
+	"diff-del":     {"#FFECEA", "#3A1D1B"},
+	"code-bg":      {"#15151E", "#07070C"},
+	"code-ink":     {"#D7D7DE", "#D7D7DE"},
 }
 
 // token returns a design token for the theme's appearance.
@@ -45,12 +53,14 @@ func token(t *ui.Theme, name string) ui.Color {
 	return ui.Hex(v[0])
 }
 
-// monoFont sets identifiers, paths and figures, as the design does.
+// monoFont sets what is typed rather than read: paths, code, commands and
+// rules. Names and figures stay in the system face, as macOS sets them;
+// figures get tabular digits (number) so columns still line up.
 const monoFont = "SF Mono, Menlo, monospace"
 
-// appTheme maps the design tokens onto the toolkit's theme. Ink is the
-// accent: primary buttons and checked controls are ink, links are text.
-// The focus ring stays blue so keyboard focus never reads as selection.
+// appTheme maps the design tokens onto the toolkit's theme. The accent is
+// violet: primary buttons, checked controls and the focus ring; text
+// selection is a wash of it.
 func appTheme(base *ui.Theme) *ui.Theme {
 	t := *base
 	tk := func(name string) ui.Color { return token(&t, name) }
@@ -62,18 +72,17 @@ func appTheme(base *ui.Theme) *ui.Theme {
 	t.Border = tk("line")
 	t.Text = tk("ink")
 	t.TextMuted = tk("ink-2")
-	t.Accent = tk("ink")
-	t.AccentHover = tk("ink-2")
-	t.AccentPressed = tk("ink")
-	t.AccentText = tk("on-ink")
+	t.Accent = tk("accent")
+	t.AccentHover = tk("accent-hover")
+	t.AccentPressed = tk("accent-hover")
+	t.AccentText = tk("on-accent")
 	t.Success = tk("ok")
 	t.Warning = tk("warn")
 	t.Danger = tk("danger")
 	t.Inverse = tk("ink")
 	t.InverseText = tk("on-ink")
-	focus := tk("focus")
-	t.Focus = fade(focus, 150)
-	t.Selection = fade(focus, 64)
+	t.Focus = fade(tk("accent"), 170)
+	t.Selection = fade(tk("accent"), 72)
 	return &t
 }
 
@@ -95,9 +104,9 @@ func card(c *ui.Context) ui.Element {
 func sectionTitle(c *ui.Context, title, note string) {
 	t := c.Theme()
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, title).FontSize(14).FontWeight(600)
+		ui.Text(c, title).FontSize(15).FontWeight(600)
 		if note != "" {
-			ui.Text(c, note).FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, note).FontSize(13).TextColor(t.TextMuted)
 		}
 	})
 }
@@ -105,7 +114,7 @@ func sectionTitle(c *ui.Context, title, note string) {
 // pill is a status word in its own color. macOS lists show state as text,
 // not as a tinted capsule.
 func pill(c *ui.Context, s string, col ui.Color) {
-	ui.Text(c, s).FontSize(11).TextColor(col).Shrink(0).SingleLine()
+	ui.Text(c, s).FontSize(11.5).TextColor(col).Shrink(0).SingleLine()
 }
 
 // tintedTile draws glyph in its color on a faint wash of the same color.

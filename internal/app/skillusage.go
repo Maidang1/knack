@@ -178,18 +178,18 @@ func (a *App) skillUsage(c *ui.Context, e skill.Entry) {
 	ui.Column(c.Key("skill-usage:" + e.Path)).Gap(10).Label("技能使用情况").Children(func() {
 		muted := token(t, "ink-3")
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "使用情况").FontSize(14).FontWeight(600).SingleLine().Shrink(0)
+			ui.Text(c, "使用情况").FontSize(15).FontWeight(600).SingleLine().Shrink(0)
 			ui.Spacer(c)
 			note := "按日志中的 Skill 调用名匹配，未记录实际加载路径；不能据此判断同名副本是否被使用。"
 			if agent == "" {
 				note += "跨 Agent 汇总已识别调用；Codex、Cursor 等缺少调用记录的来源不计为零。"
 			}
-			ui.Text(c, "按调用名统计，同名副本合并计数").FontSize(11.5).TextColor(muted).Shrink(1).MinWidth(0).SingleLine().Tooltip(note)
+			ui.Text(c, "按调用名统计，同名副本合并计数").FontSize(12).TextColor(muted).Shrink(1).MinWidth(0).SingleLine().Tooltip(note)
 			segmented(c, "技能使用时间范围", &a.skillPeriod, "7 天", "30 天", "90 天")
 		})
 		if agent != "" {
 			if reason := skillSupport(agent); reason != "" {
-				ui.Text(c, reason).FontSize(12).TextColor(t.TextMuted)
+				ui.Text(c, reason).FontSize(13).TextColor(t.TextMuted)
 				return
 			}
 		}
@@ -208,7 +208,7 @@ func (a *App) skillUsage(c *ui.Context, e skill.Entry) {
 					} else {
 						number(c, value).FontSize(20).FontWeight(600)
 					}
-					ui.Text(c, label).FontSize(11.5).TextColor(t.TextMuted)
+					ui.Text(c, label).FontSize(12).TextColor(t.TextMuted)
 				})
 			}
 			stat(fmt.Sprint(usage.calls), "次调用", fmt.Sprintf("主 Agent %d 次 · 子 Agent %d 次", usage.main, usage.child))
@@ -217,10 +217,10 @@ func (a *App) skillUsage(c *ui.Context, e skill.Entry) {
 			ui.Column(c).Grow(1).MinWidth(80).Children(func() { skillDailyChart(c, usage, days, agent) })
 		})
 		if usage.calls == 0 {
-			ui.Text(c, "这段时间内没有被调用").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "这段时间内没有被调用").FontSize(13).TextColor(t.TextMuted)
 		}
 		if snap := a.sessions.snapshot; snap == nil || snap.Partial || len(snap.Warnings) > 0 {
-			ui.Text(c, "本地日志尚未完整读取，调用次数可能不完整。").FontSize(10).TextColor(t.Warning)
+			ui.Text(c, "本地日志尚未完整读取，调用次数可能不完整。").FontSize(11).TextColor(t.Warning)
 		}
 	})
 }

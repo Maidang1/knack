@@ -68,7 +68,7 @@ func (a *App) turnList(c *ui.Context, d *sessionDetailData, index int) {
 		peak = max(peak, turn.active.total)
 	}
 	ui.Row(c).Gap(8).Wrap().AlignItems(ui.Center).Padding(0, 0, 8, 0).Children(func() {
-		ui.Textf(c, "%d 轮对话", len(d.turns)).FontSize(14).FontWeight(600).Grow(1).SingleLine()
+		ui.Textf(c, "%d 轮对话", len(d.turns)).FontSize(15).FontWeight(600).Grow(1).SingleLine()
 		filter := a.sessions.turnFilter
 		segmented(c, "轮次筛选", &filter, "全部", fmt.Sprintf("子 Agent %d", subs), fmt.Sprintf("等你 %d", waits))
 		if filter != a.sessions.turnFilter {
@@ -96,7 +96,7 @@ func (a *App) turnList(c *ui.Context, d *sessionDetailData, index int) {
 	}
 	ui.Column(c).Gap(2).FocusGroup(ui.Vertical).Label("轮次列表").Children(func() {
 		if len(shown) == 0 {
-			ui.Text(c, "没有符合筛选的轮次").FontSize(12).TextColor(t.TextMuted).Padding(8, 10)
+			ui.Text(c, "没有符合筛选的轮次").FontSize(13).TextColor(t.TextMuted).Padding(8, 10)
 		}
 		for _, i := range shown {
 			a.turnRow(c, d, i, i == index, badges[i], concerns[i] != nil, peak, content)
@@ -119,7 +119,7 @@ func (a *App) turnRow(c *ui.Context, d *sessionDetailData, i int, on bool, badge
 		Label(turnLabel(turn)).Tooltip(fmt.Sprintf("第 %d 轮 · %s\n%s", i+1, activeText(turn), prompt))
 	switch {
 	case on:
-		b.Background(token(t, "bg")).Border(1, token(t, "line-strong"))
+		b.Background(token(t, "selected"))
 	case b.Hovered():
 		b.Background(t.SurfaceHover)
 	}
@@ -129,9 +129,9 @@ func (a *App) turnRow(c *ui.Context, d *sessionDetailData, i int, on bool, badge
 	}
 	b.Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			n := number(c, fmt.Sprintf("%02d", i+1)).FontSize(11).TextColor(muted).Width(18).Shrink(0)
-			p := ui.Text(c, prompt).FontSize(12.5).TextColor(t.TextMuted).Grow(1).MinWidth(0).SingleLine()
-			v := number(c, activeText(turn)).FontSize(11).TextColor(muted).Shrink(0)
+			n := number(c, fmt.Sprintf("%02d", i+1)).FontSize(11.5).TextColor(muted).Width(18).Shrink(0)
+			p := ui.Text(c, prompt).FontSize(13).TextColor(t.TextMuted).Grow(1).MinWidth(0).SingleLine()
+			v := number(c, activeText(turn)).FontSize(11.5).TextColor(muted).Shrink(0)
 			if on {
 				n.TextColor(t.Text)
 				p.TextColor(t.Text).FontWeight(500)
@@ -153,7 +153,7 @@ func (a *App) turnRow(c *ui.Context, d *sessionDetailData, i int, on bool, badge
 				turnBadge(c, "refresh", fmt.Sprint(badge.retries), sessionColor("phase-retry", t.Dark), fmt.Sprintf("%d 次重试或压缩", badge.retries))
 			}
 			if concern {
-				ui.Icon(c, glyph("issues")).FontSize(11).TextColor(t.Warning).Label("本轮有耗时异常").Tooltip("本轮有耗时异常")
+				ui.Icon(c, glyph("issues")).FontSize(11.5).TextColor(t.Warning).Label("本轮有耗时异常").Tooltip("本轮有耗时异常")
 			}
 		})
 	})
@@ -194,8 +194,8 @@ func miniPhases(c *ui.Context, p phaseTotals, peak time.Duration, width float32)
 
 func turnBadge(c *ui.Context, icon, text string, color ui.Color, tip string) {
 	ui.Row(c).Gap(3).AlignItems(ui.Center).Shrink(0).Tooltip(tip).Label(tip).Children(func() {
-		ui.Icon(c, glyph(icon)).FontSize(11).TextColor(color)
-		number(c, text).FontSize(10.5).TextColor(color)
+		ui.Icon(c, glyph(icon)).FontSize(11.5).TextColor(color)
+		number(c, text).FontSize(11).TextColor(color)
 	})
 }
 
@@ -241,11 +241,11 @@ func subagentGroupRow(c *ui.Context, turn sessionTurnView, steps []sessionStep, 
 	ui.Row(c).Height(34).Padding(0, 8).Gap(10).Radius(6).AlignItems(ui.Center).Background(t.SurfaceHover).Label(label).Tooltip(label).Children(func() {
 		ui.Row(c).Width(stepLabelWidth).Shrink(0).Gap(6).AlignItems(ui.Center).Children(func() {
 			ui.Box(c).Width(11).Shrink(0)
-			ui.Icon(c, glyph("bot")).FontSize(14).TextColor(color).Shrink(0)
+			ui.Icon(c, glyph("bot")).FontSize(15).TextColor(color).Shrink(0)
 			ui.Textf(c, "并行 %d 个子 Agent", len(steps)).FontSize(13).FontWeight(600).MinWidth(0).SingleLine()
 		})
 		stepSpan(c, turn, span, axis, fade(color, 90))
-		number(c, stepDuration(span)).FontSize(12).TextColor(t.TextMuted).Width(stepValueWidth).Shrink(0).TextAlign(ui.End).SingleLine()
+		number(c, stepDuration(span)).FontSize(13).TextColor(t.TextMuted).Width(stepValueWidth).Shrink(0).TextAlign(ui.End).SingleLine()
 	})
 }
 
@@ -297,13 +297,13 @@ func (a *App) subagentOpen(c *ui.Context, d *sessionDetailData, turn sessionTurn
 	ui.Column(c.Key("sub-open")).Label("子 Agent 步骤").Children(func() {
 		if len(steps) == 0 {
 			nested(func() {
-				ui.Text(c, "子 Agent 日志没有已记录的步骤").FontSize(12).TextColor(t.TextMuted).Padding(6, 0)
+				ui.Text(c, "子 Agent 日志没有已记录的步骤").FontSize(13).TextColor(t.TextMuted).Padding(6, 0)
 			})
 		}
 		for i, step := range steps {
 			if i == subagentStepsShown {
 				nested(func() {
-					ui.Textf(c, "其余 %d 步见子会话日志", len(steps)-i).FontSize(11.5).TextColor(muted).Padding(4, 0)
+					ui.Textf(c, "其余 %d 步见子会话日志", len(steps)-i).FontSize(12).TextColor(muted).Padding(4, 0)
 				})
 				break
 			}
@@ -313,8 +313,8 @@ func (a *App) subagentOpen(c *ui.Context, d *sessionDetailData, turn sessionTurn
 			ui.Row(c).Gap(14).Wrap().AlignItems(ui.Center).Padding(6, 0).Children(func() {
 				for _, fact := range subagentFacts(s.child) {
 					ui.Row(c).Gap(5).AlignItems(ui.Center).Shrink(0).Children(func() {
-						ui.Text(c, fact[0]).FontSize(11).TextColor(muted)
-						number(c, fact[1]).FontSize(11)
+						ui.Text(c, fact[0]).FontSize(11.5).TextColor(muted)
+						number(c, fact[1]).FontSize(11.5)
 					})
 				}
 				ui.Spacer(c)
@@ -357,10 +357,10 @@ func childStepRow(c *ui.Context, turn sessionTurnView, step sessionStep, axis st
 			ui.Box(c).Width(2).Height(28).Shrink(0).Background(fade(sessionColor("phase-sub", t.Dark), 110))
 			ui.Box(c).Width(4).Shrink(0)
 			ui.Icon(c, glyph(icon)).FontSize(13).TextColor(t.TextMuted).Shrink(0)
-			ui.Text(c, name).FontSize(12).MinWidth(0).SingleLine()
+			ui.Text(c, name).FontSize(13).MinWidth(0).SingleLine()
 		})
 		stepTrack(c, turn, step, axis)
-		v := number(c, stepDuration(step)).FontSize(11.5).TextColor(muted).Width(stepValueWidth).Shrink(0).TextAlign(ui.End).SingleLine()
+		v := number(c, stepDuration(step)).FontSize(12).TextColor(muted).Width(stepValueWidth).Shrink(0).TextAlign(ui.End).SingleLine()
 		if step.tool != nil && (step.tool.Failed || step.tool.Interrupted) || step.request != nil && step.request.APIError {
 			v.TextColor(t.Warning)
 		}

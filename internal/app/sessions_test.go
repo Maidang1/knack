@@ -29,7 +29,7 @@ func TestSessionPalette(t *testing.T) {
 			if sessionColor(name, false) != ui.Hex(pair[0]) || pair[0] == pair[1] {
 				t.Fatal("missing theme-specific palette")
 			}
-			for _, background := range []string{"#161618", "#1e1e21", "#2a2a2e", "#2e2e33"} {
+			for _, background := range []string{tokens["bg"][1], tokens["surface"][1], tokens["hover"][1], tokens["selected"][1]} {
 				x, y := luminance(sessionColor(name, true)), luminance(ui.Hex(background))
 				if x < y {
 					x, y = y, x

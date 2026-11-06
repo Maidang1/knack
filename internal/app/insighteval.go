@@ -250,8 +250,8 @@ func (a *App) evalList(c *ui.Context, r insight.SkillEvalReport) {
 			row := listRow(c, "eval:"+e.Name, e.Name)
 			row.Children(func() {
 				ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
-					ui.Text(c, e.Name).Font(monoFont).FontSize(12.5).SingleLine().Tooltip(e.Name)
-					ui.Text(c, strings.Join(meta, " · ")).FontSize(11).TextColor(tone).SingleLine().Tooltip(strings.Join(meta, " · "))
+					ui.Text(c, e.Name).FontSize(13).SingleLine().Tooltip(e.Name)
+					ui.Text(c, strings.Join(meta, " · ")).FontSize(11.5).TextColor(tone).SingleLine().Tooltip(strings.Join(meta, " · "))
 				})
 				cell(c, groupDigits(len(e.Episodes)), widths[0], true)
 				cell(c, percent(float64(e.Auto), float64(len(e.Episodes))), widths[1], true)
@@ -305,15 +305,15 @@ func (a *App) evalDetail(c *ui.Context, e insight.SkillEval, base insight.Window
 	ui.Column(c).Gap(6).Children(func() {
 		back := ui.ButtonBase(c.Key("eval-back")).Label("返回全部技能").Padding(2, 0).Gap(4).AlignItems(ui.Center).AlignSelf(ui.Start)
 		back.Children(func() {
-			ui.Icon(c, glyph("arrow-left")).FontSize(12).TextColor(t.TextMuted)
-			ui.Text(c, "全部技能").FontSize(12).TextColor(t.TextMuted)
+			ui.Icon(c, glyph("arrow-left")).FontSize(13).TextColor(t.TextMuted)
+			ui.Text(c, "全部技能").FontSize(13).TextColor(t.TextMuted)
 		})
 		if back.Clicked() {
 			a.insights.evalSkill = ""
 			c.Invalidate()
 		}
 		ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, e.Name).Font(monoFont).FontSize(20).FontWeight(600).Grow(1).MinWidth(0).SingleLine()
+			ui.Text(c, e.Name).FontSize(20).FontWeight(600).Grow(1).MinWidth(0).SingleLine()
 			if len(in.lib) > 0 && outlineButton(c, "eval-open-skill", "在技能目录中打开").Clicked() {
 				a.openSkill(in.lib[0])
 			}
@@ -322,12 +322,12 @@ func (a *App) evalDetail(c *ui.Context, e insight.SkillEval, base insight.Window
 		if len(in.lib) > 0 {
 			sub += " · " + shortPath(a.home, in.lib[0].Path)
 			if d := in.lib[0].Description; d != "" {
-				ui.Text(c, d).FontSize(12).LineHeight(1.5).TextColor(t.TextMuted).MaxLines(3).Tooltip(d)
+				ui.Text(c, d).FontSize(13).LineHeight(1.5).TextColor(t.TextMuted).MaxLines(3).Tooltip(d)
 			}
 		} else {
 			sub += " · 不在技能目录中（内置或插件技能）"
 		}
-		ui.Text(c, sub).FontSize(11.5).TextColor(muted).SingleLine().Tooltip(sub)
+		ui.Text(c, sub).FontSize(12).TextColor(muted).SingleLine().Tooltip(sub)
 	})
 	filesValue, filesNote := "—", "技能目录里只有 SKILL.md"
 	if in.files {
@@ -384,8 +384,8 @@ func (a *App) evalEpisodes(c *ui.Context, e insight.SkillEval) {
 			row := listRow(c, fmt.Sprintf("episode:%d", i), fmt.Sprintf("%s 第 %d 轮", title, ep.Turn+1))
 			row.Children(func() {
 				ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
-					ui.Text(c, title).FontSize(12.5).SingleLine().Tooltip(title)
-					ui.Text(c, meta).FontSize(11).TextColor(token(t, "ink-3")).SingleLine()
+					ui.Text(c, title).FontSize(13).SingleLine().Tooltip(title)
+					ui.Text(c, meta).FontSize(11.5).TextColor(token(t, "ink-3")).SingleLine()
 				})
 				cell(c, episodeSource(ep), widths[0], true)
 				calls, failed := groupDigits(ep.Calls), countOrDash(ep.Failed)
@@ -438,11 +438,11 @@ func (a *App) evalTriggers(c *ui.Context, e insight.SkillEval, in evalInstall) {
 				a.pickTriggers(e, desc)
 			}
 		case set.loading:
-			ui.Text(c, "正在读取会话里的提示词…").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "正在读取会话里的提示词…").FontSize(13).TextColor(t.TextMuted)
 		case set.err != "":
-			ui.Text(c, set.err).FontSize(12).TextColor(t.Warning)
+			ui.Text(c, set.err).FontSize(13).TextColor(t.Warning)
 		case len(set.cases) == 0:
-			ui.Text(c, "没有找到可用的提示词").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "没有找到可用的提示词").FontSize(13).TextColor(t.TextMuted)
 		default:
 			a.evalCases(c, set, e)
 		}
@@ -462,7 +462,7 @@ func (a *App) evalCases(c *ui.Context, set *evalSet, e insight.SkillEval) {
 		}
 		ui.Row(c.Key(fmt.Sprintf("case:%d", i))).Padding(8, 0).Gap(12).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
 			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-				q := ui.Text(c, ec.Query).FontSize(12.5).LineHeight(1.45).MaxLines(2).Tooltip(ec.Query)
+				q := ui.Text(c, ec.Query).FontSize(13).LineHeight(1.45).MaxLines(2).Tooltip(ec.Query)
 				if ec.label == 2 {
 					q.TextColor(t.TextMuted)
 				}
@@ -475,17 +475,17 @@ func (a *App) evalCases(c *ui.Context, set *evalSet, e insight.SkillEval) {
 				case !ec.Loaded:
 					src = "加载了 " + ec.Other + "，没有加载这个技能"
 				}
-				ui.Text(c, src+" · "+ec.At.Local().Format("01/02 15:04")).FontSize(11).TextColor(token(t, "ink-3")).SingleLine()
+				ui.Text(c, src+" · "+ec.At.Local().Format("01/02 15:04")).FontSize(11.5).TextColor(token(t, "ink-3")).SingleLine()
 			})
 			segmented(c, fmt.Sprintf("用例 %d 的标注", i+1), &ec.label, "应触发", "不应触发", "不用")
 		})
 	}
 	ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, fmt.Sprintf("应触发 %d · 不应触发 %d", yes, no)).FontSize(12).TextColor(t.TextMuted).Grow(1)
+		ui.Text(c, fmt.Sprintf("应触发 %d · 不应触发 %d", yes, no)).FontSize(13).TextColor(t.TextMuted).Grow(1)
 		if outlineButton(c, "eval-repick", "重新挑选").Clicked() {
 			a.insights.evalSet = nil
 		}
-		if inkButton(c, "eval-export", "", "导出 eval_set.json").Clicked() {
+		if primaryButton(c, "eval-export", "", "导出 eval_set.json").Clicked() {
 			a.exportTriggers(set)
 		}
 	})

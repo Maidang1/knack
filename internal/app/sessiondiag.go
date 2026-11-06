@@ -42,7 +42,7 @@ func (a *App) sessionDiagnosis(c *ui.Context, d *sessionDetailData, index int) {
 			if diag.RebuildTokens > 0 {
 				parts = append(parts, "重建缓存 "+tokenNumber(diag.RebuildTokens))
 			}
-			number(c, strings.Join(parts, " · ")).FontSize(11.5).TextColor(muted).Grow(1).MinWidth(0).SingleLine()
+			number(c, strings.Join(parts, " · ")).FontSize(12).TextColor(muted).Grow(1).MinWidth(0).SingleLine()
 			legendItem(c, read, "缓存读取")
 			legendItem(c, write, "缓存写入")
 			legendItem(c, fresh, "未缓存")
@@ -156,7 +156,7 @@ func (a *App) sessionFindings(c *ui.Context, d *sessionDetailData, diag *insight
 	t := c.Theme()
 	muted := token(t, "ink-3")
 	if len(diag.Findings) == 0 {
-		ui.Text(c, "没有发现循环、连续失败、被纠正的轮次或大段工具结果").FontSize(11.5).TextColor(muted)
+		ui.Text(c, "没有发现循环、连续失败、被纠正的轮次或大段工具结果").FontSize(12).TextColor(muted)
 		return
 	}
 	list := diag.Findings
@@ -176,10 +176,10 @@ func (a *App) sessionFindings(c *ui.Context, d *sessionDetailData, diag *insight
 				if f.Kind == insight.FindingLoop || f.Kind == insight.FindingFailures || f.Kind == insight.FindingSkill || f.Kind == insight.FindingCorrected {
 					tone = t.Warning
 				}
-				ui.Icon(c, glyph(findingIcon(f.Kind))).FontSize(12.5).TextColor(tone).Shrink(0)
-				number(c, fmt.Sprintf("第 %d 轮", f.Turn+1)).FontSize(11.5).TextColor(muted).Width(52).Shrink(0)
-				ui.Text(c, f.Title).FontSize(12.5).FontWeight(600).Shrink(0).SingleLine()
-				ui.Text(c, f.Detail).FontSize(12).TextColor(t.TextMuted).Grow(1).MinWidth(0).SingleLine().Tooltip(f.Detail)
+				ui.Icon(c, glyph(findingIcon(f.Kind))).FontSize(13).TextColor(tone).Shrink(0)
+				number(c, fmt.Sprintf("第 %d 轮", f.Turn+1)).FontSize(12).TextColor(muted).Width(52).Shrink(0)
+				ui.Text(c, f.Title).FontSize(13).FontWeight(600).Shrink(0).SingleLine()
+				ui.Text(c, f.Detail).FontSize(13).TextColor(t.TextMuted).Grow(1).MinWidth(0).SingleLine().Tooltip(f.Detail)
 			})
 			if row.Clicked() {
 				a.chooseSessionTurn(d, f.Turn)
@@ -192,7 +192,7 @@ func (a *App) sessionFindings(c *ui.Context, d *sessionDetailData, diag *insight
 				text = "收起"
 			}
 			b := ui.ButtonBase(c.Key("findings-all")).Label(text).Padding(4, 0).AlignSelf(ui.Start)
-			b.Children(func() { ui.Text(c, text).FontSize(12).TextColor(t.TextMuted) })
+			b.Children(func() { ui.Text(c, text).FontSize(13).TextColor(t.TextMuted) })
 			if b.Clicked() {
 				if all {
 					a.sessions.allFindings = ""

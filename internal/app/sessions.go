@@ -228,7 +228,7 @@ func (a *App) sessionsPane(c *ui.Context) {
 	case d == nil:
 		ui.Column(c).Grow(1).Padding(24).Gap(10).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, "没有匹配的会话").FontSize(17).FontWeight(600)
-			ui.Text(c, "调整时间范围、Agent 或搜索条件").FontSize(12).TextColor(c.Theme().TextMuted)
+			ui.Text(c, "调整时间范围、Agent 或搜索条件").FontSize(13).TextColor(c.Theme().TextMuted)
 		})
 	case s.replayOpen:
 		ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() { a.sessionConversation(c, d, content) })
@@ -266,16 +266,16 @@ func (a *App) sessionList(c *ui.Context, rows []session.Session) {
 			}
 			ui.Checkbox(c, &s.anomaliesOnly, "只看耗时异常")
 			ui.Spacer(c)
-			ui.Textf(c, "%d 个会话 · 按最近活跃排序", len(rows)).FontSize(12).TextColor(muted)
+			ui.Textf(c, "%d 个会话 · 按最近活跃排序", len(rows)).FontSize(13).TextColor(muted)
 		})
 		if s.err != "" {
-			ui.Text(c, s.err).FontSize(12).TextColor(t.Warning).MaxLines(2)
+			ui.Text(c, s.err).FontSize(13).TextColor(t.Warning).MaxLines(2)
 		}
 		a.partialBanner(c)
 		ui.Row(c).Height(28).Gap(12).Padding(0, 8, 0, 23).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
-			ui.Text(c, "会话").FontSize(11).TextColor(muted).Grow(1)
+			ui.Text(c, "会话").FontSize(11.5).TextColor(muted).Grow(1)
 			for i, col := range sessionColumns {
-				h := ui.Text(c, col.title).FontSize(11).TextColor(muted).Width(col.width).Shrink(0)
+				h := ui.Text(c, col.title).FontSize(11.5).TextColor(muted).Width(col.width).Shrink(0)
 				if i > 0 {
 					h.TextAlign(ui.End)
 				}
@@ -295,66 +295,70 @@ func (a *App) sessionList(c *ui.Context, rows []session.Session) {
 		}
 		s.list.Selected = &s.index
 		now := time.Now()
-		list := ui.List(c, &s.list, len(rows), func(i int) {
-			row := rows[i]
-			warning := view.anomalies[sessionID(row)]
-			line := ui.Row(c.Key("row:"+sessionID(row))).Height(52).Gap(12).Padding(0, 8).Radius(6).AlignItems(ui.Center).Border(1, ui.Transparent)
-			switch {
-			case i == s.index:
-				// The list gives its chosen row the accent's text color; the
-				// row is raised instead, so it keeps the ink.
-				line.Background(t.Surface).Border(1, token(t, "line-strong")).TextColor(t.Text)
-			case line.Hovered():
-				line.Background(t.SurfaceHover)
-			}
-			line.Children(func() {
-				ui.Box(c).Width(3).Height(30).Radius(2).Shrink(0).Background(agentColor(row.Agent, t.Dark))
-				ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
-					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, recentLabel(row)).FontSize(13).MinWidth(0).SingleLine().Tooltip(recentLabel(row))
-						if warning {
-							ui.Icon(c, glyph("issues")).FontSize(12).TextColor(t.Warning).Label("有耗时异常").Shrink(0)
+		submitted := false
+		ui.Themed(c, quietList(t)).Grow(1).MinHeight(0).Background(ui.Transparent).Children(func() {
+			list := ui.List(c, &s.list, len(rows), func(i int) {
+				row := rows[i]
+				warning := view.anomalies[sessionID(row)]
+				line := ui.Row(c.Key("row:"+sessionID(row))).Height(52).Gap(12).Padding(0, 8).Radius(6).AlignItems(ui.Center).Border(1, ui.Transparent)
+				switch {
+				case i == s.index:
+					// The list gives its chosen row the accent; the row covers it
+					// with the quiet fill every list uses, and keeps the ink.
+					line.Background(token(t, "selected")).TextColor(t.Text)
+				case line.Hovered():
+					line.Background(t.SurfaceHover)
+				}
+				line.Children(func() {
+					ui.Box(c).Width(3).Height(30).Radius(2).Shrink(0).Background(agentColor(row.Agent, t.Dark))
+					ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
+						ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+							ui.Text(c, recentLabel(row)).FontSize(13).MinWidth(0).SingleLine().Tooltip(recentLabel(row))
+							if warning {
+								ui.Icon(c, glyph("issues")).FontSize(13).TextColor(t.Warning).Label("有耗时异常").Shrink(0)
+							}
+						})
+						meta := []string{}
+						if row.CWD != "" {
+							meta = append(meta, filepath.Base(row.CWD))
 						}
+						if row.GitBranch != "" {
+							meta = append(meta, row.GitBranch)
+						}
+						if n := a.childCount(row); n > 0 {
+							meta = append(meta, fmt.Sprintf("%d 子 Agent", n))
+						}
+						ui.Text(c, strings.Join(meta, " · ")).FontSize(11.5).TextColor(muted).SingleLine()
 					})
-					meta := []string{}
-					if row.CWD != "" {
-						meta = append(meta, filepath.Base(row.CWD))
+					cell := func(i int, value string) ui.Element {
+						return number(c, value).FontSize(13).TextColor(t.TextMuted).Width(sessionColumns[i].width).Shrink(0).TextAlign(ui.End).SingleLine()
 					}
-					if row.GitBranch != "" {
-						meta = append(meta, row.GitBranch)
+					ui.Text(c, sessionAgentName(row.Agent)).FontSize(13).TextColor(t.TextMuted).Width(sessionColumns[0].width).Shrink(0).SingleLine()
+					cell(1, fmt.Sprint(len(row.Turns)))
+					span := cell(2, strings.TrimPrefix(sessionSpan(row), "≈ "))
+					if warning {
+						span.TextColor(t.Warning)
 					}
-					if n := a.childCount(row); n > 0 {
-						meta = append(meta, fmt.Sprintf("%d 子 Agent", n))
+					tokens := "—"
+					if total, known := sessionTokens(row); known {
+						tokens = tokenNumber(total)
 					}
-					ui.Text(c, strings.Join(meta, " · ")).FontSize(11).TextColor(muted).SingleLine()
+					cell(3, tokens)
+					active := "—"
+					if !row.End.IsZero() {
+						active = ago(now, row.End)
+					}
+					cell(4, active)
 				})
-				cell := func(i int, value string) ui.Element {
-					return number(c, value).FontSize(12.5).TextColor(t.TextMuted).Width(sessionColumns[i].width).Shrink(0).TextAlign(ui.End).SingleLine()
+				if line.Clicked() {
+					s.index = i
+					a.openSession(sessionID(row))
+					c.Invalidate()
 				}
-				ui.Text(c, sessionAgentName(row.Agent)).FontSize(12.5).TextColor(t.TextMuted).Width(sessionColumns[0].width).Shrink(0).SingleLine()
-				cell(1, fmt.Sprint(len(row.Turns)))
-				span := cell(2, strings.TrimPrefix(sessionSpan(row), "≈ "))
-				if warning {
-					span.TextColor(t.Warning)
-				}
-				tokens := "—"
-				if total, known := sessionTokens(row); known {
-					tokens = tokenNumber(total)
-				}
-				cell(3, tokens)
-				active := "—"
-				if !row.End.IsZero() {
-					active = ago(now, row.End)
-				}
-				cell(4, active)
-			})
-			if line.Clicked() {
-				s.index = i
-				a.openSession(sessionID(row))
-				c.Invalidate()
-			}
-		}).Grow(1).Gap(2).Padding(4, 0).Label("会话列表")
-		if list.Submitted() && s.index >= 0 && s.index < len(rows) {
+			}).Grow(1).Gap(2).Padding(4, 0).Label("会话列表")
+			submitted = list.Submitted()
+		})
+		if submitted && s.index >= 0 && s.index < len(rows) {
 			a.openSession(sessionID(rows[s.index]))
 			c.Invalidate()
 		}
@@ -368,7 +372,7 @@ func (a *App) sessionList(c *ui.Context, rows []session.Session) {
 			}
 		}
 		if len(missing) > 0 {
-			ui.Text(c, strings.Join(missing, "、")+" 没有本地会话日志，暂不支持").FontSize(11).TextColor(muted).Padding(8, 0, 12, 0).MaxLines(2)
+			ui.Text(c, strings.Join(missing, "、")+" 没有本地会话日志，暂不支持").FontSize(11.5).TextColor(muted).Padding(8, 0, 12, 0).MaxLines(2)
 		}
 	})
 }
@@ -423,10 +427,10 @@ func (a *App) partialBanner(c *ui.Context) {
 	ink := token(t, "warn-ink")
 	ui.Column(c).Shrink(0).Padding(14, 16).Gap(8).Radius(8).Background(token(t, "warn-bg")).Label("会话统计还没读完").Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Icon(c, glyph("hourglass")).FontSize(14).TextColor(t.Warning)
+			ui.Icon(c, glyph("hourglass")).FontSize(15).TextColor(t.Warning)
 			ui.Text(c, "会话统计还没读完").FontSize(13).FontWeight(600).TextColor(ink)
 		})
-		ui.Text(c, "部分日志未能读取，下面的数字暂时偏少。重新读取可再次尝试。").FontSize(12).LineHeight(1.5).TextColor(ink)
+		ui.Text(c, "部分日志未能读取，下面的数字暂时偏少。重新读取可再次尝试。").FontSize(13).LineHeight(1.5).TextColor(ink)
 		if outlineButton(c, "read-again", "继续读取").AlignSelf(ui.Start).Disabled(a.scanning || a.mutating).Clicked() {
 			a.startScan()
 		}

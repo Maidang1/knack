@@ -51,7 +51,7 @@ func (a *App) issueSelectionBar(c *ui.Context, rows []row) {
 		if b.Hovered() {
 			b.Background(t.SurfaceHover)
 		}
-		b.Children(func() { ui.Text(c, text).FontSize(12).TextColor(t.TextMuted).SingleLine() })
+		b.Children(func() { ui.Text(c, text).FontSize(13).TextColor(t.TextMuted).SingleLine() })
 		return b.Clicked()
 	}
 	ui.Row(c).Padding(0, 14, 2, 18).Gap(6).Wrap().AlignItems(ui.Center).Children(func() {
@@ -59,7 +59,7 @@ func (a *App) issueSelectionBar(c *ui.Context, rows []row) {
 		if ps.chosen.Len() > 0 {
 			note = fmt.Sprintf("已选 %d 项", ps.chosen.Len())
 		}
-		ui.Text(c, note).FontSize(12).TextColor(token(t, "ink-3")).SingleLine().Grow(1).MinWidth(0)
+		ui.Text(c, note).FontSize(13).TextColor(token(t, "ink-3")).SingleLine().Grow(1).MinWidth(0)
 		if ps.chosen.Len() > 0 && link("clear", "取消选择", "", false) {
 			ps.chosen.Clear()
 			c.Invalidate()
@@ -78,7 +78,7 @@ func (a *App) issueBatchDetail(c *ui.Context, entries []skill.Entry) {
 	disabled := a.scanning || a.mutating || a.cached
 	ui.Column(c).Padding(24, 28).Gap(14).MaxWidth(680).Children(func() {
 		ui.Textf(c, "已选择 %d 项", len(entries)).FontSize(17).FontWeight(600)
-		ui.Text(c, "批量操作仅作用于当前选中的 skill，可以一起撤销。").FontSize(12).TextColor(t.TextMuted)
+		ui.Text(c, "批量操作仅作用于当前选中的 skill，可以一起撤销。").FontSize(13).TextColor(t.TextMuted)
 		ui.Row(c).Gap(8).Wrap().Children(func() {
 			a.batchLinkMenu(c, entries, disabled)
 			if safe := a.chosenSafeFixes(entries); len(safe) > 0 {
@@ -92,11 +92,11 @@ func (a *App) issueBatchDetail(c *ui.Context, entries []skill.Entry) {
 			}
 		})
 		if reason := a.batchRemovalError(entries); reason != "" {
-			ui.Text(c, reason).FontSize(12).TextColor(t.Warning)
+			ui.Text(c, reason).FontSize(13).TextColor(t.Warning)
 		}
 		card(c).Padding(12, 14).Gap(8).Children(func() {
 			for _, e := range entries {
-				ui.Text(c, e.RootName+" / "+e.Name).FontSize(12)
+				ui.Text(c, e.RootName+" / "+e.Name).FontSize(13)
 			}
 		})
 	})

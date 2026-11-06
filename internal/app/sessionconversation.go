@@ -44,7 +44,7 @@ func (a *App) sessionConversation(c *ui.Context, d *sessionDetailData, width flo
 						n++
 					}
 				}
-				ui.Textf(c, "%d 轮匹配", n).FontSize(11.5).TextColor(token(t, "ink-3"))
+				ui.Textf(c, "%d 轮匹配", n).FontSize(12).TextColor(token(t, "ink-3"))
 			}
 		})
 		ui.Scroll(c.Key("replay-turns")).Grow(1).MinHeight(0).Children(func() {
@@ -61,8 +61,8 @@ func (a *App) sessionConversation(c *ui.Context, d *sessionDetailData, width flo
 		ui.Row(c).Justify(ui.Center).Padding(20, 32, 40, 32).Children(func() {
 			ui.Column(c).Grow(1).MinWidth(0).MaxWidth(760).Gap(14).Children(func() {
 				ui.Row(c).Gap(8).Padding(8, 12).Radius(7).Background(t.SurfaceHover).AlignItems(ui.Center).Children(func() {
-					ui.Icon(c, glyph("lock")).FontSize(12).TextColor(t.TextMuted)
-					ui.Text(c, "正文从原始日志按需读取，只保留在内存，关闭后释放。").FontSize(12).TextColor(t.TextMuted).MinWidth(0)
+					ui.Icon(c, glyph("lock")).FontSize(13).TextColor(t.TextMuted)
+					ui.Text(c, "正文从原始日志按需读取，只保留在内存，关闭后释放。").FontSize(13).TextColor(t.TextMuted).MinWidth(0)
 				})
 				switch {
 				case replay == nil || replay.err != "":
@@ -97,7 +97,7 @@ func (a *App) replayTurnList(c *ui.Context, d *sessionDetailData, content *repla
 			Label(turnLabel(turn)).Tooltip(prompt)
 		switch {
 		case on:
-			b.Background(token(t, "raised")).Border(1, t.Border)
+			b.Background(token(t, "selected"))
 			if a.sessions.focusTurn {
 				b.Focus()
 				a.sessions.focusTurn = false
@@ -106,7 +106,7 @@ func (a *App) replayTurnList(c *ui.Context, d *sessionDetailData, content *repla
 			b.Background(t.SurfaceHover)
 		}
 		b.Children(func() {
-			number(c, fmt.Sprint(i+1)).FontSize(11).TextColor(muted).Width(18).Shrink(0).TextAlign(ui.End).Margin(2, 0, 0, 0)
+			number(c, fmt.Sprint(i+1)).FontSize(11.5).TextColor(muted).Width(18).Shrink(0).TextAlign(ui.End).Margin(2, 0, 0, 0)
 			ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
 				p := ui.Text(c, prompt).FontSize(13).SingleLine()
 				if on {
@@ -117,10 +117,10 @@ func (a *App) replayTurnList(c *ui.Context, d *sessionDetailData, content *repla
 				}
 				ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
 					if concerns[i] != nil {
-						ui.Icon(c, glyph("issues")).FontSize(11).TextColor(t.Warning).Label("本轮有耗时异常")
-						number(c, activeText(turn)).FontSize(11).TextColor(t.Warning)
+						ui.Icon(c, glyph("issues")).FontSize(11.5).TextColor(t.Warning).Label("本轮有耗时异常")
+						number(c, activeText(turn)).FontSize(11.5).TextColor(t.Warning)
 					} else {
-						number(c, activeText(turn)).FontSize(11).TextColor(muted)
+						number(c, activeText(turn)).FontSize(11.5).TextColor(muted)
 					}
 				})
 			})
@@ -153,8 +153,8 @@ func (a *App) replayTurn(c *ui.Context, d *sessionDetailData, content *replayInd
 	turn := d.turns[index]
 	filter := a.sessions.replayFilter
 	ui.Row(c).Gap(10).AlignItems(ui.Center).Padding(6, 0, 0, 0).Children(func() {
-		ui.Textf(c, "第 %d 轮", index+1).FontSize(12.5).FontWeight(600).Shrink(0)
-		number(c, clockText(turn.turn.Start)+" · "+activeText(turn)).FontSize(12).TextColor(muted).Shrink(0)
+		ui.Textf(c, "第 %d 轮", index+1).FontSize(13).FontWeight(600).Shrink(0)
+		number(c, clockText(turn.turn.Start)+" · "+activeText(turn)).FontSize(13).TextColor(muted).Shrink(0)
 		ui.Box(c).Grow(1).Height(1).Background(t.Border)
 	})
 	shown := a.replayLoop(c, d, content, index, query)
@@ -173,7 +173,7 @@ func (a *App) replayTurn(c *ui.Context, d *sessionDetailData, content *replayInd
 		}
 	}
 	if len(meta) > 0 {
-		number(c, strings.Join(meta, " · ")).FontSize(11).TextColor(muted).Padding(0, 0, 0, 36)
+		number(c, strings.Join(meta, " · ")).FontSize(11.5).TextColor(muted).Padding(0, 0, 0, 36)
 	}
 	if n := content.context[index]; n > 0 && filter == replayAll && query == "" {
 		a.replayContext(c, turn.turn.ID, content.turns[index], n)
@@ -266,8 +266,8 @@ func diffBlock(c *ui.Context, lines []diffLine, limit int) {
 					sign = ""
 				}
 				row.Children(func() {
-					ui.Text(c, sign).Font(monoFont).FontSize(11.5).TextColor(ink).Width(8).Shrink(0)
-					text := ui.Text(c, l.text).Font(monoFont).FontSize(11.5).NoWrap().Selectable()
+					ui.Text(c, sign).Font(monoFont).FontSize(12).TextColor(ink).Width(8).Shrink(0)
+					text := ui.Text(c, l.text).Font(monoFont).FontSize(12).NoWrap().Selectable()
 					if l.sign == ' ' {
 						text.TextColor(t.TextMuted).FontWeight(600)
 					}
@@ -276,7 +276,7 @@ func diffBlock(c *ui.Context, lines []diffLine, limit int) {
 		})
 	})
 	if extra := len(lines) - len(shown); extra > 0 {
-		ui.Textf(c, "另有 %d 行改动未显示，可在会话详情中打开这一步查看全部", extra).FontSize(11).TextColor(token(t, "ink-3"))
+		ui.Textf(c, "另有 %d 行改动未显示，可在会话详情中打开这一步查看全部", extra).FontSize(11.5).TextColor(token(t, "ink-3"))
 	}
 }
 

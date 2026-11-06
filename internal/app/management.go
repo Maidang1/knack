@@ -70,7 +70,7 @@ func (a *App) removalNote(c *ui.Context, e skill.Entry) {
 		color = c.Theme().TextMuted
 		msg = fmt.Sprintf("有 %d 条软链指向它，删除时可以选择一并移除。", len(r.Links))
 	}
-	ui.Text(c, msg).FontSize(12).TextColor(color)
+	ui.Text(c, msg).FontSize(13).TextColor(color)
 }
 
 func (a *App) claudeEntry(e skill.Entry) bool {
@@ -106,7 +106,7 @@ func (a *App) invocationSettings(c *ui.Context, e skill.Entry) {
 	card(c).Padding(12, 14).Gap(8).Children(func() {
 		ui.Text(c, "Claude 调用方式").FontSize(13).FontWeight(600)
 		if a.invocationErr != "" {
-			ui.Text(c, "无法读取 Claude 配置："+a.invocationErr).FontSize(12).TextColor(t.Warning)
+			ui.Text(c, "无法读取 Claude 配置："+a.invocationErr).FontSize(13).TextColor(t.Warning)
 			return
 		}
 		name := invocationName(e)
@@ -128,7 +128,7 @@ func (a *App) invocationSettings(c *ui.Context, e skill.Entry) {
 				}
 			}
 		}
-		ui.Text(c, "仅修改 Claude 的用户配置，不改共享 skill。SKILL.md、项目或组织设置仍可能进一步限制调用。").FontSize(12).TextColor(t.TextMuted)
+		ui.Text(c, "仅修改 Claude 的用户配置，不改共享 skill。SKILL.md、项目或组织设置仍可能进一步限制调用。").FontSize(13).TextColor(t.TextMuted)
 	})
 }
 

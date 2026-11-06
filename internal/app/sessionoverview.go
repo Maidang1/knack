@@ -24,12 +24,12 @@ func (a *App) sessionAgentTimeline(c *ui.Context, d *sessionDetailData) {
 		ui.Row(c).Gap(10).Children(func() {
 			overviewTitle(c, "Agent 调用")
 			ui.Spacer(c)
-			ui.Textf(c, "主 Agent 1 · 子 Agent %d", len(d.tracks)-1).FontSize(11).TextColor(t.TextMuted)
+			ui.Textf(c, "主 Agent 1 · 子 Agent %d", len(d.tracks)-1).FontSize(11.5).TextColor(t.TextMuted)
 		})
 		ui.Row(c).Padding(0, 0, 0, 112).Justify(ui.SpaceBetween).Children(func() {
 			if !start.IsZero() && !end.IsZero() {
-				number(c, start.Local().Format("15:04")).FontSize(10).TextColor(t.TextMuted)
-				number(c, end.Local().Format("15:04")).FontSize(10).TextColor(t.TextMuted)
+				number(c, start.Local().Format("15:04")).FontSize(11).TextColor(t.TextMuted)
+				number(c, end.Local().Format("15:04")).FontSize(11).TextColor(t.TextMuted)
 			}
 		})
 		for i, tr := range d.tracks {
@@ -44,7 +44,7 @@ func (a *App) sessionAgentTimeline(c *ui.Context, d *sessionDetailData) {
 			note := tr.note
 			ui.Column(c.Key("track:"+s.ID)).Gap(4).Padding(4, 0).Children(func() {
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, label).Width(104).FontSize(11).SingleLine().Tooltip(label)
+					ui.Text(c, label).Width(104).FontSize(11.5).SingleLine().Tooltip(label)
 					ui.Box(c).Grow(1).Height(12).Background(t.SurfaceHover).Radius(2).Label(label + "调用时间线").Tooltip(label + " · " + sessionSpan(s)).Draw(func(p *ui.Painter, r ui.Rect) {
 						if span <= 0 || s.Start.IsZero() || s.End.IsZero() {
 							return
@@ -63,9 +63,9 @@ func (a *App) sessionAgentTimeline(c *ui.Context, d *sessionDetailData) {
 						w := float32(float64(to.Sub(from))/float64(span)) * r.W
 						p.Fill(ui.Rect{X: r.X + x, Y: r.Y + 3, W: max(2, w), H: 6}, agentColor(s.Agent, dark), 2)
 					})
-					number(c, sessionSpan(s)).FontSize(10).Width(66)
+					number(c, sessionSpan(s)).FontSize(11).Width(66)
 				})
-				ui.Text(c, note).FontSize(10).TextColor(t.TextMuted).SingleLine().Tooltip(note)
+				ui.Text(c, note).FontSize(11).TextColor(t.TextMuted).SingleLine().Tooltip(note)
 			})
 		}
 	})
@@ -103,10 +103,10 @@ func (a *App) sessionModelSpeeds(c *ui.Context, d *sessionDetailData, color ui.C
 		ui.Row(c).Gap(8).Padding(0, 0, 10, 0).AlignItems(ui.Center).Children(func() {
 			overviewTitle(c, "模型输出速率")
 			ui.Spacer(c)
-			ui.Text(c, "P10–P90 区间 · 竖线为中位 · 估算").FontSize(11).TextColor(muted).SingleLine()
+			ui.Text(c, "P10–P90 区间 · 竖线为中位 · 估算").FontSize(11.5).TextColor(muted).SingleLine()
 		})
 		if len(d.models) == 0 {
-			ui.Text(c, "暂不支持：没有模型请求记录").FontSize(11.5).TextColor(t.TextMuted)
+			ui.Text(c, "暂不支持：没有模型请求记录").FontSize(12).TextColor(t.TextMuted)
 			return
 		}
 		ui.Row(c).Gap(12).Padding(0, 0, 6, 0).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
@@ -119,7 +119,7 @@ func (a *App) sessionModelSpeeds(c *ui.Context, d *sessionDetailData, color ui.C
 					if i == len(ticks)-1 {
 						text += " tok/s"
 					}
-					span := ui.Span{Text: text, Font: monoFont, Size: 10, Color: muted}
+					span := ui.Span{Text: text, Size: 11.5, Color: muted}
 					w, _ := p.MeasureText(1000, span)
 					x := r.X + float32(v/scale)*r.W - w/2
 					switch i {
@@ -143,7 +143,7 @@ func (a *App) sessionModelSpeeds(c *ui.Context, d *sessionDetailData, color ui.C
 			label := fmt.Sprintf("P10 %.1f · 中位数 %.1f · P90 %.1f tok/s · %d 个样本（估算）", m.p10, m.median, m.p90, m.samples)
 			ui.Row(c.Key("model:"+m.name)).Padding(10, 0).Gap(12).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
 				ui.Column(c).Width(speedNameWidth).Shrink(0).Gap(3).Children(func() {
-					ui.Text(c, m.name).Font(monoFont).FontSize(12.5).SingleLine().Tooltip(m.name)
+					ui.Text(c, m.name).FontSize(13).SingleLine().Tooltip(m.name)
 					meta := fmt.Sprintf("%d 请求", m.requests)
 					if m.sessions > 0 {
 						meta = fmt.Sprintf("%d 会话 · %s", m.sessions, meta)
@@ -154,10 +154,10 @@ func (a *App) sessionModelSpeeds(c *ui.Context, d *sessionDetailData, color ui.C
 					if m.samples > 0 && m.samples < 5 {
 						meta += " · 样本少"
 					}
-					ui.Text(c, meta).FontSize(11).TextColor(muted).SingleLine().Tooltip(meta)
+					ui.Text(c, meta).FontSize(11.5).TextColor(muted).SingleLine().Tooltip(meta)
 				})
 				if m.samples == 0 {
-					ui.Text(c, "速率暂不支持").FontSize(11.5).TextColor(t.TextMuted).Grow(1)
+					ui.Text(c, "速率暂不支持").FontSize(12).TextColor(t.TextMuted).Grow(1)
 					ui.Text(c, "—").FontSize(13).TextColor(muted).Width(speedValueWidth).TextAlign(ui.End)
 					return
 				}
@@ -188,15 +188,15 @@ func (a *App) sessionCalls(c *ui.Context, title string, calls []callCount, unsup
 			overviewTitle(c, title)
 			ui.Spacer(c)
 			if !unsupported {
-				ui.Text(c, "调用次数").FontSize(11).TextColor(muted).Tooltip(fmt.Sprintf("共 %d 次", total))
+				ui.Text(c, "调用次数").FontSize(11.5).TextColor(muted).Tooltip(fmt.Sprintf("共 %d 次", total))
 			}
 		})
 		if unsupported {
-			ui.Text(c, title+"暂不支持").FontSize(11.5).TextColor(t.TextMuted)
+			ui.Text(c, title+"暂不支持").FontSize(12).TextColor(t.TextMuted)
 			return
 		}
 		if len(calls) == 0 {
-			ui.Text(c, "没有记录到调用").FontSize(11.5).TextColor(t.TextMuted)
+			ui.Text(c, "没有记录到调用").FontSize(12).TextColor(t.TextMuted)
 		}
 		for _, call := range calls {
 			label := call.name
@@ -204,12 +204,12 @@ func (a *App) sessionCalls(c *ui.Context, title string, calls []callCount, unsup
 				label += " · 含子 Agent 调用"
 			}
 			ui.Row(c).Gap(10).AlignItems(ui.Center).Label(fmt.Sprintf("%s ×%d", label, call.count)).Children(func() {
-				ui.Text(c, call.name).Font(monoFont).FontSize(12).Width(150).Shrink(0).SingleLine().Tooltip(label)
+				ui.Text(c, call.name).FontSize(13).Width(150).Shrink(0).SingleLine().Tooltip(label)
 				share := float32(call.count) / float32(peak)
 				ui.Box(c).Grow(1).Height(8).Draw(func(p *ui.Painter, r ui.Rect) {
 					p.Fill(ui.Rect{X: r.X, Y: r.Y, W: max(3, share*r.W), H: r.H}, color, 1.5)
 				})
-				number(c, fmt.Sprint(call.count)).FontSize(11.5).TextColor(t.TextMuted).Width(40).TextAlign(ui.End)
+				number(c, fmt.Sprint(call.count)).FontSize(12).TextColor(t.TextMuted).Width(40).TextAlign(ui.End)
 			})
 		}
 	})

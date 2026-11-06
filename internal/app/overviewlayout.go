@@ -27,7 +27,7 @@ func (a *App) overviewPane(c *ui.Context) {
 	ui.Scroll(c.Key("overview-scroll")).Grow(1).MinHeight(0).Label("总览内容").Children(func() {
 		ui.Column(c).Padding(24, 32, 28, 32).Gap(22).Children(func() {
 			if a.sessions.err != "" {
-				ui.Text(c, a.sessions.err).FontSize(12).TextColor(t.Warning)
+				ui.Text(c, a.sessions.err).FontSize(13).TextColor(t.Warning)
 			}
 			a.partialBanner(c)
 			a.homeHeadline(c, d)
@@ -85,8 +85,8 @@ func (a *App) homeHeadline(c *ui.Context, d *overviewData) {
 		parts = append(parts, "没有需要处理的事")
 	}
 	ui.Column(c).Gap(6).Children(func() {
-		ui.Text(c, title).FontSize(24).FontWeight(600).MaxLines(2)
-		ui.Text(c, strings.Join(parts, "；")+"。").FontSize(13.5).TextColor(t.TextMuted).MaxLines(2)
+		ui.Text(c, title).FontSize(20).FontWeight(600).MaxLines(2)
+		ui.Text(c, strings.Join(parts, "；")+"。").FontSize(14).TextColor(t.TextMuted).MaxLines(2)
 	})
 }
 
@@ -99,26 +99,26 @@ func (a *App) overviewNotes(c *ui.Context, d *overviewData) {
 	}
 	notes = append(notes, "速率与时长均为估算", "缓存命中 = 缓存读取 / 全部输入 Token")
 	ui.Column(c).Gap(4).Children(func() {
-		ui.Text(c, strings.Join(notes, " · ")).FontSize(11).TextColor(muted).MaxLines(2)
+		ui.Text(c, strings.Join(notes, " · ")).FontSize(11.5).TextColor(muted).MaxLines(2)
 		if n := len(a.sessions.agentProblems); n > 0 {
-			ui.Text(c, fmt.Sprintf("自定义 Agent 配置有 %d 个问题，相关 Agent 未加载，悬停查看", n)).FontSize(11).TextColor(t.Warning).Tooltip(strings.Join(a.sessions.agentProblems, "\n"))
+			ui.Text(c, fmt.Sprintf("自定义 Agent 配置有 %d 个问题，相关 Agent 未加载，悬停查看", n)).FontSize(11.5).TextColor(t.Warning).Tooltip(strings.Join(a.sessions.agentProblems, "\n"))
 		}
 		snap := a.sessions.snapshot
 		if snap == nil {
 			return
 		}
 		if snap.Partial && a.sessions.loading {
-			ui.Text(c, "正在读取剩余日志，数字会随读取进度更新").FontSize(11).TextColor(muted)
+			ui.Text(c, "正在读取剩余日志，数字会随读取进度更新").FontSize(11.5).TextColor(muted)
 		}
 		for _, source := range snap.Sources {
 			if source.Files > 0 && !source.Supported {
-				ui.Text(c, sessionAgentName(source.Agent)+"："+source.Reason).FontSize(11).TextColor(muted)
+				ui.Text(c, sessionAgentName(source.Agent)+"："+source.Reason).FontSize(11.5).TextColor(muted)
 			}
 		}
 		// Per-file details are diagnostics: summarize them, keep the list
 		// one hover away instead of printing raw file names in the page.
 		if n := len(snap.Warnings); n > 0 {
-			ui.Text(c, fmt.Sprintf("%d 条读取提示（跳过的无效或超长记录等），悬停查看", n)).FontSize(11).TextColor(muted).Tooltip(strings.Join(snap.Warnings[:min(12, n)], "\n"))
+			ui.Text(c, fmt.Sprintf("%d 条读取提示（跳过的无效或超长记录等），悬停查看", n)).FontSize(11.5).TextColor(muted).Tooltip(strings.Join(snap.Warnings[:min(12, n)], "\n"))
 		}
 	})
 }
@@ -227,12 +227,12 @@ func (a *App) metricCell(c *ui.Context, d *overviewData, m metric, i, j int) {
 		box.BorderWidth(0, 0, 0, 1).BorderColor(t.Border)
 	}
 	box.Children(func() {
-		ui.Text(c, m.label).FontSize(12).TextColor(t.TextMuted).SingleLine()
+		ui.Text(c, m.label).FontSize(13).TextColor(t.TextMuted).SingleLine()
 		v := number(c, m.value).FontSize(24).FontWeight(600)
 		if m.warn {
 			v.TextColor(t.Warning)
 		}
-		ui.Text(c, m.note).FontSize(11.5).TextColor(m.noteColor).SingleLine().Tooltip(m.note)
+		ui.Text(c, m.note).FontSize(12).LineHeight(1.4).TextColor(m.noteColor).MaxLines(2).Tooltip(m.note)
 	})
 	if i == 4 && box.Clicked() {
 		a.openSessionAnomalies(d)
@@ -290,7 +290,7 @@ func (a *App) overviewIssues(c *ui.Context, d *overviewData) {
 	}
 	sectionHead(c, "待处理", link, func() { a.page, a.query, a.filter = "issues", "", 0 })
 	if len(items) == 0 {
-		ui.Text(c, "目前没有需要处理的事").FontSize(12.5).TextColor(t.TextMuted).Padding(11, 0).BorderWidth(1, 0, 0, 0).BorderColor(t.Border)
+		ui.Text(c, "目前没有需要处理的事").FontSize(13).TextColor(t.TextMuted).Padding(11, 0).BorderWidth(1, 0, 0, 0).BorderColor(t.Border)
 		return
 	}
 	for _, it := range items {
@@ -300,7 +300,7 @@ func (a *App) overviewIssues(c *ui.Context, d *overviewData) {
 			})
 			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
 				ui.Text(c, it.title).FontSize(13).SingleLine()
-				ui.Text(c, it.note).FontSize(11.5).TextColor(token(t, "ink-3")).SingleLine().Tooltip(it.note)
+				ui.Text(c, it.note).FontSize(12).TextColor(token(t, "ink-3")).SingleLine().Tooltip(it.note)
 			})
 			if outlineButton(c, "act:"+it.key, it.action).Label(it.action + "：" + it.title).Clicked() {
 				it.open()
@@ -313,7 +313,7 @@ func (a *App) recentSessions(c *ui.Context, d *overviewData) {
 	t := c.Theme()
 	sectionHead(c, "最近会话", "全部 →", func() { a.page = "sessions" })
 	if len(d.recent) == 0 {
-		ui.Text(c, "当前范围没有本地会话").FontSize(12.5).TextColor(t.TextMuted).Padding(8, 0)
+		ui.Text(c, "当前范围没有本地会话").FontSize(13).TextColor(t.TextMuted).Padding(8, 0)
 		return
 	}
 	for _, s := range d.recent[:min(6, len(d.recent))] {
@@ -322,10 +322,10 @@ func (a *App) recentSessions(c *ui.Context, d *overviewData) {
 			ui.Box(c).Size(3, 30).Radius(2).Shrink(0).Background(agentColor(s.Agent, t.Dark))
 			ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
 				ui.Text(c, recentLabel(s)).FontSize(13).SingleLine().Tooltip(recentLabel(s))
-				ui.Text(c, recentMeta(s)).FontSize(11).TextColor(token(t, "ink-3")).SingleLine()
+				ui.Text(c, recentMeta(s)).FontSize(11.5).TextColor(token(t, "ink-3")).SingleLine()
 			})
 			if d.anomalies[sessionID(s)] {
-				ui.Icon(c, glyph("issues")).FontSize(14).TextColor(t.Warning).Label("有耗时异常").Shrink(0)
+				ui.Icon(c, glyph("issues")).FontSize(15).TextColor(t.Warning).Label("有耗时异常").Shrink(0)
 			}
 		})
 		if row.Clicked() {

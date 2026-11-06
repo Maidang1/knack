@@ -24,7 +24,7 @@ func (a *App) agentUsage(c *ui.Context, d *overviewData) {
 		ui.Row(c.Key(key)).Height(height).Gap(8).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(fn)
 	}
 	cell := func(i int, value string, supported bool, tip string) {
-		e := number(c, value).Width(agentColumns[i].width).Shrink(0).TextAlign(ui.End).FontSize(12.5).TextColor(t.TextMuted)
+		e := number(c, value).Width(agentColumns[i].width).Shrink(0).TextAlign(ui.End).FontSize(13).TextColor(t.TextMuted)
 		if !supported {
 			e.TextColor(muted)
 		}
@@ -33,9 +33,9 @@ func (a *App) agentUsage(c *ui.Context, d *overviewData) {
 		}
 	}
 	row("head", 26, func() {
-		ui.Text(c, "Agent").Grow(1).MinWidth(0).FontSize(11).TextColor(muted)
+		ui.Text(c, "Agent").Grow(1).MinWidth(0).FontSize(11.5).TextColor(muted)
 		for _, col := range agentColumns {
-			ui.Text(c, col.title).Width(col.width).Shrink(0).TextAlign(ui.End).FontSize(11).TextColor(muted)
+			ui.Text(c, col.title).Width(col.width).Shrink(0).TextAlign(ui.End).FontSize(11.5).TextColor(muted)
 		}
 	})
 	name := func(id session.Agent, quiet bool) {
@@ -105,7 +105,7 @@ func (a *App) agentUsage(c *ui.Context, d *overviewData) {
 		})
 	}
 	if a.hasUntrackedSessionAgents() {
-		ui.Text(c, "其他 Agent 尚未接入本地会话格式，暂不支持；可在 agents.json 中自定义").FontSize(11).TextColor(muted).Padding(8, 0, 0, 0)
+		ui.Text(c, "其他 Agent 尚未接入本地会话格式，暂不支持；可在 agents.json 中自定义").FontSize(11.5).TextColor(muted).Padding(8, 0, 0, 0)
 	}
 }
 

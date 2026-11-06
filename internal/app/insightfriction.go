@@ -57,7 +57,7 @@ func (a *App) frictionTools(c *ui.Context, r insight.FrictionReport) {
 	ui.Column(c).Label("工具").Children(func() {
 		sectionHead(c, "工具", "", nil)
 		if len(r.Tools) == 0 {
-			ui.Text(c, "这段时间没有工具调用").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "这段时间没有工具调用").FontSize(13).TextColor(t.TextMuted)
 			return
 		}
 		widths := []float32{52, 52, 44, 44, 44, 52}
@@ -66,7 +66,7 @@ func (a *App) frictionTools(c *ui.Context, r insight.FrictionReport) {
 			bad := tool.Failed + tool.Interrupted + tool.TimeOut
 			ui.Row(c).Padding(7, 0).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).
 				Label(fmt.Sprintf("%s %d 次调用，%d 次失败", tool.Name, tool.Calls, bad)).Children(func() {
-				ui.Text(c, tool.Name).Font(monoFont).FontSize(12).Grow(1).MinWidth(0).SingleLine().Tooltip(tool.Name)
+				ui.Text(c, tool.Name).FontSize(13).Grow(1).MinWidth(0).SingleLine().Tooltip(tool.Name)
 				cell(c, groupDigits(tool.Calls), widths[0], true).TextColor(t.TextMuted)
 				rate := cell(c, percent(float64(bad), float64(tool.Calls)), widths[1], true)
 				if tool.FailureRate() > .1 && bad >= 3 {
@@ -102,11 +102,11 @@ func (a *App) frictionLoops(c *ui.Context, r insight.FrictionReport) {
 		}
 		sectionHead(c, "疑似循环", link, func() { a.insights.allLoops = !a.insights.allLoops })
 		if !r.RepeatKnown {
-			ui.Text(c, "需要重新读取日志才能识别：点侧栏的“重新扫描”。").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "需要重新读取日志才能识别：点侧栏的“重新扫描”。").FontSize(13).TextColor(t.TextMuted)
 			return
 		}
 		if len(r.Loops) == 0 {
-			ui.Text(c, "没有发现连续重复的工具调用").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "没有发现连续重复的工具调用").FontSize(13).TextColor(t.TextMuted)
 			return
 		}
 		loops := r.Loops
@@ -122,10 +122,10 @@ func (a *App) frictionLoops(c *ui.Context, r insight.FrictionReport) {
 			row.Children(func() {
 				ui.Icon(c, glyph("refresh")).FontSize(13).TextColor(t.Warning).Shrink(0)
 				ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
-					ui.Text(c, title).FontSize(12.5).SingleLine().Tooltip(title)
-					ui.Text(c, fmt.Sprintf("第 %d 轮 · %s · %s", l.TurnNumber, l.Tool, l.At.Local().Format("01/02 15:04"))).FontSize(11).TextColor(token(t, "ink-3")).SingleLine()
+					ui.Text(c, title).FontSize(13).SingleLine().Tooltip(title)
+					ui.Text(c, fmt.Sprintf("第 %d 轮 · %s · %s", l.TurnNumber, l.Tool, l.At.Local().Format("01/02 15:04"))).FontSize(11.5).TextColor(token(t, "ink-3")).SingleLine()
 				})
-				number(c, fmt.Sprintf("×%d", l.Repeats)).FontSize(12).FontWeight(600).TextColor(t.Warning).Shrink(0)
+				number(c, fmt.Sprintf("×%d", l.Repeats)).FontSize(13).FontWeight(600).TextColor(t.Warning).Shrink(0)
 			})
 			if row.Clicked() {
 				a.openSession(string(l.Agent) + ":" + l.SessionID)
@@ -141,19 +141,19 @@ func (a *App) frictionPermissions(c *ui.Context, r insight.FrictionReport) {
 	ui.Column(c).Gap(8).Label("常需确认的工具").Children(func() {
 		overviewTitle(c, "常需确认的工具")
 		if len(hints) == 0 {
-			ui.Text(c, "没有反复需要人工确认的工具").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "没有反复需要人工确认的工具").FontSize(13).TextColor(t.TextMuted)
 			return
 		}
 		for _, h := range hints[:min(8, len(hints))] {
 			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, h.Tool).Font(monoFont).FontSize(12).Grow(1).MinWidth(0).SingleLine()
+				ui.Text(c, h.Tool).FontSize(13).Grow(1).MinWidth(0).SingleLine()
 				state := "没有 allow 规则"
 				color := t.Warning
 				if h.Covered {
 					state, color = "已有部分规则", token(t, "ink-3")
 				}
-				ui.Text(c, state).FontSize(11).TextColor(color).Shrink(0)
-				number(c, fmt.Sprintf("%d 次", h.Waits)).FontSize(12).Width(52).TextAlign(ui.End).Shrink(0)
+				ui.Text(c, state).FontSize(11.5).TextColor(color).Shrink(0)
+				number(c, fmt.Sprintf("%d 次", h.Waits)).FontSize(13).Width(52).TextAlign(ui.End).Shrink(0)
 			})
 		}
 		note(c, "确认来自 Claude Code 记录的“用户临时允许”。常用且安全的命令可以写进 settings.json 的 permissions.allow，例如 Bash(go test:*)。规则对照的是「配置」页所选目录的设置。")
@@ -211,7 +211,7 @@ func (a *App) insightProjects(c *ui.Context) {
 						}
 						meta = append(meta, "常用技能 "+strings.Join(names, "、"))
 					}
-					ui.Text(c, strings.Join(meta, " · ")).FontSize(11).TextColor(token(t, "ink-3")).SingleLine()
+					ui.Text(c, strings.Join(meta, " · ")).FontSize(11.5).TextColor(token(t, "ink-3")).SingleLine()
 				})
 				shareBar(c, p.Cost, peak, token(t, "ink-2"), 60)
 				cell(c, groupDigits(p.Sessions), widths[0], true).TextColor(t.TextMuted)

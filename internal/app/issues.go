@@ -89,8 +89,8 @@ func issueHeading(c *ui.Context, dot ui.Color, name string, count int) {
 	t := c.Theme()
 	ui.Row(c).Gap(7).Padding(14, 10, 6, 10).AlignItems(ui.Center).Children(func() {
 		ui.Box(c).Size(6, 6).Radius(3).Background(dot).Shrink(0)
-		ui.Text(c, name).FontSize(12).FontWeight(600).SingleLine()
-		number(c, fmt.Sprint(count)).FontSize(11).TextColor(token(t, "ink-3"))
+		ui.Text(c, name).FontSize(13).FontWeight(600).SingleLine()
+		number(c, fmt.Sprint(count)).FontSize(11.5).TextColor(token(t, "ink-3"))
 	})
 }
 
@@ -124,22 +124,22 @@ func (a *App) paintIssueRow(c *ui.Context, r row, selected bool) {
 		}
 		ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
 			ui.Row(c).Gap(6).AlignItems(ui.Center).MinWidth(0).Children(func() {
-				ui.Text(c, r.name).Font(monoFont).FontSize(13).FontWeight(500).Shrink(1).MinWidth(0).SingleLine()
+				ui.Text(c, r.name).FontSize(13).FontWeight(500).Shrink(1).MinWidth(0).SingleLine()
 				ui.Box(c).Size(6, 6).Radius(3).Background(a.rootDot(t, r.entry)).Shrink(0)
-				root := ui.Text(c, r.entry.RootName).FontSize(11.5).Shrink(0).SingleLine()
+				root := ui.Text(c, r.entry.RootName).FontSize(12).Shrink(0).SingleLine()
 				if !selected {
 					root.TextColor(t.TextMuted)
 				}
 			})
 			if r.subtitle != "" {
-				sub := ui.Text(c, r.subtitle).FontSize(11.5).SingleLine().Tooltip(r.subtitle)
+				sub := ui.Text(c, r.subtitle).FontSize(12).SingleLine().Tooltip(r.subtitle)
 				if !selected {
 					sub.TextColor(muted)
 				}
 			}
 		})
 		if r.fix == nil {
-			hint := ui.Text(c, "需要你决定").FontSize(11.5).Shrink(0).SingleLine()
+			hint := ui.Text(c, "需要你决定").FontSize(12).Shrink(0).SingleLine()
 			if !selected {
 				hint.TextColor(t.TextMuted)
 			}
@@ -151,7 +151,7 @@ func (a *App) paintIssueRow(c *ui.Context, r row, selected bool) {
 			b.Background(t.SurfaceHover)
 		}
 		b.Children(func() {
-			text := ui.Text(c, fix.Label).FontSize(11.5).SingleLine()
+			text := ui.Text(c, fix.Label).FontSize(12).SingleLine()
 			if !selected {
 				text.TextColor(t.TextMuted)
 			}
@@ -190,9 +190,9 @@ func (a *App) anomalyRow(c *ui.Context, d *overviewData, n int) {
 	b.Children(func() {
 		ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
 			ui.Textf(c, "%d 个会话有耗时异常", n).FontSize(13).FontWeight(500).SingleLine()
-			ui.Text(c, "慢步骤、重试和中断，在会话中逐轮查看").FontSize(11.5).TextColor(token(t, "ink-3")).SingleLine()
+			ui.Text(c, "慢步骤、重试和中断，在会话中逐轮查看").FontSize(12).TextColor(token(t, "ink-3")).SingleLine()
 		})
-		ui.Text(c, "在会话中查看 →").FontSize(11.5).TextColor(t.TextMuted).Shrink(0)
+		ui.Text(c, "在会话中查看 →").FontSize(12).TextColor(t.TextMuted).Shrink(0)
 	})
 	if b.Clicked() {
 		a.openSessionAnomalies(d)
@@ -222,7 +222,7 @@ func (a *App) repairBar(c *ui.Context) {
 		if a.state("issues").chosen.Len() > 0 {
 			msg = "已选 · " + msg
 		}
-		ui.Text(c, msg).FontSize(12).TextColor(t.TextMuted).Grow(1).MinWidth(120).MaxLines(2)
+		ui.Text(c, msg).FontSize(13).TextColor(t.TextMuted).Grow(1).MinWidth(120).MaxLines(2)
 		if len(review) > 0 {
 			label := fmt.Sprintf("替换 %d 个不一致副本", len(review))
 			if outlineButton(c, "replace", label).Height(28).Disabled(a.scanning || a.mutating).Clicked() {
@@ -234,7 +234,7 @@ func (a *App) repairBar(c *ui.Context) {
 			if kind != "" {
 				label = fmt.Sprintf("修复这 %d 项", len(safe))
 			}
-			if inkButton(c, "fix", "wand", label).Disabled(a.scanning || a.mutating).Clicked() {
+			if primaryButton(c, "fix", "wand", label).Disabled(a.scanning || a.mutating).Clicked() {
 				a.confirmBatch(append([]repair.Fix(nil), safe...), "修复")
 			}
 		}

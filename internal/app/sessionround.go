@@ -163,7 +163,7 @@ func (a *App) toolInput(c *ui.Context, key, input string, limit int) {
 			a.replayText(c, key, "输入", strings.Join(rest, "\n"), false, codeBlock)
 		}
 		ui.Column(c).Gap(4).Children(func() {
-			ui.Text(c, "改动").FontSize(11.5).FontWeight(600).TextColor(c.Theme().TextMuted)
+			ui.Text(c, "改动").FontSize(12).FontWeight(600).TextColor(c.Theme().TextMuted)
 			diffBlock(c, diff, limit)
 		})
 		return
@@ -252,10 +252,10 @@ func (a *App) replayText(c *ui.Context, key, title, text string, truncated bool,
 	}
 	ui.Column(c.Key("replay:" + key)).Gap(4).Children(func() {
 		if title != "" {
-			ui.Text(c, title).FontSize(11.5).FontWeight(600).TextColor(t.TextMuted)
+			ui.Text(c, title).FontSize(12).FontWeight(600).TextColor(t.TextMuted)
 		}
 		if strings.TrimSpace(text) == "" {
-			ui.Text(c, "（空）").FontSize(11).TextColor(t.TextMuted)
+			ui.Text(c, "（空）").FontSize(11.5).TextColor(t.TextMuted)
 			return
 		}
 		if kind != proseBlock {
@@ -266,7 +266,7 @@ func (a *App) replayText(c *ui.Context, key, title, text string, truncated bool,
 				face, ink = token(t, "code-bg"), token(t, "code-ink")
 			}
 			ui.ScrollHorizontal(c.Key("replay-scroll:" + key)).Label(title).Background(face).Radius(7).Children(func() {
-				ui.Text(c, shown).Font(monoFont).FontSize(11.5).LineHeight(1.55).TextColor(ink).NoWrap().Selectable().Padding(10, 12)
+				ui.Text(c, shown).Font(monoFont).FontSize(12).LineHeight(1.55).TextColor(ink).NoWrap().Selectable().Padding(10, 12)
 			})
 		} else {
 			ui.Text(c, shown).FontSize(13).LineHeight(1.6).Selectable()
@@ -281,7 +281,7 @@ func (a *App) replayText(c *ui.Context, key, title, text string, truncated bool,
 					overviewLink(c, label, func() { a.sessions.expanded[key] = !open })
 				}
 				if truncated {
-					ui.Text(c, "超过 64 KiB 的部分未显示，可打开日志查看").FontSize(10).TextColor(t.TextMuted)
+					ui.Text(c, "超过 64 KiB 的部分未显示，可打开日志查看").FontSize(11).TextColor(t.TextMuted)
 				}
 			})
 		}

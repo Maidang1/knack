@@ -135,7 +135,7 @@ func loopRow(c *ui.Context, n loopNode, last bool) {
 			} else {
 				// The tint carries the step's color; the glyph stays legible on it.
 				ui.Box(c).Size(22, 22).Radius(11).Shrink(0).Center().Background(fade(n.color, 64)).Children(func() {
-					ui.Icon(c, glyph(n.icon)).FontSize(12).TextColor(t.Text)
+					ui.Icon(c, glyph(n.icon)).FontSize(13).TextColor(t.Text)
 				})
 			}
 			if !last {
@@ -153,11 +153,11 @@ func loopRow(c *ui.Context, n loopNode, last bool) {
 					if n.open {
 						icon = "chevron-down"
 					}
-					ui.Icon(c, glyph(icon)).FontSize(11).TextColor(muted).Shrink(0)
+					ui.Icon(c, glyph(icon)).FontSize(11.5).TextColor(muted).Shrink(0)
 				}
-				title := ui.Text(c, n.title).FontSize(12.5).FontWeight(600).Shrink(0).SingleLine()
+				title := ui.Text(c, n.title).FontSize(13).FontWeight(600).Shrink(0).SingleLine()
 				if n.marker {
-					title.FontSize(11.5).TextColor(t.TextMuted)
+					title.FontSize(12).TextColor(t.TextMuted)
 				}
 				if n.meta != nil {
 					n.meta()
@@ -209,7 +209,7 @@ func modelCallNode(c *ui.Context, k int, e session.Entry, r *session.Request) lo
 		color = sessionColor("phase-retry", t.Dark)
 	}
 	return loopNode{marker: true, title: fmt.Sprintf("第 %d 次模型调用", k), color: color, meta: func() {
-		number(c, strings.Join(parts, " · ")).FontSize(11).TextColor(token(t, "ink-3")).MinWidth(0).SingleLine()
+		number(c, strings.Join(parts, " · ")).FontSize(11.5).TextColor(token(t, "ink-3")).MinWidth(0).SingleLine()
 	}}
 }
 
@@ -233,9 +233,9 @@ func (a *App) thinkingNode(c *ui.Context, key string, e session.Entry, r *sessio
 	if strings.TrimSpace(e.Text) == "" {
 		n.meta = func() {
 			if meta != "" {
-				number(c, meta).FontSize(11.5).TextColor(muted)
+				number(c, meta).FontSize(12).TextColor(muted)
 			}
-			ui.Text(c, "日志只保存了签名，没有思考正文").FontSize(11.5).TextColor(muted).MinWidth(0).SingleLine()
+			ui.Text(c, "日志只保存了签名，没有思考正文").FontSize(12).TextColor(muted).MinWidth(0).SingleLine()
 		}
 		return n
 	}
@@ -244,10 +244,10 @@ func (a *App) thinkingNode(c *ui.Context, key string, e session.Entry, r *sessio
 	n.toggle = toggle
 	n.meta = func() {
 		if meta != "" {
-			number(c, meta).FontSize(11.5).TextColor(muted)
+			number(c, meta).FontSize(12).TextColor(muted)
 		}
 		if !n.open {
-			ui.Text(c, firstLine(e.Text)).FontSize(12).TextColor(muted).MinWidth(0).SingleLine()
+			ui.Text(c, firstLine(e.Text)).FontSize(13).TextColor(muted).MinWidth(0).SingleLine()
 		}
 	}
 	if n.open {
@@ -279,8 +279,8 @@ func (a *App) toolNodes(c *ui.Context, key string, e session.Entry, tool *sessio
 	}
 	call := loopNode{icon: icon, title: callTitle, color: color, label: name + " · " + preview, key: "tool:" + key, open: a.sessions.expanded["tool:"+key], toggle: toggle("tool:" + key)}
 	call.meta = func() {
-		ui.Text(c, name).FontSize(12.5).Shrink(0).SingleLine()
-		number(c, preview).FontSize(12).TextColor(t.TextMuted).Grow(1).MinWidth(0).SingleLine().Tooltip(preview)
+		ui.Text(c, name).FontSize(13).Shrink(0).SingleLine()
+		number(c, preview).FontSize(13).TextColor(t.TextMuted).Grow(1).MinWidth(0).SingleLine().Tooltip(preview)
 		if len(diff) > 0 {
 			add, del := 0, 0
 			for _, l := range diff {
@@ -291,12 +291,12 @@ func (a *App) toolNodes(c *ui.Context, key string, e session.Entry, tool *sessio
 					del++
 				}
 			}
-			number(c, fmt.Sprintf("+%d -%d", add, del)).FontSize(11.5).TextColor(muted).Shrink(0)
+			number(c, fmt.Sprintf("+%d -%d", add, del)).FontSize(12).TextColor(muted).Shrink(0)
 		}
 		if tool != nil && tool.PermissionWait {
 			ui.Row(c).Gap(4).Padding(1, 6).Radius(4).AlignItems(ui.Center).Background(token(t, "warn-bg")).Shrink(0).Children(func() {
-				ui.Icon(c, glyph("hand")).FontSize(11).TextColor(token(t, "warn-ink"))
-				ui.Text(c, "等你确认").FontSize(11).TextColor(token(t, "warn-ink"))
+				ui.Icon(c, glyph("hand")).FontSize(11.5).TextColor(token(t, "warn-ink"))
+				ui.Text(c, "等你确认").FontSize(11.5).TextColor(token(t, "warn-ink"))
 			})
 		}
 	}
@@ -312,21 +312,21 @@ func (a *App) toolNodes(c *ui.Context, key string, e session.Entry, tool *sessio
 	status := func() {
 		switch {
 		case e.End.IsZero():
-			ui.Text(c, "没有记录输出").FontSize(11.5).TextColor(muted).Shrink(0)
+			ui.Text(c, "没有记录输出").FontSize(12).TextColor(muted).Shrink(0)
 		case failed:
 			ui.Row(c).Padding(1, 6).Radius(4).Background(token(t, "danger-bg")).Shrink(0).Children(func() {
-				ui.Text(c, "失败").FontSize(11).TextColor(t.Danger)
+				ui.Text(c, "失败").FontSize(11.5).TextColor(t.Danger)
 			})
 		}
 		if tool != nil {
-			number(c, durationText(tool.Elapsed)).FontSize(11.5).TextColor(muted).Shrink(0)
+			number(c, durationText(tool.Elapsed)).FontSize(12).TextColor(muted).Shrink(0)
 		}
 	}
 	if e.End.IsZero() || strings.TrimSpace(e.Text) == "" {
 		result.meta = func() {
 			status()
 			if !e.End.IsZero() {
-				ui.Text(c, "（空）").FontSize(11.5).TextColor(muted)
+				ui.Text(c, "（空）").FontSize(12).TextColor(muted)
 			}
 		}
 		return call, result
@@ -337,7 +337,7 @@ func (a *App) toolNodes(c *ui.Context, key string, e session.Entry, tool *sessio
 	result.meta = func() {
 		status()
 		if !result.open {
-			number(c, firstLine(e.Text)).FontSize(11.5).TextColor(t.TextMuted).Grow(1).MinWidth(0).SingleLine()
+			number(c, firstLine(e.Text)).FontSize(12).TextColor(t.TextMuted).Grow(1).MinWidth(0).SingleLine()
 		}
 	}
 	if result.open {
@@ -350,5 +350,5 @@ func loopClock(c *ui.Context, at time.Time) {
 	if at.IsZero() {
 		return
 	}
-	number(c, stepClock(at)).FontSize(11).TextColor(token(c.Theme(), "ink-3"))
+	number(c, stepClock(at)).FontSize(11.5).TextColor(token(c.Theme(), "ink-3"))
 }

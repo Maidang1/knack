@@ -194,7 +194,7 @@ func (a *App) skillRootsTable(c *ui.Context, r insight.SkillReport) {
 		for _, root := range roots {
 			row := listRow(c, "skill-root:"+root.RootID, root.RootName)
 			row.Children(func() {
-				ui.Text(c, strings.TrimSuffix(root.RootName, " 自带")).FontSize(12.5).Grow(1).MinWidth(0).SingleLine()
+				ui.Text(c, strings.TrimSuffix(root.RootName, " 自带")).FontSize(13).Grow(1).MinWidth(0).SingleLine()
 				shareBar(c, float64(root.StandingTokens), float64(peak), token(t, "ink-2"), 60)
 				cell(c, groupDigits(root.Skills), widths[0], true).TextColor(t.TextMuted)
 				cell(c, tokenNumber(int64(root.StandingTokens)), widths[1], true)
@@ -229,11 +229,11 @@ func (a *App) skillRow(c *ui.Context, key string, h insight.SkillHealth, meta st
 	row := listRow(c, key, h.Name)
 	row.Children(func() {
 		ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
-			ui.Text(c, h.Name).Font(monoFont).FontSize(12.5).SingleLine().Tooltip(h.Path)
+			ui.Text(c, h.Name).FontSize(13).SingleLine().Tooltip(h.Path)
 			if metaColor.A == 0 {
 				metaColor = token(t, "ink-3")
 			}
-			ui.Text(c, meta).FontSize(11).TextColor(metaColor).SingleLine().Tooltip(meta)
+			ui.Text(c, meta).FontSize(11.5).TextColor(metaColor).SingleLine().Tooltip(meta)
 		})
 		if trailing != nil {
 			trailing()
@@ -265,7 +265,7 @@ func (a *App) skillUnused(c *ui.Context, unused []insight.SkillHealth) {
 		}
 		sectionHead(c, "90 天未调用 · 按常驻开销排序", link, func() { a.insights.allUnused = !a.insights.allUnused })
 		if len(unused) == 0 {
-			ui.Text(c, "已加载的技能近 90 天都有调用记录").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "已加载的技能近 90 天都有调用记录").FontSize(13).TextColor(t.TextMuted)
 			return
 		}
 		list := groupSkills(unused)
@@ -281,7 +281,7 @@ func (a *App) skillUnused(c *ui.Context, unused []insight.SkillHealth) {
 				meta += " · 上次 " + h.LastUsed.Local().Format("2006-01-02")
 			}
 			a.skillRow(c, fmt.Sprintf("unused:%d", i), h, meta, ui.Color{}, func() {
-				number(c, tokenNumber(int64(h.DescTokens))).FontSize(12).Width(56).TextAlign(ui.End).Shrink(0).Tooltip("常驻 Token · 估算")
+				number(c, tokenNumber(int64(h.DescTokens))).FontSize(13).Width(56).TextAlign(ui.End).Shrink(0).Tooltip("常驻 Token · 估算")
 			})
 		}
 	})
@@ -301,7 +301,7 @@ func (a *App) skillProblems(c *ui.Context, problems []insight.SkillHealth) {
 		}
 		sectionHead(c, "描述有问题的技能", link, func() { a.insights.allSkills = !a.insights.allSkills })
 		if len(problems) == 0 {
-			ui.Text(c, "没有发现缺失或明显不合适的描述").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "没有发现缺失或明显不合适的描述").FontSize(13).TextColor(t.TextMuted)
 			return
 		}
 		list := groups
@@ -353,20 +353,20 @@ func (a *App) skillOverlaps(c *ui.Context, list []insight.Overlap) {
 	ui.Column(c).Gap(8).Label("描述相近的技能").Children(func() {
 		overviewTitle(c, "描述相近的技能")
 		if len(overlaps) == 0 {
-			ui.Text(c, "同一 Agent 下没有描述高度重叠的技能").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "同一 Agent 下没有描述高度重叠的技能").FontSize(13).TextColor(t.TextMuted)
 			return
 		}
 		for _, g := range overlaps[:min(8, len(overlaps))] {
 			o := g.overlap
 			ui.Column(c).Gap(2).Padding(0, 0, 6, 0).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, o.A).Font(monoFont).FontSize(12).SingleLine().Shrink(1).MinWidth(0)
-					ui.Text(c, "≈").FontSize(12).TextColor(token(t, "ink-3")).Shrink(0)
-					ui.Text(c, o.B).Font(monoFont).FontSize(12).SingleLine().Shrink(1).MinWidth(0)
+					ui.Text(c, o.A).FontSize(13).SingleLine().Shrink(1).MinWidth(0)
+					ui.Text(c, "≈").FontSize(13).TextColor(token(t, "ink-3")).Shrink(0)
+					ui.Text(c, o.B).FontSize(13).SingleLine().Shrink(1).MinWidth(0)
 					ui.Spacer(c)
-					number(c, fmt.Sprintf("%.0f%%", o.Score*100)).FontSize(11.5).TextColor(t.TextMuted).Shrink(0).Tooltip("描述用词的重合度")
+					number(c, fmt.Sprintf("%.0f%%", o.Score*100)).FontSize(12).TextColor(t.TextMuted).Shrink(0).Tooltip("描述用词的重合度")
 				})
-				ui.Text(c, rootsText(g.roots)+" · 共同词："+strings.Join(o.Shared, "、")).FontSize(11).TextColor(token(t, "ink-3")).SingleLine()
+				ui.Text(c, rootsText(g.roots)+" · 共同词："+strings.Join(o.Shared, "、")).FontSize(11.5).TextColor(token(t, "ink-3")).SingleLine()
 			})
 		}
 		note(c, "描述相近时模型可能随机选一个。合并重复的技能，或在描述里写清各自的使用场景。")
@@ -387,7 +387,7 @@ func (a *App) skillHeaviest(c *ui.Context, skills []insight.SkillHealth) {
 				meta += fmt.Sprintf(" · 近 90 天 %d 次", h.Calls90)
 			}
 			a.skillRow(c, fmt.Sprintf("heavy:%d", i), h, meta, ui.Color{}, func() {
-				number(c, tokenNumber(int64(h.DescTokens))).FontSize(12).Width(56).TextAlign(ui.End).Shrink(0).TextColor(t.Text)
+				number(c, tokenNumber(int64(h.DescTokens))).FontSize(13).Width(56).TextAlign(ui.End).Shrink(0).TextColor(t.Text)
 			})
 		}
 	})
@@ -411,7 +411,7 @@ func (a *App) insightConfig(c *ui.Context) {
 	}
 	choice := dirs[max(0, slices.Index(paths, a.insights.configDir))]
 	ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, "在这个目录启动时").FontSize(12.5).TextColor(t.TextMuted).Shrink(0)
+		ui.Text(c, "在这个目录启动时").FontSize(13).TextColor(t.TextMuted).Shrink(0)
 		if selectStyle(c, ui.Select(c, &choice, dirs)).Label("配置目录").Width(320).Changed() {
 			if i := slices.Index(dirs, choice); i >= 0 {
 				a.insights.configDir = paths[i]
@@ -500,7 +500,7 @@ func (a *App) configInstructions(c *ui.Context, cfg insight.ConfigReport) {
 			row := listRow(c, fmt.Sprintf("instr:%d", i), label)
 			row.Children(func() {
 				ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
-					ui.Text(c, shortPath(a.home, f.Path)).Font(monoFont).FontSize(12).SingleLine().Tooltip(f.Path)
+					ui.Text(c, shortPath(a.home, f.Path)).Font(monoFont).FontSize(13).SingleLine().Tooltip(f.Path)
 					meta := sessionAgentName(f.Agent)
 					if f.ImportedBy != "" {
 						meta += " · 由 " + filepath.Base(f.ImportedBy) + " 导入"
@@ -508,7 +508,7 @@ func (a *App) configInstructions(c *ui.Context, cfg insight.ConfigReport) {
 					if f.Err != "" {
 						meta += " · " + f.Err
 					}
-					ui.Text(c, meta).FontSize(11).TextColor(token(t, "ink-3")).SingleLine()
+					ui.Text(c, meta).FontSize(11.5).TextColor(token(t, "ink-3")).SingleLine()
 				})
 				cell(c, f.Scope, widths[0], false).TextColor(t.TextMuted).TextAlign(ui.End)
 				cell(c, tokenNumber(int64(f.Tokens)), widths[1], true)
@@ -518,7 +518,7 @@ func (a *App) configInstructions(c *ui.Context, cfg insight.ConfigReport) {
 			}
 		}
 		if !any {
-			ui.Text(c, "没有找到 CLAUDE.md 或 AGENTS.md").FontSize(12).TextColor(t.TextMuted).Padding(8, 0)
+			ui.Text(c, "没有找到 CLAUDE.md 或 AGENTS.md").FontSize(13).TextColor(t.TextMuted).Padding(8, 0)
 		}
 	})
 }
@@ -528,7 +528,7 @@ func (a *App) configMCP(c *ui.Context, cfg insight.ConfigReport) {
 	ui.Column(c).Label("MCP 服务器").Children(func() {
 		sectionHead(c, "MCP 服务器", "", nil)
 		if len(cfg.MCP) == 0 {
-			ui.Text(c, "没有配置 MCP 服务器").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "没有配置 MCP 服务器").FontSize(13).TextColor(t.TextMuted)
 			return
 		}
 		widths := []float32{44, 64}
@@ -538,7 +538,7 @@ func (a *App) configMCP(c *ui.Context, cfg insight.ConfigReport) {
 				Label(fmt.Sprintf("%s %s，%d 次调用", sessionAgentName(m.Agent), m.Name, m.Calls)).Children(func() {
 				ui.Box(c).Size(3, 26).Radius(2).Shrink(0).Background(agentColor(m.Agent, t.Dark))
 				ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
-					name := ui.Text(c, m.Name).Font(monoFont).FontSize(12).SingleLine()
+					name := ui.Text(c, m.Name).FontSize(13).SingleLine()
 					if m.Disabled {
 						name.TextColor(token(t, "ink-3"))
 					}
@@ -546,7 +546,7 @@ func (a *App) configMCP(c *ui.Context, cfg insight.ConfigReport) {
 					if m.Disabled {
 						meta += " · 已停用"
 					}
-					ui.Text(c, meta).FontSize(11).TextColor(token(t, "ink-3")).SingleLine().Tooltip(shortPath(a.home, m.Source))
+					ui.Text(c, meta).FontSize(11.5).TextColor(token(t, "ink-3")).SingleLine().Tooltip(shortPath(a.home, m.Source))
 				})
 				cell(c, m.Scope, widths[0], false).TextColor(t.TextMuted).TextAlign(ui.End)
 				calls := countOrDash(m.Calls)
@@ -568,18 +568,18 @@ func (a *App) configHooks(c *ui.Context, cfg insight.ConfigReport) {
 	ui.Column(c).Gap(8).Label("Hooks").Children(func() {
 		overviewTitle(c, "Hooks")
 		if len(cfg.Hooks) == 0 {
-			ui.Text(c, "没有配置 hooks").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "没有配置 hooks").FontSize(13).TextColor(t.TextMuted)
 			return
 		}
 		for _, h := range cfg.Hooks {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, h.Event).FontSize(12).FontWeight(600).Shrink(0)
+				ui.Text(c, h.Event).FontSize(13).FontWeight(600).Shrink(0)
 				if h.Matcher != "" {
-					ui.Text(c, h.Matcher).Font(monoFont).FontSize(11.5).TextColor(t.TextMuted).SingleLine().Shrink(1).MinWidth(0)
+					ui.Text(c, h.Matcher).Font(monoFont).FontSize(12).TextColor(t.TextMuted).SingleLine().Shrink(1).MinWidth(0)
 				}
 				ui.Spacer(c)
-				ui.Text(c, h.Command).Font(monoFont).FontSize(11.5).SingleLine().Shrink(1).MinWidth(0).Tooltip(shortPath(a.home, h.Source))
-				ui.Text(c, h.Scope).FontSize(11).TextColor(token(t, "ink-3")).Shrink(0)
+				ui.Text(c, h.Command).Font(monoFont).FontSize(12).SingleLine().Shrink(1).MinWidth(0).Tooltip(shortPath(a.home, h.Source))
+				ui.Text(c, h.Scope).FontSize(11.5).TextColor(token(t, "ink-3")).Shrink(0)
 			})
 		}
 		note(c, "只显示命令的第一个词。hooks 在每次匹配的事件上运行，慢的 hook 会拖慢每一步。")
@@ -591,7 +591,7 @@ func (a *App) configPermissions(c *ui.Context, cfg insight.ConfigReport) {
 	ui.Column(c).Gap(8).Label("权限规则").Children(func() {
 		overviewTitle(c, "权限规则")
 		if len(cfg.Permissions) == 0 {
-			ui.Text(c, "没有配置权限规则").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "没有配置权限规则").FontSize(13).TextColor(t.TextMuted)
 		}
 		for _, p := range cfg.Permissions[:min(24, len(cfg.Permissions))] {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
@@ -602,9 +602,9 @@ func (a *App) configPermissions(c *ui.Context, cfg insight.ConfigReport) {
 				case "ask":
 					color = t.Warning
 				}
-				ui.Text(c, p.Kind).Font(monoFont).FontSize(11).TextColor(color).Width(36).Shrink(0)
-				ui.Text(c, p.Rule).Font(monoFont).FontSize(11.5).Grow(1).MinWidth(0).SingleLine().Tooltip(p.Rule)
-				ui.Text(c, p.Scope).FontSize(11).TextColor(token(t, "ink-3")).Shrink(0).Tooltip(shortPath(a.home, p.Source))
+				ui.Text(c, p.Kind).Font(monoFont).FontSize(11.5).TextColor(color).Width(36).Shrink(0)
+				ui.Text(c, p.Rule).Font(monoFont).FontSize(12).Grow(1).MinWidth(0).SingleLine().Tooltip(p.Rule)
+				ui.Text(c, p.Scope).FontSize(11.5).TextColor(token(t, "ink-3")).Shrink(0).Tooltip(shortPath(a.home, p.Source))
 			})
 		}
 		if len(cfg.Permissions) > 24 {
@@ -618,7 +618,7 @@ func (a *App) configPermissions(c *ui.Context, cfg insight.ConfigReport) {
 			}
 		}
 		if len(open) > 0 {
-			callout(c, "hand", t.Accent, "这些工具常需人工确认且没有 allow 规则："+strings.Join(open[:min(5, len(open))], "、")+"。安全的用法可以加进 permissions.allow。")
+			callout(c, "hand", token(t, "accent-ink"), "这些工具常需人工确认且没有 allow 规则："+strings.Join(open[:min(5, len(open))], "、")+"。安全的用法可以加进 permissions.allow。")
 		}
 	})
 }

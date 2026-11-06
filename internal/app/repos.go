@@ -159,22 +159,22 @@ func (a *App) repositoryDialog(c *ui.Context) {
 		}
 		ui.Text(c, title).FontSize(15).FontWeight(600)
 		if d.editing {
-			ui.Text(c, "显示名称").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "显示名称").FontSize(13).TextColor(t.TextMuted)
 			ui.TextInput(c, &d.name).Label("仓库显示名称").Placeholder("留空使用目录名").AutoFocus()
-			ui.Text(c, "扫描路径").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "扫描路径").FontSize(13).TextColor(t.TextMuted)
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.TextInput(c, &d.path).Label("仓库扫描路径").Grow(1).MinWidth(0)
 				if ui.Button(c, "选择目录…").Disabled(d.picking || a.mutating).Clicked() {
 					a.beginPickRepoPath()
 				}
 			})
-			ui.Text(c, "只修改本应用的记录，不会重命名、移动或删除磁盘文件。").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "只修改本应用的记录，不会重命名、移动或删除磁盘文件。").FontSize(13).TextColor(t.TextMuted)
 		} else {
 			ui.Text(c, a.repoLabel(d.original)).FontWeight(600)
-			ui.Text(c, d.path).FontSize(12).Selectable()
+			ui.Text(c, d.path).FontSize(13).Selectable()
 		}
 		if d.err != "" {
-			ui.Text(c, d.err).FontSize(12).TextColor(t.Danger)
+			ui.Text(c, d.err).FontSize(13).TextColor(t.Danger)
 		}
 		ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
 			if d.editing {

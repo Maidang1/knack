@@ -34,7 +34,7 @@ func (a *App) agentTabs(c *ui.Context, root skill.Root) {
 	if logSupport(agent) == "" {
 		counts[1] = fmt.Sprint(len(a.sessionRows()))
 	}
-	ui.Row(c).Shrink(0).Padding(0, 32).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
+	ui.Row(c).Shrink(0).Padding(10, 32).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
 		underlineTabs(c, "agent-tabs:"+a.page, "Agent 页面标签", "Agent ", &a.state(a.page).agentTab, []string{"技能", "会话", "用量"}, counts)
 	})
 }
@@ -58,7 +58,7 @@ func (a *App) agentMeta(c *ui.Context, root skill.Root) {
 		}
 	}
 	text := strings.Join(parts, " · ")
-	ui.Text(c, text).FontSize(12).TextColor(token(t, "ink-3")).SingleLine().Shrink(1).MinWidth(0).Tooltip(root.Path)
+	ui.Text(c, text).FontSize(13).TextColor(token(t, "ink-3")).SingleLine().Shrink(1).MinWidth(0).Tooltip(root.Path)
 }
 
 // noLogs stands in for the sessions and usage of an Agent whose logs can
@@ -130,10 +130,10 @@ func (a *App) usageBody(c *ui.Context, key string, agent session.Agent) {
 			return
 		}
 		if a.sessions.err != "" {
-			ui.Text(c, a.sessions.err).FontSize(11).TextColor(t.Warning)
+			ui.Text(c, a.sessions.err).FontSize(11.5).TextColor(t.Warning)
 		}
 		if note := session.LookupAgent(agent).TimingNote; agent != "" && note != "" {
-			ui.Text(c, note).FontSize(11).TextColor(muted)
+			ui.Text(c, note).FontSize(11.5).TextColor(muted)
 		}
 		a.tokenMix(c, sum, known, reason, color)
 		a.usageTiming(c, agent, d)
@@ -146,7 +146,7 @@ func (a *App) usageBody(c *ui.Context, key string, agent session.Agent) {
 		} else {
 			ui.Column(c).Gap(6).Children(func() {
 				overviewTitle(c, "每日 Token")
-				ui.Text(c, "暂不支持 · "+reason).FontSize(11.5).TextColor(t.TextMuted)
+				ui.Text(c, "暂不支持 · "+reason).FontSize(12).TextColor(t.TextMuted)
 			})
 		}
 	}
@@ -154,7 +154,7 @@ func (a *App) usageBody(c *ui.Context, key string, agent session.Agent) {
 		ui.Column(c).Label("Skill 调用排行").Children(func() {
 			a.sessionCalls(c, "常用技能", skills, skillNote != "", t.Text)
 			if skillNote != "" {
-				ui.Text(c, skillNote).FontSize(11).TextColor(muted).MaxLines(3)
+				ui.Text(c, skillNote).FontSize(11.5).TextColor(muted).MaxLines(3)
 			}
 		})
 		ui.Column(c).Label("工具调用排行").Children(func() {
@@ -163,7 +163,7 @@ func (a *App) usageBody(c *ui.Context, key string, agent session.Agent) {
 		ui.Row(c).Padding(12, 14).Gap(8).Radius(8).Background(t.SurfaceHover).Children(func() {
 			ui.Icon(c, glyph("info")).FontSize(13).TextColor(muted).Shrink(0)
 			ui.Text(c, "Token 与首页同一口径：请求按完成日期、工具和 Skill 按调用日期归属。子 Agent 只计一次，速率为估算。技能按调用名统计，没出现在排行里不代表从未使用。").
-				FontSize(11.5).LineHeight(1.5).TextColor(t.TextMuted).Grow(1).MinWidth(0)
+				FontSize(12).LineHeight(1.5).TextColor(t.TextMuted).Grow(1).MinWidth(0)
 		})
 	}
 	wide := width-a.sidebarWidth() >= 900
@@ -212,13 +212,13 @@ func (a *App) tokenMix(c *ui.Context, sum session.Summary, known bool, reason st
 	ui.Column(c).Gap(10).Label("Agent Token 明细").Children(func() {
 		overviewTitle(c, "Token 构成 · "+periodText(a.sessions.period))
 		if !known {
-			ui.Text(c, "暂不支持 · "+reason).FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "暂不支持 · "+reason).FontSize(13).TextColor(t.TextMuted)
 			return
 		}
 		ui.Row(c).Gap(10).AlignItems(ui.End).Children(func() {
 			number(c, tokenNumber(sum.Tokens.Total())).FontSize(30).FontWeight(600).Label(tokenNumber(sum.Tokens.Total()) + " Token")
 			if sum.CacheHitKnown {
-				ui.Textf(c, "缓存命中 %.0f%%", sum.CacheHit*100).FontSize(12).TextColor(t.Success).Padding(0, 0, 4, 0)
+				ui.Textf(c, "缓存命中 %.0f%%", sum.CacheHit*100).FontSize(13).TextColor(t.Success).Padding(0, 0, 4, 0)
 			}
 			ui.Spacer(c)
 			cost := a.insightData().Cost
@@ -228,7 +228,7 @@ func (a *App) tokenMix(c *ui.Context, sum session.Summary, known bool, reason st
 					text += " · " + tokenNumber(cost.UnpricedTokens.Total()) + " Token 未定价"
 				}
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Padding(0, 0, 4, 0).Children(func() {
-					number(c, text).FontSize(12).TextColor(t.TextMuted).Tooltip("按 Anthropic 官方 API 价格估算，未定价的模型不计入")
+					number(c, text).FontSize(13).TextColor(t.TextMuted).Tooltip("按 Anthropic 官方 API 价格估算，未定价的模型不计入")
 					overviewLink(c, "费用明细 →", func() {
 						a.sessions.agent = cmp.Or(a.sessionAgentFilter(), allAgents)
 						a.page = insightsPage
@@ -267,8 +267,8 @@ func (a *App) tokenMix(c *ui.Context, sum session.Summary, known bool, reason st
 			for _, part := range parts {
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 					ui.Box(c).Size(8, 8).Radius(2).Background(part.color)
-					ui.Text(c, part.name).FontSize(12).TextColor(t.TextMuted)
-					number(c, tokenNumber(part.value)).FontSize(12)
+					ui.Text(c, part.name).FontSize(13).TextColor(t.TextMuted)
+					number(c, tokenNumber(part.value)).FontSize(13)
 				})
 			}
 		})

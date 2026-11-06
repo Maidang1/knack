@@ -88,7 +88,7 @@ func (a *App) usageTiming(c *ui.Context, agent session.Agent, d *overviewData) {
 			if timing.turns > 0 {
 				avg := timing.phases.total / time.Duration(timing.turns)
 				number(c, fmt.Sprintf("%d 轮 · 活跃 ≈ %s · 平均每轮 ≈ %s", timing.turns, session.FormatDuration(timing.phases.total), session.FormatDuration(avg))).
-					FontSize(11.5).TextColor(muted).MinWidth(0).SingleLine()
+					FontSize(12).TextColor(muted).MinWidth(0).SingleLine()
 			}
 			ui.Spacer(c)
 			if n := len(d.anomalies); n > 0 {
@@ -96,10 +96,10 @@ func (a *App) usageTiming(c *ui.Context, agent session.Agent, d *overviewData) {
 			}
 		})
 		if timing.turns == 0 {
-			ui.Text(c, "这段时间没有可识别的轮次").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "这段时间没有可识别的轮次").FontSize(13).TextColor(t.TextMuted)
 			return
 		}
 		phaseBar(c, timing.phases, timing.waiting, timing.away)
-		ui.Text(c, "按轮累加活跃时间，与会话详情同一口径；轮与轮之间的等待不计入。模型时间为估算。").FontSize(11).TextColor(muted).MaxLines(2)
+		ui.Text(c, "按轮累加活跃时间，与会话详情同一口径；轮与轮之间的等待不计入。模型时间为估算。").FontSize(11.5).TextColor(muted).MaxLines(2)
 	})
 }

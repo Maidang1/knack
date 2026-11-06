@@ -179,24 +179,21 @@ func (a *App) librarySortButton(c *ui.Context) {
 	})
 }
 
-// paintLibraryRow is the design's library row: the name in mono over what
+// paintLibraryRow is the design's library row: the name over what
 // it does, and at the trailing edge what is wrong and the Agents it reaches.
 func (a *App) paintLibraryRow(c *ui.Context, r row, selected bool) {
 	t := c.Theme()
 	if r.section != "" {
 		ui.Row(c).Gap(6).Padding(14, 10, 4, 10).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, r.section).FontSize(11).FontWeight(600).LetterSpacing(0.3).TextColor(token(t, "ink-3")).SingleLine()
-			number(c, fmt.Sprint(r.count)).FontSize(10.5).TextColor(token(t, "ink-3"))
+			ui.Text(c, r.section).FontSize(11.5).FontWeight(600).LetterSpacing(0.3).TextColor(token(t, "ink-3")).SingleLine()
+			number(c, fmt.Sprint(r.count)).FontSize(11).TextColor(token(t, "ink-3"))
 		})
 	}
-	ui.Row(c).Padding(8, 10).Gap(10).AlignItems(ui.Center).Children(func() {
+	selectedRow(c, selected).Padding(8, 10).Gap(10).AlignItems(ui.Center).Children(func() {
 		ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
-			ui.Text(c, r.name).Font(monoFont).FontSize(13).FontWeight(500).SingleLine()
+			ui.Text(c, r.name).FontSize(13).FontWeight(600).SingleLine()
 			if r.subtitle != "" {
-				sub := ui.Text(c, r.subtitle).FontSize(11.5).SingleLine()
-				if !selected {
-					sub.TextColor(t.TextMuted)
-				}
+				ui.Text(c, r.subtitle).FontSize(12).TextColor(t.TextMuted).SingleLine()
 			}
 		})
 		ui.Row(c).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
@@ -251,11 +248,11 @@ func (a *App) sessionSearchLink(c *ui.Context) {
 	}
 	b.Children(func() {
 		ui.Icon(c, glyph("messages")).FontSize(13).TextColor(token(t, "ink-2")).Shrink(0)
-		ui.Text(c, "在会话中搜索").FontSize(12).TextColor(token(t, "ink-2")).Shrink(0)
-		ui.Text(c, "“"+query+"”").FontSize(12).Shrink(1).MinWidth(0).SingleLine()
+		ui.Text(c, "在会话中搜索").FontSize(13).TextColor(token(t, "ink-2")).Shrink(0)
+		ui.Text(c, "“"+query+"”").FontSize(13).Shrink(1).MinWidth(0).SingleLine()
 		ui.Spacer(c)
-		number(c, fmt.Sprint(n)).FontSize(11).TextColor(token(t, "ink-3")).Shrink(0)
-		ui.Icon(c, glyph("chevron-right")).FontSize(12).TextColor(token(t, "ink-3")).Shrink(0)
+		number(c, fmt.Sprint(n)).FontSize(11.5).TextColor(token(t, "ink-3")).Shrink(0)
+		ui.Icon(c, glyph("chevron-right")).FontSize(13).TextColor(token(t, "ink-3")).Shrink(0)
 	})
 	if b.Clicked() {
 		a.searchSessions(query)

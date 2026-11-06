@@ -116,10 +116,10 @@ func (a *App) effectiveToolbar(c *ui.Context) {
 	if agent, ok := a.effAgentRoot(); ok {
 		b := picker("eff-agent", "Agent："+agent.Name, "选择 Agent")
 		b.Children(func() {
-			ui.Text(c, "Agent").FontSize(11.5).TextColor(muted)
+			ui.Text(c, "Agent").FontSize(12).TextColor(muted)
 			ui.Box(c).Size(7, 7).Radius(3.5).Background(agentColor(session.Agent(agentKey(a.home, agent.Path)), t.Dark)).Shrink(0)
-			ui.Text(c, agent.Name).FontSize(12).FontWeight(500).SingleLine()
-			ui.Icon(c, glyph("chevron-down")).FontSize(12).TextColor(muted)
+			ui.Text(c, agent.Name).FontSize(13).FontWeight(500).SingleLine()
+			ui.Icon(c, glyph("chevron-down")).FontSize(13).TextColor(muted)
 		})
 		b.PopoverMenuButton(func(m *ui.Menu) {
 			for _, r := range a.roots(skill.RoleAgent) {
@@ -137,8 +137,8 @@ func (a *App) effectiveToolbar(c *ui.Context) {
 	}
 	dir := picker("eff-dir", "工作目录："+label, tip).Shrink(1).MinWidth(0).MaxWidth(180)
 	dir.Children(func() {
-		ui.Text(c, "工作目录").FontSize(11.5).TextColor(muted).Shrink(0)
-		ui.Text(c, name).Font(monoFont).FontSize(11.5).SingleLine().MinWidth(0).Shrink(1)
+		ui.Text(c, "工作目录").FontSize(12).TextColor(muted).Shrink(0)
+		ui.Text(c, name).Font(monoFont).FontSize(12).SingleLine().MinWidth(0).Shrink(1)
 	})
 	if dir.Clicked() {
 		a.beginPickWorkDir()
@@ -209,7 +209,7 @@ func (a *App) effectiveHeader(c *ui.Context, v *skill.EffectiveView) {
 		if n := v.Overridden(); n > 0 {
 			note += fmt.Sprintf("；%d 个技能被更高层覆盖", n)
 		}
-		ui.Text(c, note+"。实际加载以 Agent 自身规则为准。").FontSize(12.5).TextColor(t.TextMuted).MaxLines(2)
+		ui.Text(c, note+"。实际加载以 Agent 自身规则为准。").FontSize(13).TextColor(t.TextMuted).MaxLines(2)
 	})
 	counts := []int{len(v.Skills), v.Overridden(), len(v.Skills) - v.Overridden()}
 	ui.Row(c).Gap(12).Wrap().AlignItems(ui.Center).Children(func() {
@@ -305,15 +305,15 @@ func (a *App) matrixPane(c *ui.Context, v *skill.EffectiveView, skills []skill.E
 	}
 	ui.Column(c).Children(func() {
 		ui.Row(c).Padding(0, 0, 10, 0).Gap(12).AlignItems(ui.End).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
-			ui.Text(c, "技能").FontSize(11.5).TextColor(muted).Grow(effNameGrow).Basis(0).MinWidth(0).Padding(0, 0, 0, 12)
+			ui.Text(c, "技能").FontSize(12).TextColor(muted).Grow(effNameGrow).Basis(0).MinWidth(0).Padding(0, 0, 0, 12)
 			for i, l := range v.Layers {
 				ui.Column(c).Grow(effLayerGrow).Basis(0).MinWidth(0).Gap(3).Children(func() {
 					ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
-						number(c, fmt.Sprint(i+1)).FontSize(10).TextColor(muted)
-						ui.Icon(c, glyph(layerGlyph(l.Layer))).FontSize(12).TextColor(t.TextMuted)
-						ui.Text(c, l.Layer.Label()).FontSize(12).FontWeight(600).SingleLine()
+						number(c, fmt.Sprint(i+1)).FontSize(11).TextColor(muted)
+						ui.Icon(c, glyph(layerGlyph(l.Layer))).FontSize(13).TextColor(t.TextMuted)
+						ui.Text(c, l.Layer.Label()).FontSize(13).FontWeight(600).SingleLine()
 					})
-					where := ui.Text(c, a.layerWhere(v, l)).FontSize(10.5).TextColor(muted).SingleLine().Tooltip(l.Path)
+					where := ui.Text(c, a.layerWhere(v, l)).FontSize(11).TextColor(muted).SingleLine().Tooltip(l.Path)
 					if l.Path != "" {
 						where.Font(monoFont)
 					}
@@ -328,10 +328,10 @@ func (a *App) matrixPane(c *ui.Context, v *skill.EffectiveView, skills []skill.E
 		for _, m := range missing {
 			ui.Row(c).Padding(10, 0, 10, 12).Gap(12).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
 				ui.Column(c).Grow(effNameGrow).Basis(0).MinWidth(0).Gap(2).Children(func() {
-					ui.Text(c, m).Font(monoFont).FontSize(13).TextColor(t.TextMuted).SingleLine()
-					ui.Text(c, "被其他技能依赖，但没有一层有它").FontSize(11).TextColor(muted).SingleLine()
+					ui.Text(c, m).FontSize(13).TextColor(t.TextMuted).SingleLine()
+					ui.Text(c, "被其他技能依赖，但没有一层有它").FontSize(11.5).TextColor(muted).SingleLine()
 				})
-				ui.Text(c, "未安装").FontSize(12).TextColor(t.Danger).Grow(effLayerGrow * float32(len(v.Layers))).Basis(0)
+				ui.Text(c, "未安装").FontSize(13).TextColor(t.Danger).Grow(effLayerGrow * float32(len(v.Layers))).Basis(0)
 			})
 		}
 		if len(skills) == 0 && len(missing) == 0 {
@@ -339,7 +339,7 @@ func (a *App) matrixPane(c *ui.Context, v *skill.EffectiveView, skills []skill.E
 			if strings.TrimSpace(a.query) != "" {
 				msg = "没有匹配的 skill。"
 			}
-			ui.Text(c, msg).FontSize(12).TextColor(t.TextMuted).Padding(24, 12)
+			ui.Text(c, msg).FontSize(13).TextColor(t.TextMuted).Padding(24, 12)
 		}
 	})
 	note := "同名只取最靠前的一层，其余版本仍在磁盘上。"
@@ -349,7 +349,7 @@ func (a *App) matrixPane(c *ui.Context, v *skill.EffectiveView, skills []skill.E
 	case 2:
 		note = fmt.Sprintf("另有 %d 个技能存在覆盖，切换到「存在覆盖」查看。", v.Overridden())
 	}
-	ui.Text(c, note).FontSize(11.5).TextColor(muted).Margin(-8, 0, 0, 0)
+	ui.Text(c, note).FontSize(12).TextColor(muted).Margin(-8, 0, 0, 0)
 }
 
 func (a *App) matrixRow(c *ui.Context, v *skill.EffectiveView, s skill.Effective, chosen bool) {
@@ -360,7 +360,7 @@ func (a *App) matrixRow(c *ui.Context, v *skill.EffectiveView, s skill.Effective
 		BorderWidth(0, 0, 1, 0).BorderColor(t.Border)
 	switch {
 	case chosen:
-		b.Background(t.SurfaceHover)
+		b.Background(token(t, "selected"))
 	case b.Hovered():
 		b.Background(t.SurfaceHover.Alpha(0.5))
 	}
@@ -372,31 +372,27 @@ func (a *App) matrixRow(c *ui.Context, v *skill.EffectiveView, s skill.Effective
 		a.eff.chosen = s.Name
 		c.Invalidate()
 	}
-	b.Draw(func(p *ui.Painter, r ui.Rect) {
-		if chosen {
-			p.Fill(ui.Rect{X: r.X, Y: r.Y + 8, W: 3, H: r.H - 16}, t.Text, 1.5)
-		}
-	})
 	b.Children(func() {
 		ui.Column(c).Grow(effNameGrow).Basis(0).MinWidth(0).Gap(3).Padding(0, 0, 0, 12).Children(func() {
-			ui.Text(c, s.Name).Font(monoFont).FontSize(13).FontWeight(500).SingleLine().Tooltip(s.Name)
-			ui.Text(c, effectiveNote(s)).FontSize(11).TextColor(muted).SingleLine()
+			ui.Text(c, s.Name).FontSize(13).FontWeight(500).SingleLine().Tooltip(s.Name)
+			ui.Text(c, effectiveNote(s)).FontSize(11.5).TextColor(muted).SingleLine()
 		})
 		for _, l := range v.Layers {
 			ui.Row(c).Grow(effLayerGrow).Basis(0).MinWidth(0).AlignItems(ui.Center).Children(func() {
 				_, has := s.In(l.Layer)
 				switch {
 				case has && l.Layer == w.Layer:
-					ui.Row(c).Height(22).Padding(0, 8).Gap(4).Radius(5).AlignItems(ui.Center).Background(t.Text).Shrink(0).Label(l.Layer.Label() + "：生效").Children(func() {
-						ui.Icon(c, glyph("tick")).FontSize(11).TextColor(token(t, "on-ink"))
-						ui.Text(c, "生效").FontSize(11.5).FontWeight(600).TextColor(token(t, "on-ink"))
+					// A table cell says its state in words, as Finder's
+					// columns do: the layer that wins is ink with a tick,
+					// the ones it hides are gray.
+					ui.Row(c).Gap(4).AlignItems(ui.Center).Shrink(0).Label(l.Layer.Label() + "：生效").Children(func() {
+						ui.Icon(c, glyph("tick")).FontSize(13).TextColor(t.Text)
+						ui.Text(c, "生效").FontSize(13).FontWeight(600)
 					})
 				case has:
-					ui.Row(c).Height(22).Padding(0, 8).Radius(5).AlignItems(ui.Center).Border(1, token(t, "line-strong")).Shrink(0).Children(func() {
-						ui.Text(c, "被覆盖").FontSize(11.5).TextColor(t.TextMuted)
-					})
+					ui.Text(c, "被覆盖").FontSize(13).TextColor(muted)
 				default:
-					ui.Text(c, "—").FontSize(12).TextColor(muted)
+					ui.Text(c, "—").FontSize(13).TextColor(muted)
 				}
 			})
 		}
@@ -413,12 +409,12 @@ func (a *App) effectiveDetail(c *ui.Context, v *skill.EffectiveView, s skill.Eff
 	narrow := width < 760
 	ui.Column(c).Padding(18, 20).Gap(14).Radius(10).Background(t.Background).Border(1, t.Border).Label(s.Name + " 的查找路径").Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, s.Name+" 的查找路径").Font(monoFont).FontSize(14).FontWeight(600).MinWidth(0).SingleLine()
+			ui.Text(c, s.Name+" 的查找路径").FontSize(15).FontWeight(600).MinWidth(0).SingleLine()
 		})
 		ui.Row(c).Gap(6).AlignItems(ui.Stretch).Wrap().Children(func() {
 			for i, l := range v.Layers {
 				if i > 0 && !narrow {
-					ui.Icon(c, glyph("chevron-right")).FontSize(12).TextColor(muted).AlignSelf(ui.Center).Shrink(0)
+					ui.Icon(c, glyph("chevron-right")).FontSize(13).TextColor(muted).AlignSelf(ui.Center).Shrink(0)
 				}
 				src, has := s.In(l.Layer)
 				a.lookupCard(c, v, i+1, l, src, has, has && src.Layer == w.Layer, narrow)
@@ -433,7 +429,7 @@ func (a *App) effectiveDetail(c *ui.Context, v *skill.EffectiveView, s skill.Eff
 			})
 		}
 	})
-	ui.Text(c, "换个工作目录，生效结果会重新计算。").FontSize(11).TextColor(muted)
+	ui.Text(c, "换个工作目录，生效结果会重新计算。").FontSize(11.5).TextColor(muted)
 }
 
 // lookupCard is one step of the lookup: its place in the order, where it
@@ -459,7 +455,7 @@ func (a *App) lookupCard(c *ui.Context, v *skill.EffectiveView, n int, l skill.L
 		box.Basis(160)
 	}
 	if won {
-		box.Border(1.5, t.Text)
+		box.Border(1.5, t.Accent)
 	} else {
 		box.Border(1, t.Border)
 	}
@@ -468,15 +464,15 @@ func (a *App) lookupCard(c *ui.Context, v *skill.EffectiveView, n int, l skill.L
 	}
 	box.Children(func() {
 		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-			number(c, fmt.Sprint(n)).FontSize(10).TextColor(muted)
-			ui.Text(c, l.Layer.Label()).FontSize(12.5).FontWeight(600).Grow(1).SingleLine()
-			ui.Icon(c, glyph(icon)).FontSize(14).TextColor(iconColor).Shrink(0)
+			number(c, fmt.Sprint(n)).FontSize(11).TextColor(muted)
+			ui.Text(c, l.Layer.Label()).FontSize(13).FontWeight(600).Grow(1).SingleLine()
+			ui.Icon(c, glyph(icon)).FontSize(15).TextColor(iconColor).Shrink(0)
 		})
-		where := ui.Text(c, path).FontSize(11).TextColor(t.TextMuted).SingleLine().Tooltip(path)
+		where := ui.Text(c, path).FontSize(11.5).TextColor(t.TextMuted).SingleLine().Tooltip(path)
 		if has || l.Path != "" {
 			where.Font(monoFont)
 		}
-		ui.Text(c, status).FontSize(11.5).TextColor(statusColor).SingleLine()
+		ui.Text(c, status).FontSize(12).TextColor(statusColor).SingleLine()
 	})
 }
 
@@ -488,11 +484,11 @@ func (a *App) shadowedCopy(c *ui.Context, v *skill.EffectiveView, winner skill.E
 	e := sh.Entry
 	ui.Column(c).Gap(4).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, sh.Layer.Label()).FontSize(12.5).FontWeight(500).Shrink(0)
-			ui.Text(c, a.layerPath(v, e.Path)).Font(monoFont).FontSize(11).TextColor(t.TextMuted).SingleLine().MinWidth(0)
+			ui.Text(c, sh.Layer.Label()).FontSize(13).FontWeight(500).Shrink(0)
+			ui.Text(c, a.layerPath(v, e.Path)).Font(monoFont).FontSize(11.5).TextColor(t.TextMuted).SingleLine().MinWidth(0)
 		})
 		if note := skill.AgeNote(winner, e); note != "" {
-			ui.Text(c, note).FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, note).FontSize(13).TextColor(t.TextMuted)
 		}
 		readOnly := e.System || e.RootRole == skill.RoleBuiltin
 		if readOnly {

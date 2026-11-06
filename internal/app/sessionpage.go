@@ -60,7 +60,7 @@ func (a *App) sessionPage(c *ui.Context, d *sessionDetailData, width float32) {
 				return
 			}
 			if root.Incomplete {
-				ui.Text(c, "当前会话记录不完整").FontSize(12).TextColor(t.Warning)
+				ui.Text(c, "当前会话记录不完整").FontSize(13).TextColor(t.Warning)
 			}
 			a.sessionPhases(c, d)
 			index := a.sessionTurnIndex(d)
@@ -95,23 +95,23 @@ func (a *App) sessionHeader(c *ui.Context, d *sessionDetailData, width float32) 
 			ui.Text(c, recentLabel(root)).FontSize(22).FontWeight(600).SingleLine().Tooltip(recentLabel(root))
 			ui.Row(c).Gap(8).AlignItems(ui.Center).MinWidth(0).Children(func() {
 				ui.Box(c).Size(8, 8).Radius(4).Shrink(0).Background(agentColor(root.Agent, t.Dark))
-				ui.Text(c, sessionAgentName(root.Agent)).FontSize(12.5).Shrink(0).SingleLine()
-				sep := func() { ui.Text(c, "·").FontSize(12).TextColor(muted).Shrink(0) }
+				ui.Text(c, sessionAgentName(root.Agent)).FontSize(13).Shrink(0).SingleLine()
+				sep := func() { ui.Text(c, "·").FontSize(13).TextColor(muted).Shrink(0) }
 				if len(d.models) > 0 {
 					sep()
-					number(c, d.models[0].name).FontSize(12).TextColor(t.TextMuted).Shrink(0).SingleLine()
+					number(c, d.models[0].name).FontSize(13).TextColor(t.TextMuted).Shrink(0).SingleLine()
 				}
 				if root.CWD != "" {
 					sep()
-					number(c, shortPath(a.home, root.CWD)).FontSize(12).TextColor(t.TextMuted).MinWidth(0).SingleLine().Tooltip(root.CWD)
+					number(c, shortPath(a.home, root.CWD)).FontSize(13).TextColor(t.TextMuted).MinWidth(0).SingleLine().Tooltip(root.CWD)
 				}
 				if root.GitBranch != "" {
 					sep()
-					number(c, root.GitBranch).FontSize(12).TextColor(t.TextMuted).MinWidth(0).SingleLine()
+					number(c, root.GitBranch).FontSize(13).TextColor(t.TextMuted).MinWidth(0).SingleLine()
 				}
 				if span := sessionClockRange(root); span != "" {
 					sep()
-					ui.Text(c, span).FontSize(12).TextColor(t.TextMuted).Shrink(0).SingleLine()
+					ui.Text(c, span).FontSize(13).TextColor(t.TextMuted).Shrink(0).SingleLine()
 				}
 			})
 		})
@@ -120,13 +120,13 @@ func (a *App) sessionHeader(c *ui.Context, d *sessionDetailData, width float32) 
 	cells := func(align ui.Align) {
 		for _, m := range stats {
 			ui.Column(c).Gap(3).AlignItems(align).Shrink(0).Tooltip(m.tip).Children(func() {
-				ui.Text(c, m.label).FontSize(11).TextColor(muted)
+				ui.Text(c, m.label).FontSize(11.5).TextColor(muted)
 				v := number(c, m.value).FontSize(17).FontWeight(600)
 				if m.muted {
 					v.TextColor(muted)
 				}
 				if m.note != "" {
-					number(c, m.note).FontSize(10.5).TextColor(muted)
+					number(c, m.note).FontSize(11).TextColor(muted)
 				}
 			})
 		}
@@ -214,10 +214,10 @@ func (a *App) sessionPhases(c *ui.Context, d *sessionDetailData) {
 	ui.Column(c).Gap(10).Children(func() {
 		phaseBar(c, p, waiting, away)
 		if !session.LookupAgent(d.session.Agent).PermissionWait {
-			ui.Text(c, "模型时间按输入完成到响应结束的间隔估算；权限等待暂不支持").FontSize(11).TextColor(muted).MaxLines(2)
+			ui.Text(c, "模型时间按输入完成到响应结束的间隔估算；权限等待暂不支持").FontSize(11.5).TextColor(muted).MaxLines(2)
 		}
 		if unlinked := unlinkedConcerns(d); unlinked > 0 {
-			ui.Textf(c, "另有 %d 处子 Agent 耗时异常无法关联到轮次，见下方的 Agent 调用", unlinked).FontSize(11).TextColor(muted).MaxLines(2)
+			ui.Textf(c, "另有 %d 处子 Agent 耗时异常无法关联到轮次，见下方的 Agent 调用", unlinked).FontSize(11.5).TextColor(muted).MaxLines(2)
 		}
 	})
 }
@@ -269,7 +269,7 @@ func phaseBar(c *ui.Context, p phaseTotals, waiting, away time.Duration) {
 			waits = append(waits, "离开 ≈ "+session.FormatDuration(away))
 		}
 		if len(waits) > 0 {
-			number(c, strings.Join(waits, " · ")).FontSize(11).TextColor(muted).Tooltip("轮与轮之间的间隔不计入活跃时间")
+			number(c, strings.Join(waits, " · ")).FontSize(11.5).TextColor(muted).Tooltip("轮与轮之间的间隔不计入活跃时间")
 		}
 	})
 }
@@ -283,10 +283,10 @@ func legendValue(c *ui.Context, color ui.Color, name, value, share, tip string) 
 	}
 	row.Children(func() {
 		ui.Box(c).Size(8, 8).Radius(2).Background(color)
-		ui.Text(c, name).FontSize(12).TextColor(t.TextMuted)
-		number(c, value).FontSize(12)
+		ui.Text(c, name).FontSize(13).TextColor(t.TextMuted)
+		number(c, value).FontSize(13)
 		if share != "" {
-			number(c, share).FontSize(10.5).TextColor(token(t, "ink-3"))
+			number(c, share).FontSize(11).TextColor(token(t, "ink-3"))
 		}
 	})
 }
@@ -320,14 +320,14 @@ func (a *App) turnDetail(c *ui.Context, d *sessionDetailData, index int) {
 		if permissions > 0 {
 			parts = append(parts, fmt.Sprintf("%d 次权限确认", permissions))
 		}
-		number(c, strings.Join(parts, " · ")).FontSize(12).TextColor(muted).Grow(1).MinWidth(0).SingleLine()
+		number(c, strings.Join(parts, " · ")).FontSize(13).TextColor(muted).Grow(1).MinWidth(0).SingleLine()
 		if turn.turn.Interrupted {
-			ui.Text(c, "本轮已中断").FontSize(12).TextColor(t.Warning).Shrink(0)
+			ui.Text(c, "本轮已中断").FontSize(13).TextColor(t.Warning).Shrink(0)
 		}
 		fold := a.foldLongSteps
 		ui.Row(c).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
 			ui.Switch(c, &fold).Label("折叠长步骤")
-			ui.Text(c, "折叠长步骤").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "折叠长步骤").FontSize(13).TextColor(t.TextMuted)
 		})
 		if fold != a.foldLongSteps {
 			a.setFoldLongSteps(fold)
@@ -335,7 +335,7 @@ func (a *App) turnDetail(c *ui.Context, d *sessionDetailData, index int) {
 		}
 	})
 	ui.Row(c).Gap(10).Padding(9, 12).Radius(7).Background(t.SurfaceHover).AlignItems(ui.Start).Label("本轮输入").Children(func() {
-		ui.Icon(c, glyph("user")).FontSize(14).TextColor(t.TextMuted).Margin(1, 0, 0, 0)
+		ui.Icon(c, glyph("user")).FontSize(15).TextColor(t.TextMuted).Margin(1, 0, 0, 0)
 		ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
 			switch {
 			case replay == nil || replay.err != "":
@@ -352,7 +352,7 @@ func (a *App) turnDetail(c *ui.Context, d *sessionDetailData, index int) {
 					p.TextColor(t.TextMuted)
 				}
 				if n := content.context[turn.index]; n > 0 {
-					ui.Textf(c, "另有 %d 条自动注入的上下文，可在回放中展开", n).FontSize(11).TextColor(muted)
+					ui.Textf(c, "另有 %d 条自动注入的上下文，可在回放中展开", n).FontSize(11.5).TextColor(muted)
 				}
 			}
 		})
@@ -361,7 +361,7 @@ func (a *App) turnDetail(c *ui.Context, d *sessionDetailData, index int) {
 		ui.Box(c).Width(stepLabelWidth).Shrink(0)
 		ui.Row(c).Grow(1).MinWidth(40).Justify(ui.SpaceBetween).Children(func() {
 			if axis.total <= 0 {
-				ui.Text(c, "时间轴暂不支持").FontSize(10.5).TextColor(muted)
+				ui.Text(c, "时间轴暂不支持").FontSize(11).TextColor(muted)
 				return
 			}
 			marks := []time.Duration{0, axis.total}
@@ -369,7 +369,7 @@ func (a *App) turnDetail(c *ui.Context, d *sessionDetailData, index int) {
 				marks = []time.Duration{0, axis.total / 4, axis.total / 2, axis.total * 3 / 4, axis.total}
 			}
 			for _, m := range marks {
-				number(c, session.FormatDuration(m)).FontSize(10.5).TextColor(muted)
+				number(c, session.FormatDuration(m)).FontSize(11).TextColor(muted)
 			}
 		})
 		ui.Box(c).Width(stepValueWidth).Shrink(0)
@@ -377,7 +377,7 @@ func (a *App) turnDetail(c *ui.Context, d *sessionDetailData, index int) {
 	a.sessions.selectedStep = max(0, min(a.sessions.selectedStep, len(turn.steps)-1))
 	ui.Column(c.Key("steps:" + turn.turn.ID)).FocusGroup(ui.Vertical).Label("单轮步骤瀑布图").Children(func() {
 		if len(turn.steps) == 0 {
-			ui.Text(c, "本轮没有已记录的步骤").FontSize(12).TextColor(t.TextMuted).Padding(8)
+			ui.Text(c, "本轮没有已记录的步骤").FontSize(13).TextColor(t.TextMuted).Padding(8)
 		}
 		// The choice can move while the rows run; the open step follows next frame.
 		chosen, open := a.sessions.selectedStep, a.sessions.stepOpen
@@ -413,13 +413,13 @@ func (a *App) turnDetail(c *ui.Context, d *sessionDetailData, index int) {
 		notes = append(notes, "本轮没有符合条件的长步骤")
 	}
 	notes = append(notes, "区间为日志估算；并行步骤分行展示，不相加")
-	ui.Text(c, strings.Join(notes, " · ")).FontSize(11).TextColor(muted).MaxLines(2)
+	ui.Text(c, strings.Join(notes, " · ")).FontSize(11.5).TextColor(muted).MaxLines(2)
 	for _, e := range turnEvents(content, index) {
 		text := e.Name
 		if e.Text != "" {
 			text += " · " + firstLine(e.Text)
 		}
-		number(c, stepClock(e.Start)+"  "+text).FontSize(11).TextColor(t.TextMuted).SingleLine().Tooltip(e.Text)
+		number(c, stepClock(e.Start)+"  "+text).FontSize(11.5).TextColor(t.TextMuted).SingleLine().Tooltip(e.Text)
 	}
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Padding(10, 0, 0, 0).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Children(func() {
 		if turn.gap > 0 {
@@ -428,7 +428,7 @@ func (a *App) turnDetail(c *ui.Context, d *sessionDetailData, index int) {
 			if turn.gapAway {
 				text = "之后约 " + session.FormatDuration(turn.gap) + " 没有记录（日志无精确起止），视为离开，不算本轮耗时。"
 			}
-			ui.Text(c, text).FontSize(12).TextColor(t.TextMuted).Grow(1).MinWidth(0).MaxLines(2)
+			ui.Text(c, text).FontSize(13).TextColor(t.TextMuted).Grow(1).MinWidth(0).MaxLines(2)
 		} else {
 			ui.Spacer(c)
 		}
@@ -519,7 +519,7 @@ func (a *App) stepRow(c *ui.Context, turn sessionTurnView, i int, step sessionSt
 	b := ui.ButtonBase(c.Key(i)).Height(36).Padding(0, 8).Gap(10).Radius(6).AlignItems(ui.Center).Border(1, ui.Transparent).Label(label).Tooltip(label)
 	switch {
 	case selected:
-		b.Background(t.Surface).Border(1, token(t, "line-strong"))
+		b.Background(token(t, "selected"))
 	case b.Hovered():
 		b.Background(t.SurfaceHover)
 	}
@@ -540,18 +540,18 @@ func (a *App) stepRow(c *ui.Context, turn sessionTurnView, i int, step sessionSt
 			if open {
 				chevron = "chevron-down"
 			}
-			ui.Icon(c, glyph(chevron)).FontSize(11).TextColor(token(t, "ink-3")).Shrink(0)
+			ui.Icon(c, glyph(chevron)).FontSize(11.5).TextColor(token(t, "ink-3")).Shrink(0)
 			glyphColor := t.TextMuted
 			if step.child != nil {
 				glyphColor = sessionColor("phase-sub", t.Dark)
 			}
-			ui.Icon(c, glyph(icon)).FontSize(14).TextColor(glyphColor).Shrink(0)
+			ui.Icon(c, glyph(icon)).FontSize(15).TextColor(glyphColor).Shrink(0)
 			n := ui.Text(c, name).FontSize(13).Shrink(1).MinWidth(0).SingleLine().MaxWidth(150)
 			if selected {
 				n.FontWeight(600)
 			}
 			if detail != "" {
-				number(c, detail).FontSize(11.5).TextColor(token(t, "ink-3")).MinWidth(0).SingleLine()
+				number(c, detail).FontSize(12).TextColor(token(t, "ink-3")).MinWidth(0).SingleLine()
 			}
 		})
 		stepTrack(c, turn, step, axis)
@@ -559,7 +559,7 @@ func (a *App) stepRow(c *ui.Context, turn sessionTurnView, i int, step sessionSt
 		if a.foldLongSteps && step.elapsed.Known && session.FoldLongStep(step.elapsed.Value, turn.phases.total) && !step.start.IsZero() && !step.end.IsZero() {
 			value += " ∕∕"
 		}
-		v := number(c, value).FontSize(12).TextColor(t.TextMuted).Width(stepValueWidth).Shrink(0).TextAlign(ui.End).SingleLine()
+		v := number(c, value).FontSize(13).TextColor(t.TextMuted).Width(stepValueWidth).Shrink(0).TextAlign(ui.End).SingleLine()
 		if stepFailed(step, content) {
 			v.TextColor(t.Warning)
 		}
@@ -584,7 +584,7 @@ func (a *App) stepInspector(c *ui.Context, d *sessionDetailData, index int, cont
 	muted := token(t, "ink-3")
 	turn := d.turns[index]
 	if len(turn.steps) == 0 {
-		ui.Text(c, "本轮没有已记录的步骤").FontSize(12).TextColor(t.TextMuted)
+		ui.Text(c, "本轮没有已记录的步骤").FontSize(13).TextColor(t.TextMuted)
 		return
 	}
 	s := turn.steps[max(0, min(a.sessions.selectedStep, len(turn.steps)-1))]
@@ -593,8 +593,8 @@ func (a *App) stepInspector(c *ui.Context, d *sessionDetailData, index int, cont
 		ui.Row(c).Wrap().Gap(14).Children(func() {
 			for _, fact := range facts {
 				ui.Column(c).Gap(2).Width(150).Children(func() {
-					ui.Text(c, fact[0]).FontSize(11).TextColor(t.TextMuted).SingleLine()
-					v := ui.Text(c, fact[1]).Font(monoFont).FontSize(12).MaxLines(2).Tooltip(fact[1])
+					ui.Text(c, fact[0]).FontSize(11.5).TextColor(t.TextMuted).SingleLine()
+					v := ui.Text(c, fact[1]).FontSize(13).MaxLines(2).Tooltip(fact[1])
 					if fact[1] == "暂不支持" || fact[1] == "未记录" {
 						v.TextColor(muted)
 					}
@@ -602,14 +602,14 @@ func (a *App) stepInspector(c *ui.Context, d *sessionDetailData, index int, cont
 			}
 		})
 		if s.tool != nil && s.tool.PermissionWait {
-			ui.Text(c, "权限等待为整个工具间隔的估算，包含执行时间。").FontSize(11).TextColor(muted)
+			ui.Text(c, "权限等待为整个工具间隔的估算，包含执行时间。").FontSize(11.5).TextColor(muted)
 		}
 		if content != nil {
 			a.stepContentBlocks(c, turn, s, content)
 		}
 		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-			ui.Icon(c, glyph("lock")).FontSize(12).TextColor(muted)
-			ui.Text(c, "内容从原始日志按需读取，只留在内存，不写入缓存。").FontSize(11.5).TextColor(muted).MinWidth(0)
+			ui.Icon(c, glyph("lock")).FontSize(13).TextColor(muted)
+			ui.Text(c, "内容从原始日志按需读取，只留在内存，不写入缓存。").FontSize(12).TextColor(muted).MinWidth(0)
 		})
 	})
 }
@@ -622,7 +622,7 @@ func (a *App) stepContentBlocks(c *ui.Context, turn sessionTurnView, s sessionSt
 	if r := s.request; r != nil {
 		entries := content.byRequest[r.ID]
 		if len(entries) == 0 && len(content.calls[r.ID]) == 0 {
-			ui.Text(c, "日志没有记录这次请求的内容").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "日志没有记录这次请求的内容").FontSize(13).TextColor(t.TextMuted)
 		}
 		// Thinking logged as a signature-only block beside one with text
 		// shows once, as the text; signatures alone are noted once.
@@ -635,7 +635,7 @@ func (a *App) stepContentBlocks(c *ui.Context, turn sessionTurnView, s sessionSt
 			case session.EntryThinking:
 				if strings.TrimSpace(e.Text) == "" {
 					if !thought && !noted {
-						ui.Text(c, "思考 · 日志只保存了签名，没有思考正文").FontSize(12).TextColor(t.TextMuted)
+						ui.Text(c, "思考 · 日志只保存了签名，没有思考正文").FontSize(13).TextColor(t.TextMuted)
 					}
 					noted = true
 					continue
@@ -652,13 +652,13 @@ func (a *App) stepContentBlocks(c *ui.Context, turn sessionTurnView, s sessionSt
 			for _, call := range calls {
 				names = append(names, call.Name)
 			}
-			ui.Text(c, "发起工具调用 · "+strings.Join(compactNames(names), "、")+"（见后续步骤）").FontSize(12).TextColor(t.TextMuted).MaxLines(3)
+			ui.Text(c, "发起工具调用 · "+strings.Join(compactNames(names), "、")+"（见后续步骤）").FontSize(13).TextColor(t.TextMuted).MaxLines(3)
 		}
 	}
 	if s.tool != nil {
 		e, ok := content.byTool[s.tool.ID]
 		if !ok {
-			ui.Text(c, "日志没有记录这次调用的输入和输出").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "日志没有记录这次调用的输入和输出").FontSize(13).TextColor(t.TextMuted)
 			return
 		}
 		a.toolInput(c, key+":in", e.Input, 0)
@@ -667,7 +667,7 @@ func (a *App) stepContentBlocks(c *ui.Context, turn sessionTurnView, s sessionSt
 			title = "输出 · 失败"
 		}
 		if e.End.IsZero() {
-			ui.Text(c, "没有记录输出").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "没有记录输出").FontSize(13).TextColor(t.TextMuted)
 		} else {
 			a.replayText(c, key+":out", title, e.Text, e.Truncated, terminalBlock)
 		}
@@ -699,7 +699,7 @@ func (a *App) sessionExtras(c *ui.Context, d *sessionDetailData, width float32) 
 			a.sessionCalls(c, "Skill 调用", d.skills, unsupported, t.Text)
 			a.sessionCalls(c, "工具调用", d.tools, false, tool)
 		}
-		ui.Text(c, "时间与速率为估算；用量包含已关联父会话的子 Agent，缺失字段不按零处理。").FontSize(11).TextColor(token(t, "ink-3")).MaxLines(3)
+		ui.Text(c, "时间与速率为估算；用量包含已关联父会话的子 Agent，缺失字段不按零处理。").FontSize(11.5).TextColor(token(t, "ink-3")).MaxLines(3)
 	})
 }
 
@@ -721,7 +721,7 @@ func (a *App) sessionBar(c *ui.Context) {
 			b.Background(t.SurfaceHover)
 		}
 		b.Children(func() {
-			ui.Icon(c, glyph("arrow-left")).FontSize(14).TextColor(t.TextMuted)
+			ui.Icon(c, glyph("arrow-left")).FontSize(15).TextColor(t.TextMuted)
 			if text != "" {
 				label := ui.Text(c, text).FontSize(13).TextColor(t.TextMuted).SingleLine()
 				if hover {
@@ -736,7 +736,7 @@ func (a *App) sessionBar(c *ui.Context) {
 	}
 	if s.replayOpen {
 		back("返回会话详情", "")
-		ui.Text(c, title).FontSize(14).FontWeight(600).MinWidth(0).Shrink(1).SingleLine().Tooltip(title)
+		ui.Text(c, title).FontSize(15).FontWeight(600).MinWidth(0).Shrink(1).SingleLine().Tooltip(title)
 		ui.Box(c).Grow(1).MinWidth(8)
 		ui.SearchField(c, &s.replayQuery).Label("在对话中查找").Placeholder("在对话中查找").Width(200).Height(28).Radius(7).
 			Background(t.Surface).Border(1, t.Border).PlaceholderColor(token(t, "ink-3")).Shrink(1).MinWidth(100)
@@ -744,7 +744,7 @@ func (a *App) sessionBar(c *ui.Context) {
 		return
 	}
 	back("返回全部会话", "全部会话")
-	ui.Icon(c, glyph("chevron-right")).FontSize(12).TextColor(token(t, "ink-3")).Shrink(0)
+	ui.Icon(c, glyph("chevron-right")).FontSize(13).TextColor(token(t, "ink-3")).Shrink(0)
 	ui.Text(c, title).FontSize(13).MinWidth(0).Shrink(1).SingleLine().Tooltip(title)
 	ui.Box(c).Grow(1).MinWidth(8)
 	step := func(icon, label string, by int) {
@@ -753,7 +753,7 @@ func (a *App) sessionBar(c *ui.Context) {
 		if b.Hovered() {
 			b.Background(t.SurfaceHover)
 		}
-		b.Children(func() { ui.Icon(c, glyph(icon)).FontSize(14).TextColor(t.TextMuted) })
+		b.Children(func() { ui.Icon(c, glyph(icon)).FontSize(15).TextColor(t.TextMuted) })
 		if b.Clicked() {
 			a.stepSession(by)
 			c.Invalidate()
@@ -767,7 +767,7 @@ func (a *App) sessionBar(c *ui.Context) {
 	if outlineButton(c, "reveal-log", "定位原始日志").Height(28).Tooltip("在访达中显示原始日志").Clicked() {
 		a.reveal(d.session.Path)
 	}
-	replay := inkButton(c, "open-replay", "messages", "回放对话").Disabled(d.session.UnsupportedReason != "")
+	replay := primaryButton(c, "open-replay", "messages", "回放对话").Disabled(d.session.UnsupportedReason != "")
 	if replay.Clicked() {
 		s.replayOpen = true
 		s.focusTurn = true
