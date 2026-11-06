@@ -240,7 +240,7 @@ func (a *App) insightProjects(c *ui.Context) {
 				}
 				if m.Item("查看配置").Chosen() {
 					a.insights.configDir = p.Path
-					a.insights.tab = 5
+					a.insights.tab = tabConfig
 				}
 				if m.Item("在访达中显示").Chosen() {
 					a.reveal(p.Path)

@@ -36,8 +36,9 @@ type sessionState struct {
 	selectedStep    int
 	stepOpen        bool // the chosen step shows its content under its row
 	focusTurn       bool
-	turnFilter      int  // the turn list shows all, sub-Agent or confirmation turns
-	allTurns        bool // a long turn list shows every turn
+	turnFilter      int    // the turn list shows all, sub-Agent or confirmation turns
+	allTurns        bool   // a long turn list shows every turn
+	allFindings     string // the session whose findings all show
 	detail          *sessionDetailData
 	detailSource    *session.Snapshot
 	replay          []*replayState

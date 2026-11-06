@@ -64,6 +64,7 @@ func (a *App) sessionPage(c *ui.Context, d *sessionDetailData, width float32) {
 			}
 			a.sessionPhases(c, d)
 			index := a.sessionTurnIndex(d)
+			a.sessionDiagnosis(c, d, index)
 			switch {
 			case index < 0:
 				ui.Text(c, "没有可识别的轮次").FontSize(13).TextColor(t.TextMuted)
@@ -344,7 +345,7 @@ func (a *App) turnDetail(c *ui.Context, d *sessionDetailData, index int) {
 			default:
 				text, quiet := turnPrompt(turn, content)
 				if prompts := content.prompts[turn.index]; len(prompts) > 0 && !quiet {
-					text = clipLines(strings.TrimSpace(prompts[0].Text), 3, 400)
+					text = clipLines(strings.TrimSpace(commandText(prompts[0].Text)), 3, 400)
 				}
 				p := ui.Text(c, text).FontSize(13).MaxLines(3).Selectable()
 				if quiet {

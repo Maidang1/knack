@@ -19,7 +19,17 @@ import (
 // the configuration behind it. Everything is read-only.
 const insightsPage = "insights"
 
-var insightTabs = []string{"费用", "上下文", "技能", "摩擦", "项目", "配置"}
+var insightTabs = []string{"费用", "上下文", "技能", "技能评测", "摩擦", "项目", "配置"}
+
+const (
+	tabCost = iota
+	tabContext
+	tabSkills
+	tabEval
+	tabFriction
+	tabProjects
+	tabConfig
+)
 
 type insightsState struct {
 	tab      int
@@ -37,6 +47,14 @@ type insightsState struct {
 	allSkills  bool
 	allProject bool
 	allRoots   bool
+
+	eval        *insightEval
+	evalSkill   string // the skill whose evaluation is open
+	evalSet     *evalSet
+	allEvals    bool
+	allEpisodes bool
+	files       map[string]skillFiles // by skill path, per scan
+	filesGen    int
 }
 
 type insightReport struct {
@@ -91,7 +109,7 @@ func (a *App) insightsPane(c *ui.Context) {
 	ui.Row(c).Shrink(0).Padding(0, 32).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
 		underlineTabs(c, "insight-tabs", "诊断标签", "诊断 ", &a.insights.tab, insightTabs, counts)
 	})
-	if a.sessions.snapshot == nil && a.insights.tab != 2 && a.insights.tab != 5 {
+	if a.sessions.snapshot == nil && a.insights.tab != tabSkills && a.insights.tab != tabConfig {
 		if a.sessions.loading {
 			emptyState(c, "诊断", "hourglass", t.TextMuted, "正在读取本地会话", "首次读取可能需要一会儿，读完的部分会先显示。", nil)
 		} else {
@@ -108,17 +126,19 @@ func (a *App) insightsPane(c *ui.Context) {
 				ui.Text(c, "正在读取剩余日志，数字会随读取进度更新").FontSize(11.5).TextColor(token(t, "ink-3"))
 			}
 			switch a.insights.tab {
-			case 0:
+			case tabCost:
 				a.insightCost(c)
-			case 1:
+			case tabContext:
 				a.insightContext(c)
-			case 2:
+			case tabSkills:
 				a.insightSkills(c)
-			case 3:
+			case tabEval:
+				a.insightEval(c)
+			case tabFriction:
 				a.insightFriction(c)
-			case 4:
+			case tabProjects:
 				a.insightProjects(c)
-			case 5:
+			case tabConfig:
 				a.insightConfig(c)
 			}
 		})

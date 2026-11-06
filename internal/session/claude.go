@@ -11,7 +11,7 @@ type claudeFormat struct{ typedRecords }
 func (claudeFormat) Info() AgentInfo {
 	return AgentInfo{ID: Claude, Name: "Claude", Skills: true, OutputRate: true, PermissionWait: true, ToolOutcome: true}
 }
-func (claudeFormat) version() string { return "claude/2" }
+func (claudeFormat) version() string { return "claude/3" }
 func (claudeFormat) layout() layout {
 	return layout{roots: []string{".claude/projects"}, suffixes: []string{".jsonl"}}
 }
@@ -52,7 +52,14 @@ func (claudeFormat) parse(p *parser, o object, at time.Time) {
 			for _, b := range bs {
 				if str(b, "type") == "tool_result" {
 					p.result(str(b, "tool_use_id"), at, o, b)
+					p.output(str(b, "tool_use_id"), contentText(b["content"]))
 				}
+			}
+		} else if flag(o, "isMeta") {
+			// A loaded skill's instructions follow its Skill call or the
+			// /command that invoked it.
+			if id := str(o, "sourceToolUseID"); id != "" || flag(o, "turnCompanion") {
+				p.skillContent(id, flag(o, "turnCompanion"), at, contentText(m["content"]))
 			}
 		} else if !flag(o, "isMeta") && !flag(o, "isCompactSummary") && hasUserContent(m, bs) {
 			// Claude Code records an interruption as a user message. It ends
@@ -67,6 +74,11 @@ func (claudeFormat) parse(p *parser, o object, at time.Time) {
 				return
 			}
 			p.begin(str(o, "uuid"), at)
+			text := contentText(m["content"])
+			s.Command = slashCommand(text)
+			if s.Command == "" && len(s.Session.Turns) > 1 {
+				s.Session.Turns[len(s.Session.Turns)-1].Corrects = correction(text)
+			}
 		}
 	case "assistant":
 		s.FormatKnown = true

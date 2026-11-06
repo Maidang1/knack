@@ -232,7 +232,7 @@ func (a *App) tokenMix(c *ui.Context, sum session.Summary, known bool, reason st
 					overviewLink(c, "费用明细 →", func() {
 						a.sessions.agent = cmp.Or(a.sessionAgentFilter(), allAgents)
 						a.page = insightsPage
-						a.insights.tab = 0
+						a.insights.tab = tabCost
 					})
 				})
 			}

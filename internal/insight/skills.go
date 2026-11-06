@@ -226,19 +226,8 @@ func hasTriggerCue(desc string) bool {
 	return false
 }
 
-// EstimateTokens approximates a tokenizer: CJK characters about one token
-// each, other text about four characters a token.
-func EstimateTokens(text string) int {
-	cjk, other := 0, 0
-	for _, r := range text {
-		if unicode.Is(unicode.Han, r) || unicode.Is(unicode.Hiragana, r) || unicode.Is(unicode.Katakana, r) || unicode.Is(unicode.Hangul, r) {
-			cjk++
-		} else {
-			other++
-		}
-	}
-	return cjk + (other+3)/4
-}
+// EstimateTokens approximates a tokenizer; see session.EstimateTokens.
+func EstimateTokens(text string) int { return session.EstimateTokens(text) }
 
 var stopWords = map[string]bool{
 	"the": true, "and": true, "for": true, "use": true, "when": true, "with": true, "this": true, "that": true, "from": true, "into": true,

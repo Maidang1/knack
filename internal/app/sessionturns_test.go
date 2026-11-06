@@ -135,3 +135,12 @@ func TestTurnListCollapse(t *testing.T) {
 		t.Fatal("expanding did not list every turn")
 	}
 }
+
+func TestCommandPromptLine(t *testing.T) {
+	if got := promptLine("<command-message>loop</command-message>\n<command-name>/loop</command-name>\n<command-args>全部开始实现\n第二行</command-args>"); got != "/loop 全部开始实现" {
+		t.Fatalf("command prompt %q", got)
+	}
+	if got := promptLine("<command-name>/clear</command-name>"); got != "/clear" {
+		t.Fatalf("bare command %q", got)
+	}
+}

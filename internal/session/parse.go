@@ -43,6 +43,10 @@ type parseState struct {
 	// message or tool output) and the reasoning time observed since then.
 	InputAt time.Time
 	Think   time.Duration
+	// Claude: the /command a prompt invoked, until its skill text arrives.
+	// Codex: whether the current turn's prompt has been seen.
+	Command  string
+	Prompted bool
 }
 
 type position struct{ turn, item int }
@@ -194,11 +198,12 @@ func (p *parser) use(id, name string, at time.Time, raw json.RawMessage) {
 		return
 	}
 	t := p.turn(at)
+	touchSkills(t, raw)
 	t.Tools = append(t.Tools, ToolCall{ID: id, Name: name, Start: at, InputHash: inputHash(raw)})
 	p.tools[id] = position{len(p.s.Session.Turns) - 1, len(t.Tools) - 1}
 	if name == "Skill" {
 		if skill := str(decode(raw), "skill"); skill != "" {
-			t.Skills = append(t.Skills, SkillCall{Name: skill, ToolID: id, At: at})
+			t.Skills = append(t.Skills, SkillCall{Name: skill, ToolID: id, At: at, Source: SkillByModel})
 		}
 	}
 	p.s.LastReply = time.Time{}

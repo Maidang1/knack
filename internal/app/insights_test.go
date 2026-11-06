@@ -57,6 +57,7 @@ func TestInsightsTabs(t *testing.T) {
 		{"估算费用 · 全部", "重构解析器", "claude-opus-5-5", "未定价", "打开价格表"},
 		{"首个请求输入 · 中位", "32.0K", "按项目", "app"},
 		{"已加载的技能", "90 天未调用 · 按常驻开销排序", "idle"},
+		{"技能加载", "按加载次数", "pdf"},
 		{"工具调用", "疑似循环", "Bash", "×3", "WebFetch", "没有 allow 规则"},
 		{"项目", "app", "Claude"},
 		{"指令文件 · 按加载顺序", "~/.claude/CLAUDE.md", "github", "unused", "notify"},
@@ -94,7 +95,7 @@ func TestInsightsNavigation(t *testing.T) {
 		t.Fatalf("expensive session did not open: page=%s selected=%s", a.page, a.sessions.selected)
 	}
 	a.page = insightsPage
-	a.insights.tab = 4
+	a.insights.tab = tabProjects
 	tt.Frame()
 	click(t, tt, "app · ~/code/app")
 	if a.page != "sessions" || !strings.HasSuffix(a.sessions.query, filepath.Join("code", "app")) {

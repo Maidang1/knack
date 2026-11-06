@@ -12,7 +12,7 @@ func (factoryFormat) Info() AgentInfo {
 		UsageNote: "Factory 本地日志没有 Token 用量字段，Token、缓存与输出速率暂不支持",
 		RateNote:  "没有输出 Token 字段，tok/s 暂不支持"}
 }
-func (factoryFormat) version() string { return "factory/2" }
+func (factoryFormat) version() string { return "factory/3" }
 func (factoryFormat) layout() layout {
 	return layout{roots: []string{".factory/sessions"}, suffixes: []string{".jsonl"}}
 }
@@ -39,6 +39,7 @@ func (factoryFormat) parse(p *parser, o object, at time.Time) {
 				for _, b := range bs {
 					if str(b, "type") == "tool_result" {
 						p.result(str(b, "tool_use_id"), at, o, b)
+						p.output(str(b, "tool_use_id"), contentText(b["content"]))
 					}
 				}
 			} else if hasUserContent(m, bs) {
