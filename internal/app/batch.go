@@ -45,20 +45,30 @@ func (a *App) chosenIssues() []skill.Entry {
 
 func (a *App) issueSelectionBar(c *ui.Context, rows []row) {
 	ps := a.state("issues")
-	ui.Row(c).Margin(0, 16, 4, 16).Gap(6).Wrap().AlignItems(ui.Center).Children(func() {
-		ui.Textf(c, "已选 %d 项", ps.chosen.Len()).FontSize(12).TextColor(c.Theme().TextMuted).SingleLine()
-		if ui.Button(c, "全选").Height(toolbarControlHeight).Padding(0, 6).Disabled(len(rows) == 0).
-			Tooltip("选择当前列表全部项目，也可用 ⌘A；⌘单击多选，Shift 单击连续选择").Clicked() {
+	t := c.Theme()
+	link := func(key, text, tip string, disabled bool) bool {
+		b := ui.ButtonBase(c.Key(key)).Label(text).Padding(2, 4).Radius(4).Disabled(disabled).Tooltip(tip)
+		if b.Hovered() {
+			b.Background(t.SurfaceHover)
+		}
+		b.Children(func() { ui.Text(c, text).FontSize(12).TextColor(t.TextMuted).SingleLine() })
+		return b.Clicked()
+	}
+	ui.Row(c).Padding(0, 14, 2, 18).Gap(6).Wrap().AlignItems(ui.Center).Children(func() {
+		note := "勾选多项后可以一起处理"
+		if ps.chosen.Len() > 0 {
+			note = fmt.Sprintf("已选 %d 项", ps.chosen.Len())
+		}
+		ui.Text(c, note).FontSize(12).TextColor(token(t, "ink-3")).SingleLine().Grow(1).MinWidth(0)
+		if ps.chosen.Len() > 0 && link("clear", "取消选择", "", false) {
+			ps.chosen.Clear()
+			c.Invalidate()
+		}
+		if link("all", "全选", "选择当前列表全部项目，也可用 ⌘A；⌘单击多选，Shift 单击连续选择", len(rows) == 0) {
 			for _, r := range rows {
 				ps.chosen.Add(r.key)
 			}
 			c.Invalidate()
-		}
-		if ps.chosen.Len() > 0 {
-			if ui.Button(c, "取消选择").Height(toolbarControlHeight).Padding(0, 6).Clicked() {
-				ps.chosen.Clear()
-				c.Invalidate()
-			}
 		}
 	})
 }

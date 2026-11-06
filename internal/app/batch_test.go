@@ -21,6 +21,7 @@ func issueBatchFixture(t *testing.T) (*App, *ui.Tester) {
 	writeSkill(t, filepath.Join(home, ".claude", "skills", "local"), "local")
 	a := New(home)
 	a.startScan()
+	a.page = "issues"
 	tt := ui.NewTester(a.View, 1180, 760)
 	tt.SetTitleBar(ui.TitleBar{Height: 52, Left: 70})
 	return a, tt

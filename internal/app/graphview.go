@@ -2,6 +2,8 @@ package app
 
 import (
 	"fmt"
+	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -10,12 +12,16 @@ import (
 )
 
 const (
-	nodeW    = 196
-	nodeH    = 34
-	colGap   = 88
-	rowGap   = 12
-	graphPad = 24
+	nodeW    = 232
+	nodeH    = 36
+	colGap   = 72
+	rowGap   = 24
+	graphPad = 32
 )
+
+// graphPage is the design's 依赖图: the files of one skill and what they
+// point at, with the chosen file's references beside it.
+const graphPage = "graph"
 
 type spot struct{ x, y float32 }
 
@@ -40,133 +46,239 @@ func placeGraph(g *skill.Graph) (map[string]spot, float32, float32) {
 	return pos, w, h
 }
 
-func (a *App) inGraph() bool {
-	if !a.browsePage() {
-		return false
-	}
-	return a.state(a.page).view == 1
-}
-
 // browsePage is a page that lists the skills of one directory.
 func (a *App) browsePage() bool {
 	return a.page == "pool" || strings.HasPrefix(a.page, "root:") || strings.HasPrefix(a.page, "repo:")
 }
 
-func (a *App) showGraph(name string) {
-	ps := a.state(a.page)
-	ps.view = 1
-	ps.node = name
+// showGraph opens the 依赖图 page on a skill.
+func (a *App) showGraph(e skill.Entry) {
+	a.graphPick = e.Path
+	a.page = graphPage
+	a.state(graphPage).node = "SKILL.md"
 }
 
-func (a *App) graphPane(c *ui.Context) {
+// graphEntry is the skill the 依赖图 page shows: the one picked, else the
+// first of the library.
+func (a *App) graphEntry() (skill.Entry, bool) {
+	entries := a.libraryEntries()
+	for _, e := range entries {
+		if e.Path == a.graphPick {
+			return e, true
+		}
+	}
+	for _, e := range entries {
+		if e.HasDocument {
+			a.graphPick = e.Path
+			return e, true
+		}
+	}
+	return skill.Entry{}, false
+}
+
+// fileGraphFor reads a skill's files in the background; until they are
+// read it returns nil.
+func (a *App) fileGraphFor(e skill.Entry) *graphState {
+	key := fmt.Sprintf("file:%s|%s|%d", e.Path, e.TreeHash, e.DocModTime.UnixNano())
+	if state := a.graphs[key]; state != nil {
+		return state
+	}
+	state := &graphState{loading: true}
+	a.graphs[key] = state
+	scope := append([]skill.Entry(nil), a.libraryEntries()...)
+	run := func() {
+		g, err := skill.FileGraph(e, scope)
+		a.post(func() {
+			state.loading = false
+			state.graph = g
+			if err != nil {
+				state.err = "无法读取这个技能的目录：" + err.Error()
+			}
+		})
+	}
+	if a.win == nil {
+		run()
+	} else {
+		go run()
+	}
+	return state
+}
+
+// graphPicker chooses the skill in the content bar.
+func (a *App) graphPicker(c *ui.Context) {
 	t := c.Theme()
-	ps := a.state(a.page)
-	ui.Column(c).Fill().Children(func() {
-		root, ok := a.rootByPage(a.page)
-		if !ok || a.snap == nil {
-			ui.Text(c, a.emptyText()).Padding(16).TextColor(t.TextMuted)
-			return
+	e, ok := a.graphEntry()
+	name := "选择技能"
+	if ok {
+		name = e.Name
+	}
+	b := ui.ButtonBase(c.Key("graph-pick")).Height(28).Padding(0, 10).Gap(6).Radius(6).AlignItems(ui.Center).
+		Background(t.Surface).Border(1, token(t, "line-strong")).Label("依赖图技能：" + name).MaxWidth(260)
+	if b.Hovered() {
+		b.Background(t.SurfaceHover)
+	}
+	b.Children(func() {
+		ui.Text(c, name).Font(monoFont).FontSize(12).MinWidth(0).SingleLine()
+		ui.Icon(c, glyph("chevron-down")).FontSize(11).TextColor(token(t, "ink-3")).Shrink(0)
+	})
+	b.PopoverMenuButton(func(m *ui.Menu) {
+		entries := a.libraryEntries()
+		count := map[string]int{}
+		for _, x := range entries {
+			count[x.Name]++
 		}
-		g := a.graphFor(root.ID)
-		if state := a.graphs[root.ID]; state != nil {
-			if state.loading {
-				ui.Text(c, "正在读取正文依赖…").Padding(10, 16).FontSize(12).TextColor(t.TextMuted)
+		for _, x := range entries {
+			if !x.HasDocument {
+				continue
 			}
+			label := x.Name
+			if count[x.Name] > 1 {
+				label += " · " + x.RootName
+			}
+			if m.Item(label).Checked(x.Path == a.graphPick).Chosen() {
+				a.showGraph(x)
+				c.Invalidate()
+			}
+		}
+	})
+}
+
+// graphLegend names the three kinds of line.
+func (a *App) graphLegend(c *ui.Context) {
+	t := c.Theme()
+	ui.Row(c).Gap(14).AlignItems(ui.Center).Shrink(0).Children(func() {
+		a.legend(c, "明确引用", t.TextMuted, false)
+		a.legend(c, "正文推断", token(t, "line-strong"), false)
+		a.legend(c, "缺失", t.Danger, false)
+	})
+}
+
+func (a *App) graphPage(c *ui.Context) {
+	t := c.Theme()
+	ps := a.state(graphPage)
+	e, ok := a.graphEntry()
+	if !ok || a.snap == nil {
+		emptyState(c, "没有技能", "graph", t.TextMuted, "还没有可以查看的技能", a.emptyText(), nil)
+		return
+	}
+	state := a.fileGraphFor(e)
+	if state.graph == nil {
+		ui.Column(c).Fill().Center().Children(func() {
 			if state.err != "" {
-				ui.Text(c, state.err).Padding(10, 16).FontSize(12).TextColor(t.Warning)
-			}
-		}
-		if len(g.Nodes) == 0 {
-			ui.Text(c, "这里的 skill 之间没有发现依赖。").Padding(16, 16, 0, 16).Bold()
-			ui.Text(c, "列表只读取头部 dependencies / requires 字段。打开依赖图后，才读取正文并推断其中提到的其他 skill。").
-				Padding(6, 16, 0, 16).FontSize(12).TextColor(t.TextMuted)
-			return
-		}
-		skills := 0
-		missing := 0
-		for _, n := range g.Nodes {
-			switch n.Kind {
-			case skill.NodeSkill:
-				skills++
-			case skill.NodeMissing:
-				missing++
-			}
-		}
-		line := fmt.Sprintf("%d 个 skill 有依赖关系 · %d 个互相独立", skills, len(g.Isolated))
-		if missing > 0 {
-			line += fmt.Sprintf(" · %d 个依赖找不到", missing)
-		}
-		ui.Text(c, line).Padding(10, 16, 0, 16).FontSize(12).TextColor(t.TextMuted)
-		ui.Row(c).Padding(8, 16, 6, 16).Gap(16).AlignItems(ui.Center).Children(func() {
-			a.legend(c, "使用", t.TextMuted, false)
-			a.legend(c, "包含子 skill", t.TextMuted, true)
-			a.legend(c, "循环依赖", t.Danger, true)
-		})
-		s := &ps.graph
-		s.prepare(g)
-		viewport := ui.Box(c.Key("graph-viewport")).Grow(1).MinHeight(0).Clip().Focusable().Label("依赖图画布").
-			Description("拖拽空白处平移，滚轮缩放；触摸板双指平移、捏合缩放。方向键平移，+/- 缩放，0 重置，Home 适应全图。").
-			HandleInput(s.input).Cursor(ui.CursorGrab)
-		if s.dragging && !viewport.Pressed() {
-			s.dragging = false
-		}
-		if s.dragging {
-			viewport.Cursor(ui.CursorGrabbing)
-		}
-		x, y, over := viewport.PointerPosition()
-		s.hover = ""
-		if over && viewport.Hovered() && !s.dragging {
-			s.hover = s.nodeAt(x, y)
-		}
-		focus := s.hover
-		if focus == "" {
-			focus = ps.node
-		}
-		highlight := s.highlightPath(focus)
-		viewport.Draw(func(_ *ui.Painter, r ui.Rect) {
-			if s.width != r.W || s.height != r.H {
-				s.width, s.height = r.W, r.H
-				x, y := s.x, s.y
-				s.constrain()
-				if x != s.x || y != s.y {
-					c.Invalidate()
-				}
+				ui.Text(c, state.err).FontSize(12).TextColor(t.Warning)
+			} else {
+				ui.Spinner(c).Size(16, 16).Label("正在读取技能目录")
 			}
 		})
-		viewport.Children(func() {
-			canvas := ui.Box(c).Absolute().Size(s.contentW, s.contentH).TransformOrigin(0, 0).
-				Transform(ui.Scaling(s.zoom, s.zoom).Then(ui.Translation(s.x, s.y)))
-			canvas.Draw(func(p *ui.Painter, r ui.Rect) { a.drawEdges(c, p, r, g, s.positions, highlight) })
-			canvas.Children(func() {
-				for _, n := range g.Nodes {
-					a.graphNode(c, ps, n, s.positions[n.Name], highlight)
-				}
-			})
-		})
-		ui.Row(c).Padding(4, 12).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "拖拽平移 · 滚轮 / 捏合缩放").FontSize(11).TextColor(t.TextMuted).Grow(1).MinWidth(0).SingleLine()
-			ui.Toolbar(c, func() {
-				if ui.Button(c, "−").Size(28, 28).Padding(0).Label("缩小依赖图").Disabled(s.zoom <= graphMinZoom).Clicked() {
-					s.zoomAt(s.zoom/1.2, s.width/2, s.height/2)
-				}
-				if ui.Button(c, fmt.Sprintf("%.0f%%", s.zoom*100)).Width(54).Height(28).Padding(0).Label("重置依赖图缩放").Tooltip("重置到 100%").Clicked() {
-					s.zoom, s.x, s.y = 1, 0, 0
-				}
-				if ui.Button(c, "+").Size(28, 28).Padding(0).Label("放大依赖图").Disabled(s.zoom >= graphMaxZoom).Clicked() {
-					s.zoomAt(s.zoom*1.2, s.width/2, s.height/2)
-				}
-				if ui.Button(c, "适应").Height(28).Padding(0, 8).Label("适应全图").Clicked() {
-					s.fit()
-				}
-			}).Padding(0).Shrink(0).Label("依赖图缩放")
+		return
+	}
+	g := state.graph
+	if _, found := g.Node(ps.node); !found {
+		ps.node = "SKILL.md"
+	}
+	ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
+		ui.Column(c).Grow(1).MinWidth(0).Children(func() { a.graphCanvas(c, ps, e, g) })
+		width, _ := c.Size()
+		if width-a.sidebarWidth() >= 760 {
+			ui.Column(c).Width(300).Shrink(0).BorderWidth(0, 0, 0, 1).BorderColor(t.Border).Children(func() { a.graphDetail(c, e, g, ps.node) })
+		}
+	})
+}
+
+func (a *App) graphCanvas(c *ui.Context, ps *pageState, e skill.Entry, g *skill.Graph) {
+	t := c.Theme()
+	s := &ps.graph
+	s.prepare(g)
+	viewport := ui.Box(c.Key("graph-viewport")).Grow(1).MinHeight(0).Clip().Focusable().Label("依赖图画布").
+		Description("拖拽空白处平移，滚轮缩放；触摸板双指平移、捏合缩放。方向键平移，+/- 缩放，0 重置，Home 适应全图。").
+		HandleInput(s.input).Cursor(ui.CursorGrab)
+	if s.dragging && !viewport.Pressed() {
+		s.dragging = false
+	}
+	if s.dragging {
+		viewport.Cursor(ui.CursorGrabbing)
+	}
+	x, y, over := viewport.PointerPosition()
+	s.hover = ""
+	if over && viewport.Hovered() && !s.dragging {
+		s.hover = s.nodeAt(x, y)
+	}
+	focus := s.hover
+	if focus == "" {
+		focus = ps.node
+	}
+	highlight := s.highlightPath(focus)
+	viewport.Draw(func(_ *ui.Painter, r ui.Rect) {
+		if s.width != r.W || s.height != r.H || !s.placed {
+			s.width, s.height = r.W, r.H
+			x, y := s.x, s.y
+			if !s.placed {
+				// The first view shows the whole graph, centered.
+				s.placed = true
+				s.fit()
+			}
+			s.constrain()
+			if x != s.x || y != s.y {
+				c.Invalidate()
+			}
+		}
+	})
+	viewport.Children(func() {
+		canvas := ui.Box(c).Absolute().Size(s.contentW, s.contentH).TransformOrigin(0, 0).
+			Transform(ui.Scaling(s.zoom, s.zoom).Then(ui.Translation(s.x, s.y)))
+		canvas.Draw(func(p *ui.Painter, r ui.Rect) { a.drawEdges(c, p, r, g, s.positions, highlight) })
+		canvas.Children(func() {
+			for _, n := range g.Nodes {
+				a.graphNode(c, ps, g, n, s.positions[n.Name], highlight)
+			}
 		})
 	})
+	ui.Row(c).Padding(10, 24, 14, 24).Gap(8).AlignItems(ui.Center).Children(func() {
+		ui.Icon(c, glyph("info")).FontSize(12).TextColor(token(t, "ink-3")).Shrink(0)
+		note := "只分析同一技能目录内的文件；指向其他技能的引用来自正文推断。"
+		if n := len(g.Isolated); n > 0 {
+			note += fmt.Sprintf("另有 %d 个文件没有被引用。", n)
+		}
+		ui.Text(c, note).FontSize(11.5).TextColor(token(t, "ink-3")).Grow(1).MinWidth(0).SingleLine().Tooltip(strings.Join(g.Isolated, "\n"))
+		a.zoomControls(c, s)
+	})
+}
+
+func (a *App) zoomControls(c *ui.Context, s *graphCanvasState) {
+	t := c.Theme()
+	ui.Toolbar(c, func() {
+		zoom := func(text, label string, width float32) ui.Element {
+			b := ui.ButtonBase(c.Key("zoom:"+label)).Size(width, 26).Radius(5).AlignItems(ui.Center).Justify(ui.Center).Label(label)
+			if b.Hovered() {
+				b.Background(t.SurfaceHover)
+			}
+			b.Children(func() { number(c, text).FontSize(12) })
+			return b
+		}
+		if zoom("−", "缩小依赖图", 26).Disabled(s.zoom <= graphMinZoom).Clicked() {
+			s.zoomAt(s.zoom/1.2, s.width/2, s.height/2)
+		}
+		if zoom(fmt.Sprintf("%.0f%%", s.zoom*100), "重置依赖图缩放", 48).Tooltip("重置到 100%").Clicked() {
+			s.zoom, s.x, s.y = 1, 0, 0
+		}
+		if zoom("+", "放大依赖图", 26).Disabled(s.zoom >= graphMaxZoom).Clicked() {
+			s.zoomAt(s.zoom*1.2, s.width/2, s.height/2)
+		}
+		fit := ui.ButtonBase(c.Key("zoom:fit")).Size(26, 26).Radius(5).AlignItems(ui.Center).Justify(ui.Center).Label("适应全图").Tooltip("适应全图")
+		if fit.Hovered() {
+			fit.Background(t.SurfaceHover)
+		}
+		fit.Children(func() { ui.Icon(c, glyph("expand")).FontSize(13) })
+		if fit.Clicked() {
+			s.fit()
+		}
+	}).Padding(1).Gap(1).Radius(7).Background(t.Surface).Border(1, token(t, "line-strong")).Shrink(0).Label("依赖图缩放")
 }
 
 func (a *App) legend(c *ui.Context, label string, col ui.Color, dashed bool) {
 	t := c.Theme()
 	ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-		ui.Box(c).Size(28, 10).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
+		ui.Box(c).Size(20, 10).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
 			path := (&ui.Path{}).MoveTo(r.X, r.Y+r.H/2).LineTo(r.X+r.W, r.Y+r.H/2)
 			if dashed {
 				path = path.Cap(ui.ButtCap).Dash(0, 4, 3)
@@ -179,8 +291,12 @@ func (a *App) legend(c *ui.Context, label string, col ui.Color, dashed bool) {
 
 func (a *App) drawEdges(c *ui.Context, p *ui.Painter, r ui.Rect, g *skill.Graph, pos map[string]spot, highlight graphHighlight) {
 	t := c.Theme()
-	muted := t.TextMuted
-	muted.A = 140
+	missing := map[string]bool{}
+	for _, n := range g.Nodes {
+		if n.Kind == skill.NodeMissing || n.Kind == skill.NodeMissingFile {
+			missing[n.Name] = true
+		}
+	}
 	for pass := 0; pass < 2; pass++ {
 		// The highlighted chain goes last, over unrelated edges.
 		for i, e := range g.Edges {
@@ -195,17 +311,17 @@ func (a *App) drawEdges(c *ui.Context, p *ui.Painter, r ui.Rect, g *skill.Graph,
 			}
 			x0, y0 := r.X+from.x+nodeW, r.Y+from.y+nodeH/2
 			x1, y1 := r.X+to.x, r.Y+to.y+nodeH/2
-			col, width := muted, float32(1.4)
+			col, width := t.TextMuted, float32(1.2)
 			switch {
-			case e.Cycle:
+			case e.Cycle || missing[e.To]:
 				col = t.Danger
-			case hot:
-				col, width = t.Accent, 2
+			case e.Inferred:
+				col = token(t, "line-strong")
 			}
 			if hot {
-				width = 2.2
+				width = 1.8
 			} else if len(highlight.nodes) > 0 {
-				col.A = 40
+				col.A = 70
 			}
 			reach := max((x1-x0)/2, 36)
 			path := (&ui.Path{}).MoveTo(x0, y0).CubeTo(x0+reach, y0, x1-reach, y1, x1, y1)
@@ -213,105 +329,229 @@ func (a *App) drawEdges(c *ui.Context, p *ui.Painter, r ui.Rect, g *skill.Graph,
 				path = path.Cap(ui.ButtCap).Dash(0, 5, 4)
 			}
 			p.StrokePath(path, width, col)
-			arrow := (&ui.Path{}).MoveTo(x1, y1).LineTo(x1-8, y1-4.5).LineTo(x1-8, y1+4.5).Close()
-			p.FillPath(arrow, col)
 		}
 	}
 }
 
-func (a *App) graphNode(c *ui.Context, ps *pageState, n skill.Node, at spot, highlight graphHighlight) {
+// nodeGlyph is a node's icon: a script, a document, another skill, or a
+// path that is not there.
+func nodeGlyph(n skill.Node) string {
+	switch n.Kind {
+	case skill.NodeMissingFile:
+		return "file-question"
+	case skill.NodeMissing:
+		return "missing"
+	case skill.NodeSkill:
+		return "pool"
+	case skill.NodeChild:
+		return "nested"
+	}
+	switch strings.ToLower(path.Ext(n.Name)) {
+	case ".sh", ".bash", ".zsh", ".py", ".js", ".mjs", ".cjs", ".ts", ".rb", ".go":
+		return "terminal"
+	}
+	return "file"
+}
+
+// inferredOnly reports that every reference to a node is read from prose.
+func inferredOnly(g *skill.Graph, name string) bool {
+	seen := false
+	for _, e := range g.Edges {
+		if e.To == name {
+			if !e.Inferred {
+				return false
+			}
+			seen = true
+		}
+	}
+	return seen
+}
+
+// graphNode is a file of the skill, drawn as the design's chip: mono path,
+// ink when chosen, red and dashed when it is not there.
+func (a *App) graphNode(c *ui.Context, ps *pageState, g *skill.Graph, n skill.Node, at spot, highlight graphHighlight) {
 	t := c.Theme()
 	chosen := ps.node == n.Name
-	border := t.Border
-	icon := "book"
-	switch n.Kind {
-	case skill.NodeMissing:
-		border, icon = t.Danger, "missing"
-	case skill.NodeChild:
-		icon = "nested"
-	}
-	if chosen || highlight.nodes[n.Name] {
-		border = t.Accent
-	}
+	lit := highlight.nodes[n.Name]
+	gone := n.Kind == skill.NodeMissing || n.Kind == skill.NodeMissingFile
 	chip := ui.ButtonBase(c.Key("node-"+n.Name)).Absolute().Left(at.x).Top(at.y).Size(nodeW, nodeH).
-		Padding(0, 10).Gap(8).AlignItems(ui.Center).Radius(8).Cursor(ui.CursorPointer).Label(n.Name).Tooltip(n.Name)
-	bg := t.Surface
-	if chosen || highlight.nodes[n.Name] {
-		bg = t.Accent.Mix(t.Surface, 0.92)
+		Padding(0, 12).Gap(8).AlignItems(ui.Center).Radius(7).Cursor(ui.CursorPointer).Label(n.Name).Tooltip(n.Name)
+	fg, iconColor := t.Text, t.TextMuted
+	switch {
+	case chosen && n.Name == "SKILL.md":
+		chip.Background(t.Text).Border(1, t.Text)
+		fg, iconColor = token(t, "on-ink"), token(t, "on-ink")
+	case gone:
+		chip.Background(token(t, "danger-bg")).Border(1, t.Danger)
+		fg, iconColor = t.Danger, t.Danger
+	case chosen:
+		chip.Background(t.Surface).Border(2, t.Text)
+	case n.Name == "SKILL.md":
+		chip.Background(t.Text).Border(1, t.Text)
+		fg, iconColor = token(t, "on-ink"), token(t, "on-ink")
+	case lit:
+		chip.Background(t.Surface).Border(1.5, t.Text)
+	default:
+		chip.Background(t.Surface).Border(1, token(t, "line-strong"))
 	}
-	if len(highlight.nodes) > 0 && !highlight.nodes[n.Name] {
-		chip.Opacity(0.3)
-	}
-	chip.Background(bg).Border(1, border)
-	if n.Kind == skill.NodeMissing {
-		chip.BorderStyle(ui.BorderDashed)
+	if len(highlight.nodes) > 0 && !lit && !chosen {
+		chip.Opacity(0.4)
 	}
 	if chip.Clicked() {
 		ps.node = n.Name
 		c.Invalidate()
 	}
 	chip.Children(func() {
-		col := t.TextMuted
-		if n.Kind == skill.NodeMissing {
-			col = t.Danger
+		ui.Icon(c, glyph(nodeGlyph(n))).FontSize(13).TextColor(iconColor).Shrink(0)
+		ui.Text(c, n.Name).Font(monoFont).FontSize(12).TextColor(fg).Grow(1).MinWidth(0).SingleLine()
+		if n.Kind == skill.NodeSkill && inferredOnly(g, n.Name) {
+			ui.Text(c, "推断").FontSize(10).TextColor(token(t, "ink-3")).Shrink(0)
 		}
-		ui.Icon(c, glyph(icon)).FontSize(14).TextColor(col).Shrink(0)
-		ui.Text(c, n.Name).Grow(1).SingleLine().FontSize(13)
 	})
 }
 
-// graphDetail is the right-hand pane of the dependency graph.
-func (a *App) graphDetail(c *ui.Context) {
+// graphDetail is the chosen node: where it is, who points at it and what it
+// points at, and the files the skill names that are not there.
+func (a *App) graphDetail(c *ui.Context, e skill.Entry, g *skill.Graph, name string) {
 	t := c.Theme()
-	ps := a.state(a.page)
-	root, ok := a.rootByPage(a.page)
-	ui.Scroll(c).Fill().Children(func() {
-		if !ok || a.snap == nil || ps.node == "" {
-			ui.Text(c, "点一个节点，看它依赖什么、被谁依赖。").Padding(20).TextColor(t.TextMuted)
-			return
+	muted := token(t, "ink-3")
+	n, ok := g.Node(name)
+	ui.Scroll(c.Key("graph-detail")).Fill().Label("依赖图节点详情").Children(func() {
+		ui.Column(c).Padding(24, 24).Gap(18).Children(func() {
+			if !ok {
+				ui.Text(c, "点一个节点，看它引用了什么、被谁引用。").FontSize(12).TextColor(t.TextMuted)
+				return
+			}
+			ui.Column(c).Gap(5).Children(func() {
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.Icon(c, glyph(nodeGlyph(n))).FontSize(14).TextColor(t.TextMuted).Shrink(0)
+					ui.Text(c, path.Base(n.Name)).Font(monoFont).FontSize(14).FontWeight(600).MinWidth(0).SingleLine().Tooltip(n.Name)
+				})
+				sub := ""
+				switch n.Kind {
+				case skill.NodeFile:
+					sub = e.Name + "/" + n.Name + " · " + byteSize(n.Size)
+				case skill.NodeMissingFile:
+					sub = e.Name + "/" + n.Name + " · 目录里没有这个文件"
+				case skill.NodeSkill:
+					sub = n.Entry.RootName + " · " + shortPath(a.home, n.Entry.Path)
+				case skill.NodeMissing:
+					sub = "技能库里没有这个技能"
+				}
+				number(c, sub).FontSize(11.5).TextColor(muted).MinWidth(0).Tooltip(sub)
+			})
+			var by, uses [][2]string
+			for _, edge := range g.Edges {
+				if edge.To == name {
+					where := "推断"
+					if edge.Line > 0 {
+						where = fmt.Sprintf("第 %d 行", edge.Line)
+					}
+					by = append(by, [2]string{edge.From, where})
+				}
+				if edge.From == name {
+					uses = append(uses, [2]string{edge.To, edge.Via})
+				}
+			}
+			refList(c, "被谁引用", by)
+			refList(c, "引用了", uses)
+			a.missingCallout(c, g)
+			switch n.Kind {
+			case skill.NodeFile:
+				dir := e.Path
+				if e.RealPath != "" {
+					dir = e.RealPath
+				}
+				file := filepath.Join(dir, filepath.FromSlash(n.Name))
+				if outlineButton(c, "graph-open", "用默认编辑器打开").Height(28).AlignSelf(ui.Start).Tooltip(file).Clicked() {
+					a.openPath(file)
+				}
+			case skill.NodeSkill:
+				target := n.Entry
+				if outlineButton(c, "graph-follow", "查看它的依赖图").Height(28).AlignSelf(ui.Start).Clicked() {
+					a.showGraph(target)
+					c.Invalidate()
+				}
+			}
+		})
+	})
+}
+
+// refList is a titled list of paths, each with a note at its end.
+func refList(c *ui.Context, title string, items [][2]string) {
+	if len(items) == 0 {
+		return
+	}
+	t := c.Theme()
+	ui.Column(c).Label(title).Children(func() {
+		ui.Text(c, title).FontSize(11.5).TextColor(t.TextMuted).Padding(0, 0, 6, 0)
+		for _, item := range items {
+			ui.Row(c).Padding(7, 0).Gap(8).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
+				ui.Text(c, item[0]).Font(monoFont).FontSize(12).Grow(1).MinWidth(0).SingleLine().Tooltip(item[0])
+				ui.Text(c, item[1]).FontSize(11).TextColor(token(t, "ink-3")).Shrink(0)
+			})
 		}
-		g := a.graphFor(root.ID)
-		n, found := g.Node(ps.node)
-		if !found {
-			ui.Text(c, "点一个节点，看它依赖什么、被谁依赖。").Padding(20).TextColor(t.TextMuted)
-			return
-		}
+	})
+}
+
+// missingCallout states the paths the skill names that are not there.
+func (a *App) missingCallout(c *ui.Context, g *skill.Graph) {
+	t := c.Theme()
+	var lines []string
+	files, skills := 0, 0
+	for _, n := range g.Nodes {
 		switch n.Kind {
-		case skill.NodeSkill:
-			a.detail(c, a.entryRow(n.Entry))
+		case skill.NodeMissingFile:
+			files++
 		case skill.NodeMissing:
-			ui.Column(c).Padding(22, 28).Gap(12).MaxWidth(640).Children(func() {
-				ui.Text(c, n.Name).FontSize(22).Bold()
-				ui.Text(c, "找不到").TextColor(t.Danger)
-				ui.Text(c, "有 skill 把它写成依赖，但是这个目录里没有同名的 skill。").FontSize(13)
-				a.neighbours(c, g, n.Name)
-			})
+			skills++
 		default:
-			ui.Column(c).Padding(22, 28).Gap(12).MaxWidth(640).Children(func() {
-				ui.Text(c, n.Name).FontSize(22).Bold()
-				ui.Text(c, "子 skill").TextColor(t.TextMuted)
-				ui.Text(c, "它放在上级 skill 的 skills/ 子目录里，随上级 skill 一起使用。").FontSize(13)
-				a.neighbours(c, g, n.Name)
-			})
+			continue
+		}
+		for _, edge := range g.Edges {
+			if edge.To != n.Name {
+				continue
+			}
+			where := edge.From
+			if edge.Line > 0 {
+				where += fmt.Sprintf(" 第 %d 行", edge.Line)
+			}
+			if n.Kind == skill.NodeMissingFile {
+				lines = append(lines, where+"引用了 "+n.Name+"，目录里没有这个文件。")
+			} else {
+				lines = append(lines, where+"依赖 "+n.Name+"，技能库里没有这个技能。")
+			}
+		}
+	}
+	if len(lines) == 0 {
+		return
+	}
+	var title []string
+	if files > 0 {
+		title = append(title, fmt.Sprintf("%d 个缺失文件", files))
+	}
+	if skills > 0 {
+		title = append(title, fmt.Sprintf("%d 个找不到的技能", skills))
+	}
+	ui.Column(c).Padding(12, 14).Gap(6).Radius(8).Background(token(t, "danger-bg")).Label("缺失引用").Children(func() {
+		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+			ui.Icon(c, glyph("file-question")).FontSize(13).TextColor(t.Danger)
+			ui.Text(c, "这个技能有 "+strings.Join(title, "、")).FontSize(12.5).FontWeight(600).TextColor(t.Danger)
+		})
+		for _, line := range lines {
+			ui.Text(c, line).FontSize(12).LineHeight(1.5).TextColor(t.Danger)
 		}
 	})
 }
 
-// neighbours says who points at a node and what it points at.
-func (a *App) neighbours(c *ui.Context, g *skill.Graph, name string) {
-	t := c.Theme()
-	var parents []string
-	for _, e := range g.Edges {
-		if e.To == name && e.Kind == skill.EdgeContains {
-			parents = append(parents, e.From)
-		}
+func byteSize(n int64) string {
+	switch {
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%.1f KB", float64(n)/(1<<10))
 	}
-	if len(parents) > 0 {
-		ui.Text(c, "位于 "+strings.Join(parents, "、")).FontSize(12).TextColor(t.TextMuted)
-	}
-	if by := g.NeededBy(name); len(by) > 0 {
-		ui.Text(c, "被 "+strings.Join(by, "、")+" 依赖").FontSize(12).TextColor(t.TextMuted)
-	}
+	return fmt.Sprintf("%d B", n)
 }
 
 // depTextLines are the dependency lines of the detail pane's info card.

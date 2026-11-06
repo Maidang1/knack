@@ -32,20 +32,14 @@ func TestRepositoryRecordCRUD(t *testing.T) {
 	var copied, revealed string
 	a.copyFn = func(path string) { copied = path }
 	a.revealFn = func(path string) { revealed = path }
-	tt := ui.NewTester(a.View, 880, 560)
+	tt := ui.NewTester(a.View, 1180, 560)
 	tt.SetTitleBar(ui.TitleBar{Height: 52, Left: 70})
-	add, ok := tt.Find("添加仓库…")
-	heading, headingOK := tt.Find("仓库")
-	if !ok || !headingOK || add.X <= heading.X || add.Y < heading.Y-8 || add.Y > heading.Y+8 {
-		t.Fatalf("add must be beside repository heading: add=%+v heading=%+v", add, heading)
-	}
-	click(t, tt, "仓库")
-	if a.reposOpen {
-		t.Fatal("section did not collapse")
+	if _, ok := tt.Find("添加仓库…"); !ok {
+		t.Fatalf("missing add button: %q", tt.Texts())
 	}
 	click(t, tt, "添加仓库…")
-	if !a.reposOpen || a.page != "repo:"+repo || len(a.repos) != 1 || !tt.HasText("alpha") {
-		t.Fatalf("adding from collapsed section: %+v %q", a.repos, tt.Texts())
+	if a.page != "repo:"+repo || len(a.repos) != 1 || !tt.HasText("alpha") {
+		t.Fatalf("adding: %+v %q", a.repos, tt.Texts())
 	}
 	added := a.repos[0].Added
 
@@ -221,7 +215,7 @@ func TestRepositoryLongNameLayout(t *testing.T) {
 	if err := a.updateRepo(repo, name, repo); err != nil {
 		t.Fatal(err)
 	}
-	tt := ui.NewTester(a.View, 880, 560)
+	tt := ui.NewTester(a.View, 1180, 560)
 	tt.SetTitleBar(ui.TitleBar{Height: 52, Left: 70})
 	for _, label := range []string{"仓库操作：" + repo, "重新扫描", "搜索"} {
 		r, ok := tt.Find(label)
@@ -237,7 +231,7 @@ func TestRepositoryEditErrorAndPickerCancel(t *testing.T) {
 	writeSkill(t, filepath.Join(repo, "alpha"), "alpha")
 	a := New(home)
 	a.acceptRepo(repo, nil)
-	tt := ui.NewTester(a.View, 880, 560)
+	tt := ui.NewTester(a.View, 1180, 560)
 	repoMenuChoice(t, tt, repo, "编辑仓库…")
 	a.pickDirFn = func() (string, error) { return "", nil }
 	click(t, tt, "选择目录…")
@@ -270,68 +264,47 @@ func TestRepositoryAddHoverAndKeyboard(t *testing.T) {
 	writeSkill(t, filepath.Join(repo, "alpha"), "alpha")
 	a := New(home)
 	a.acceptRepo(repo, nil)
-	tt := ui.NewTester(a.View, 880, 560)
-	add, ok := tt.Find("添加仓库…")
-	if !ok {
-		t.Fatal("missing add button")
+	tt := ui.NewTester(a.View, 1180, 560)
+	label := "仓库操作：" + repo
+	more, ok := tt.Find(label)
+	if !ok || more.W <= 0 || more.H <= 0 {
+		t.Fatalf("missing repository menu: %+v", more)
 	}
-	toggle, ok := tt.Find("收起仓库")
-	if !ok {
-		t.Fatal("missing repository disclosure")
-	}
-	// Compare the icon's pixels, not visibility metadata: the invisible
-	// button intentionally keeps its hit target and place in the tab order.
-	iconPixels := func(box ui.Rect) []byte {
+	// Compare the slot's pixels: at rest it shows the count, and the menu
+	// icon replaces it on hover and keyboard focus.
+	pixels := func() []byte {
 		img := tt.Image()
 		var out []byte
-		for y := int(box.Y) + 6; y < int(box.Y+box.H)-6; y++ {
-			start := img.PixOffset(int(box.X)+6, y)
-			end := img.PixOffset(int(box.X+box.W)-6, y)
+		for y := int(more.Y); y < int(more.Y+more.H); y++ {
+			start := img.PixOffset(int(more.X), y)
+			end := img.PixOffset(int(more.X+more.W), y)
 			out = append(out, img.Pix[start:end]...)
 		}
 		return out
 	}
-	pixels := func() []byte { return iconPixels(add) }
 	tt.Move(870, 550)
-	hidden := pixels()
-	toggleHidden := iconPixels(toggle)
-	heading, _ := tt.Find("仓库")
-	for _, target := range []ui.Rect{heading, add, toggle} {
-		tt.Move(target.X+target.W/2, target.Y+target.H/2)
-		if bytes.Equal(hidden, pixels()) || bytes.Equal(toggleHidden, iconPixels(toggle)) {
-			t.Fatal("both icons must appear when hovering any part of the header")
-		}
-	}
+	resting := pixels()
 	row, _ := tt.Find("demo")
-	for _, point := range [][2]float32{{row.X + 30, row.Y + row.H/2}, {870, 550}} {
-		tt.Move(point[0], point[1])
-		if !bytes.Equal(hidden, pixels()) || !bytes.Equal(toggleHidden, iconPixels(toggle)) {
-			t.Fatal("both icons must hide outside the header, including over repository rows")
-		}
+	tt.Move(row.X+30, row.Y+row.H/2)
+	if bytes.Equal(resting, pixels()) {
+		t.Fatal("hovering the row must show its menu")
 	}
-	// Tester.Focused also includes focused ancestors such as the sidebar.
-	for i := 0; i < 30 && (!tt.Focused("添加仓库…") || bytes.Equal(hidden, pixels())); i++ {
+	tt.Move(870, 550)
+	if !bytes.Equal(resting, pixels()) {
+		t.Fatal("the menu must hide when the pointer leaves")
+	}
+	// Tester.Focused also includes focused ancestors such as the row and
+	// the sidebar, so the row must not be what has the focus.
+	focused := func() bool { return tt.Focused(label) && !tt.Focused("demo") }
+	for i := 0; i < 40 && !focused(); i++ {
 		tt.Key(0, ui.KeyTab)
 	}
-	if !tt.Focused("添加仓库…") || bytes.Equal(hidden, pixels()) || bytes.Equal(toggleHidden, iconPixels(toggle)) {
-		t.Fatal("both icons must be visible to keyboard users")
+	if !focused() || bytes.Equal(resting, pixels()) {
+		t.Fatal("the menu must be visible to keyboard users")
 	}
 	tt.Key(0, ui.KeyTab)
-	if !tt.Focused("收起仓库") {
-		t.Fatal("disclosure should follow Add in the tab order")
-	}
-	tt.Key(0, ui.KeyEnter)
-	if a.reposOpen || tt.HasText("仓库操作："+repo) {
-		t.Fatal("keyboard did not collapse repositories")
-	}
-	click(t, tt, "展开仓库")
-	if !a.reposOpen {
-		t.Fatal("disclosure did not expand repositories")
-	}
-	row, ok = tt.Find("demo")
-	more, moreOK := tt.Find("仓库操作：" + repo)
-	if !ok || !moreOK {
-		t.Fatal("missing repository row controls")
+	if !tt.Focused("添加仓库…") {
+		t.Fatal("add should follow the repositories in the tab order")
 	}
 	if delta := (more.Y + more.H/2) - (row.Y + row.H/2); delta < -1 || delta > 1 {
 		t.Fatalf("repository menu not centered: row=%+v more=%+v", row, more)

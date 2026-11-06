@@ -28,6 +28,12 @@ type Edge struct {
 	Kind     EdgeKind
 	// Cycle marks an edge that closes a loop; it is left out of the layers.
 	Cycle bool
+	// In a file graph: the line of From that makes the reference, how it
+	// does (链接, 路径, source, frontmatter, 正文推断), and whether it is only
+	// read from prose.
+	Line     int
+	Via      string
+	Inferred bool
 }
 
 // Node is one skill of a graph with the place it is laid out in: Layer is
@@ -38,6 +44,9 @@ type Node struct {
 	Entry Entry
 	Layer int
 	Row   int
+	// In a file graph: the file's path inside the skill and its size.
+	Path string
+	Size int64
 }
 
 // Graph is how the skills of one root depend on each other. Only skills

@@ -110,8 +110,8 @@ func TestSettingsPaintAfterGraphZoom(t *testing.T) {
 						nav, _ := tt.Find("设置分类")
 						title, _ := tt.Find("设置标题")
 						list, _ := tt.Find("设置列表")
-						if nav.X+nav.W >= title.X || title.Y >= list.Y || list.H < 160 {
-							t.Fatalf("settings lost sidebar/content layout: nav=%+v title=%+v list=%+v", nav, title, list)
+						if nav.Y+nav.H >= title.Y || title.Y >= list.Y || list.H < 160 {
+							t.Fatalf("settings lost toolbar/content layout: nav=%+v title=%+v list=%+v", nav, title, list)
 						}
 					}
 					click(t, tt, "完成")
@@ -133,13 +133,13 @@ func TestSettingsKeyboardAndVisibility(t *testing.T) {
 		t.Fatal("Cmd+, did not open settings")
 	}
 	click(t, tt, "设置分类：浏览")
-	tt.Key(0, ui.KeyDown)
+	tt.Key(0, ui.KeyRight)
 	if a.settingsTab != 1 || !tt.Focused("设置分类：Agent") {
-		t.Fatal("Down did not move category and keyboard focus")
+		t.Fatal("Right did not move category and keyboard focus")
 	}
-	tt.Key(0, ui.KeyDown)
+	tt.Key(0, ui.KeyRight)
 	if a.settingsTab != 2 || !tt.Focused("设置分类：自带") {
-		t.Fatal("Down did not reach builtins")
+		t.Fatal("Right did not reach builtins")
 	}
 	tt.Key(0, ui.KeyHome)
 	if a.settingsTab != 0 {
@@ -162,6 +162,8 @@ func TestSettingsKeyboardAndVisibility(t *testing.T) {
 		t.Fatal("Escape did not close settings")
 	}
 	a.sideCollapsed = true
+	a.page = "pool"
+	a.state("pool").view = 0
 	tt.Frame()
 	click(t, tt, "搜索")
 	tt.Type("unchanged")

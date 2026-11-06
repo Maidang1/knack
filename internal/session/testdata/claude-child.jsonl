@@ -1,0 +1,2 @@
+{"type":"user","timestamp":"2026-11-01T00:00:07Z","uuid":"cu","sessionId":"parent","agentId":"child-a","message":{"role":"user","content":"PRIVATE_CHILD_PROMPT"}}
+{"type":"assistant","timestamp":"2026-11-01T00:00:09Z","uuid":"ca","sessionId":"parent","message":{"id":"child-request","role":"assistant","model":"claude-test","usage":{"input_tokens":5,"output_tokens":15,"cache_read_input_tokens":5,"cache_creation_input_tokens":0},"content":[{"type":"text","text":"PRIVATE_CHILD_REPLY"}]}}

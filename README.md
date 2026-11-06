@@ -4,7 +4,7 @@
 
 <h1 align="center">Knack</h1>
 
-<p align="center">管理每个 AI Agent 的技能。</p>
+<p align="center">管理和观察每个 AI Agent 的技能与会话。</p>
 
 Knack 是一款面向 Windows、Linux 和 macOS 的桌面应用，用来管理本机的 AI Agent skills。把分散在 Claude、Codex、Cursor 等工具中的技能放到一个视图里，查看来源、共享技能、检查断链，并比较同名副本。
 
@@ -14,16 +14,24 @@ Knack 是一款面向 Windows、Linux 和 macOS 的桌面应用，用来管理�
 
 | 功能 | 能做什么 |
 | --- | --- |
-| 技能浏览 | 搜索名称、说明和路径，查看技能正文、所在目录与软链目标 |
+| 技能库 | 按来源（共享池、仓库、Agent、自带）列出全部技能，按已挂载 / 未挂出 / 有问题筛选；详情显示挂载关系图、独立副本提醒，以及 SKILL.md / 文件 / 依赖 / 关联会话 |
+| 搜索 | 侧栏一个搜索框同时查技能名称、说明、路径和会话；在全部会话页直接筛选会话 |
 | 共享池 | 将本地仓库中的技能链接到 `~/.agents/skills`，再链接到不同 Agent |
-| 问题检查 | 发现断链、空目录、未挂出的共享技能；按需比较副本，确认一致或存在差异 |
+| 会话详情 | 会话列表与概览/耗时 tab，查看每轮步骤瀑布图、元信息与长步骤折叠，支持键盘下钻和返回 |
+| Agent 页面 | 技能 / 会话 / 用量三个 tab，按 Agent 查看 Token 构成、模型输出速率和 Skill / 工具调用排行；没有日志的 Agent 显示原因 |
+| 技能使用情况 | 查看近 7/30/90 天调用次数、最后使用时间和关联会话；只统计日志中明确记录的 Skill 名称 |
+| 首页与全部会话 | 只读统计 Claude / Codex / Factory 本地会话，查看 Token、模型、估算速率、每日用量与耗时异常；其他 JSON Lines 日志可通过 [自定义 Agent](docs/agents.md) 接入 |
+| 待处理 | 按类别分组列出断链、同名副本差异、一致副本、未挂出的共享技能、空目录和耗时异常；按需比较副本，确认一致或存在差异 |
 | 修复与撤销 | 单项处理或批量修复可安全处理的问题，修改前确认，完成后可撤销 |
-| 依赖图 | 查看同一技能目录内的依赖关系与缺失节点 |
-| 生效视图 | 按 Agent 和工作目录查看同名技能的来源、覆盖关系与分层矩阵 |
+| 依赖图 | 文件级：选一个技能，查看目录内文件之间的引用（链接、路径、source）、引用的其他技能和缺失文件，标出引用所在行 |
+| 用量与耗时 | 跨 Agent 汇总 Token 构成、按轮累加的耗时构成、模型输出速率和调用排行 |
+| 生效视图 | 按 Agent 和工作目录查看会加载哪些技能、同名技能的覆盖关系、逐层查找路径和仍占用磁盘的副本 |
 | 仓库管理 | 添加本地技能仓库，设置显示名称与扫描路径 |
 | Claude 调用设置 | 调整用户级自动调用、仅手动调用或禁用设置 |
 
 Knack 识别 Claude、Codex、Cursor、Factory、Gemini、OpenCode、Pi、Goose 等工具的已知技能目录。只显示本机已存在或需要报告访问错误的目录，自带技能与 `.system` 内容只读。Windows 上也会识别 Goose 的 `%APPDATA%\Block\goose\config\skills`。
+
+会话统计只读本地日志，缓存只保存元信息，不保存 prompt、助手正文、工具参数或输出。“轮次”页按轮回放对话：打开会话时从原始日志按需读取 prompt、思考、回复和工具输入/输出，只保留在内存中。Factory 的 Token、Codex 的 Skill 调用、Cursor 的会话日志等缺失能力会明确说明“暂不支持”。技能使用记录按调用名匹配，不能据此区分同名副本或判断长期未使用。
 
 生效视图目前按「项目 → 全局 → 共享池 → 内置」推演同名覆盖关系。实际加载行为仍以各 Agent 的规则为准。依赖图中的正文引用包含推断结果。
 
@@ -115,6 +123,7 @@ MyGo 使用纯 Go 构建，Windows 与 Linux 包由 Ubuntu runner 交叉编译�
 | `~/.config/skill-manager/settings.json` | 界面显示设置 |
 | `~/.config/skill-manager/undo/` | 撤销记录与暂存内容 |
 | `~/.cache/skill-manager/catalog.json` | 启动时展示的扫描缓存 |
+| `~/.cache/skill-manager/sessions.json` | 不含会话正文的本地会话统计检查点 |
 
 Claude 调用设置写入 `~/.claude/settings.json`，保留其他配置，不修改 `SKILL.md`。具体调用行为还可能受到技能、项目或组织设置限制。
 
@@ -128,6 +137,7 @@ internal/app/      界面、状态与操作协调
 internal/skill/    目录扫描、元数据、依赖图与生效视图
 internal/manage/   文件修改、软链操作与撤销
 internal/repair/   问题修复与移除计划
+internal/session/ 本地会话解析、增量缓存与用量聚合
 internal/store/    配置与扫描缓存
 resources/         应用图标
 ```
