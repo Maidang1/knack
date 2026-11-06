@@ -47,7 +47,7 @@ func (a *App) setAgentsShown(ids []string, shown bool) {
 		list = append(list, k)
 	}
 	slices.Sort(list)
-	if err := store.SaveSettings(a.settingsPath, store.Settings{HiddenAgents: list}); err != nil {
+	if err := store.SaveSettings(a.settingsPath, store.Settings{HiddenAgents: list, FoldLongSteps: a.foldLongSteps}); err != nil {
 		a.notice = err.Error()
 		return
 	}
@@ -63,12 +63,12 @@ func (a *App) pageHidden() bool {
 	if id, ok := strings.CutPrefix(a.page, "root:"); ok {
 		return a.hidden[id]
 	}
-	return a.hidden[a.page] && (a.page == "issues" || a.page == "pool")
+	return a.hidden[a.page] && (a.page == "overview" || a.page == "sessions" || a.page == "issues" || a.page == "pool")
 }
 
 // homePage is the first page still switched on.
 func (a *App) homePage() string {
-	for _, id := range []string{"issues", "pool"} {
+	for _, id := range []string{"overview", "sessions", "issues", "pool"} {
 		if !a.hidden[id] {
 			return id
 		}
@@ -96,6 +96,8 @@ func (a *App) settingsDialog(c *ui.Context) {
 	}
 	t := c.Theme()
 	browse := []settingsRow{
+		{"overview", "总览", look{"overview", ui.Hex("#8E8E93")}},
+		{"sessions", "会话", look{"sessions", ui.Hex("#8E8E93")}},
 		{"issues", "问题", look{"issues", ui.Hex("#f59e0b")}},
 		{"pool", "共享池", look{"pool", ui.Hex("#2563eb")}},
 	}
@@ -114,7 +116,7 @@ func (a *App) settingsDialog(c *ui.Context) {
 	categories := []struct{ name, icon, description string }{
 		{"浏览", "sidebar", "选择侧边栏中的浏览入口。"},
 		{"Agent", "bot", "选择在侧边栏显示的 Agent。"},
-		{"自带", "package", "选择在侧边栏显示的自带内容。"},
+		{"自带", "package", "选择在对应 Agent 技能列表中显示的自带内容。"},
 	}
 	a.settingsTab = max(0, min(a.settingsTab, len(categories)-1))
 	width, height := c.Size()
@@ -187,7 +189,11 @@ func (a *App) settingsGroup(c *ui.Context, title string, rows []settingsRow) {
 	}
 	ui.Column(c.Key("group:" + title)).Gap(6).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Padding(0, 4, 0, 4).Children(func() {
-			ui.Text(c, "在侧边栏显示").FontSize(12).FontWeight(600).TextColor(t.TextMuted).Grow(1)
+			label := "在侧边栏显示"
+			if title == "自带" {
+				label = "在 Agent 技能列表中显示"
+			}
+			ui.Text(c, label).FontSize(12).FontWeight(600).TextColor(t.TextMuted).Grow(1)
 			if len(rows) > 1 {
 				if ui.Button(c, "全部显示").Label(title + "全部显示").Clicked() {
 					a.setAgentsShown(ids, true)
@@ -221,4 +227,21 @@ func rootIDs(rs []skill.Root) []string {
 		ids[i] = r.ID
 	}
 	return ids
+}
+
+// Persist before changing the visible preference; failed writes retain the old
+// scale and both settings mutations preserve the other display preferences.
+func (a *App) setFoldLongSteps(fold bool) {
+	ids := make([]string, 0, len(a.hidden))
+	for id, hidden := range a.hidden {
+		if hidden {
+			ids = append(ids, id)
+		}
+	}
+	slices.Sort(ids)
+	if err := store.SaveSettings(a.settingsPath, store.Settings{HiddenAgents: ids, FoldLongSteps: fold}); err != nil {
+		a.notice = err.Error()
+		return
+	}
+	a.foldLongSteps = fold
 }

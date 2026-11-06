@@ -1,0 +1,8 @@
+{"ts":1793491200000,"id":"m1","session":"chat-1","dir":"/work/demo","role":"system","content":"You are helpful."}
+{"ts":1793491200000,"id":"m2","role":"user","content":"列出文件"}
+{"ts":1793491203000,"id":"m3","role":"assistant","model":"gpt-x","content":"","tool_calls":[{"id":"call-1","type":"function","function":{"name":"shell","arguments":"{\"cmd\":\"ls\"}"}}],"usage":{"prompt_tokens":120,"completion_tokens":30,"cached_tokens":20}}
+{"ts":1793491205000,"id":"m4","role":"tool","tool_call_id":"call-1","content":"README.md\nmain.go"}
+{"ts":1793491208000,"id":"m5","role":"assistant","model":"gpt-x","content":[{"type":"text","text":"有 README.md 和 main.go。"}],"usage":{"prompt_tokens":200,"completion_tokens":15,"cached_tokens":100}}
+{"ts":1793491208000,"id":"m5","role":"assistant","model":"gpt-x","content":[{"type":"text","text":"有 README.md 和 main.go。"}],"usage":{"prompt_tokens":200,"completion_tokens":15,"cached_tokens":100}}
+{"ts":1793491300000,"id":"m6","role":"user","content":"谢谢"}
+not json

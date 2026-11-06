@@ -9,6 +9,7 @@ import (
 
 	"knack/internal/manage"
 	"knack/internal/repair"
+	"knack/internal/session"
 	"knack/internal/skill"
 )
 
@@ -34,6 +35,7 @@ type row struct {
 	subtitle string
 	entry    skill.Entry
 	kind     skill.IssueKind
+	section  string
 }
 
 // View draws the window: a source list over the sidebar material, and an
@@ -109,10 +111,18 @@ func (a *App) contentBar(c *ui.Context) {
 		if strings.HasPrefix(a.page, "repo:") {
 			title.Shrink(1).MinWidth(0)
 		}
+		if _, ok := a.agentPageRoot(); ok {
+			a.agentTabs(c)
+		}
 		if a.page == effectivePage {
 			ui.Toolbar(c, func() { a.effectiveToolbar(c) }).Label("生效范围").Padding(0).Gap(4).Margin(0, 0, 0, 8).MinWidth(0)
 		}
 		ui.Box(c).Grow(1).MinWidth(8)
+		if a.page == "overview" || a.page == "sessions" {
+			a.overviewToolbar(c)
+		} else if _, ok := a.agentPageRoot(); ok && a.state(a.page).agentTab != 0 {
+			ui.Segmented(c, &a.sessions.period, "今天", "7 天", "30 天", "全部").Label("统计时间范围").Height(toolbarControlHeight)
+		}
 	})
 }
 
@@ -169,9 +179,9 @@ func (a *App) listSearch(c *ui.Context) {
 func (a *App) footerActions(c *ui.Context) {
 	ui.Toolbar(c, func() {
 		scan := ui.Button(c, "").Height(toolbarControlHeight).Padding(0, 8).
-			Disabled(a.scanning || a.mutating).Label("重新扫描").Tooltip("重新扫描（⌘R）")
+			Disabled(a.scanning || a.sessions.loading || a.mutating).Label("重新扫描").Tooltip("重新扫描（⌘R）")
 		scan.Children(func() {
-			if a.scanning {
+			if a.scanning || a.sessions.loading {
 				ui.Spinner(c).Size(14, 14).Label("正在扫描")
 			} else {
 				ui.Icon(c, glyph("refresh")).FontSize(14)
@@ -255,28 +265,14 @@ func controlsBandHeight(bar ui.TitleBar) float32 {
 	return h
 }
 
-// SidebarSection sizes its header from the system font and disclosure arrow.
-// Align that header's center with the 24-point tabs, including CJK fallbacks.
+// Top-level navigation starts directly below the title bar in v2.
 func (a *App) sidebarTopInset(c *ui.Context) float32 {
-	t := c.Theme()
-	title := "浏览"
-	collapsible := false
-	if a.hidden["issues"] && a.hidden["pool"] {
-		collapsible = true
-		switch {
-		case len(a.roots(skill.RoleAgent)) > 0:
-			title = "Agent"
-		case len(a.roots(skill.RoleBuiltin)) > 0:
-			title = "自带"
-		default:
-			return 6 // The custom repository header has a fixed 24-point height.
-		}
+	if a.hidden["overview"] && a.hidden["sessions"] && a.hidden["issues"] {
+		_, height := c.MeasureText(0, ui.Span{Text: "技能", Size: c.Theme().FontSize - 1, Weight: 600})
+		return max(0, 18-c.Theme().Space(1)-height/2)
 	}
-	_, height := c.MeasureText(0, ui.Span{Text: title, Size: t.FontSize - 1, Weight: 600})
-	if collapsible {
-		height = max(height, t.Space(4))
-	}
-	return max(0, 6+12-t.Space(1)-height/2)
+	_, height := c.MeasureText(0, ui.Span{Text: "总览", Size: c.Theme().FontSize})
+	return max(0, 12-max(16, height)/2)
 }
 
 func (a *App) sidebar(c *ui.Context) {
@@ -294,36 +290,34 @@ func (a *App) sidebar(c *ui.Context) {
 			a.sidebarToggle(c)
 		})
 		side := ui.Sidebar(c, &a.page, func() {
-			if !a.hidden["issues"] || !a.hidden["pool"] {
-				ui.SidebarSection(c, "浏览", nil, func() {
-					if !a.hidden["issues"] {
-						issues := ui.SidebarItem(c, "issues", glyph("issues"), "问题")
-						if a.snap != nil && len(a.snap.Issues) > 0 {
-							issues.Children(func() { ui.Badge(c, fmt.Sprint(len(a.snap.Issues))) })
-						}
-					}
-					if !a.hidden["pool"] {
-						pool := ui.SidebarItem(c, "pool", glyph("pool"), "共享池")
-						if a.snap != nil {
-							if n := len(a.snap.EntriesFor("pool")); n > 0 {
-								pool.Children(func() { ui.Badge(c, fmt.Sprint(n)) })
-							}
-						}
-					}
-				})
+			if !a.hidden["overview"] {
+				a.navItem(c, "overview", "overview", "总览")
 			}
-			if agents := a.roots(skill.RoleAgent); len(agents) > 0 {
+			if !a.hidden["sessions"] {
+				item := a.navItem(c, "sessions", "sessions", "会话")
+				if a.sessions.snapshot != nil && len(a.sessions.snapshot.Sessions) > 0 {
+					item.Children(func() { ui.Badge(c, fmt.Sprint(len(a.sessions.snapshot.Sessions))) })
+				}
+			}
+			if !a.hidden["issues"] {
+				item := a.navItem(c, "issues", "issues", "问题")
+				if a.snap != nil && len(a.snap.Issues) > 0 {
+					item.Children(func() { ui.Badge(c, fmt.Sprint(len(a.snap.Issues))) })
+				}
+			}
+			ui.SidebarSection(c, "技能", nil, func() {
+				if !a.hidden["pool"] {
+					item := a.navItem(c, "pool", "pool", "共享池")
+					if a.snap != nil {
+						item.Children(func() { ui.Badge(c, fmt.Sprint(len(a.snap.EntriesFor("pool")))) })
+					}
+				}
+				a.navItem(c, effectivePage, "effective", "生效视图")
+			})
+			if agents := a.sidebarAgents(); len(agents) > 0 {
 				ui.SidebarSection(c, "Agent", &a.agentsOpen, func() {
-					ui.SidebarItem(c, effectivePage, glyph("effective"), "生效视图")
-					for _, r := range agents {
-						a.sideRoot(c, r)
-					}
-				})
-			}
-			if builtins := a.roots(skill.RoleBuiltin); len(builtins) > 0 {
-				ui.SidebarSection(c, "自带", &a.builtinsOpen, func() {
-					for _, r := range builtins {
-						a.sideRoot(c, r)
+					for _, root := range agents {
+						a.sideRoot(c, root)
 					}
 				})
 			}
@@ -345,7 +339,7 @@ func (a *App) sideRoot(c *ui.Context, r skill.Root) {
 	id := "root:" + r.ID
 	badge := 0
 	if a.snap != nil {
-		badge = a.snap.IssueCount(r.ID)
+		badge = len(a.agentEntries(r))
 	}
 	logo, plain := sideLogo(a.home, r)
 	if logo == nil {
@@ -392,6 +386,28 @@ func (a *App) content(c *ui.Context) {
 			ui.Text(c, a.loadErr).Padding(6, 16, 0, 16).TextColor(t.Danger)
 		}
 		a.warnings(c)
+		if a.page == "overview" {
+			a.overviewPane(c)
+			a.statusBar(c)
+			return
+		}
+		if a.page == "sessions" {
+			a.sessionsPane(c)
+			a.statusBar(c)
+			return
+		}
+		if root, ok := a.agentPageRoot(); ok && a.state(a.page).agentTab != 0 {
+			if a.state(a.page).agentTab == 1 {
+				if reason := logSupport(session.Agent(agentKey(a.home, root.Path))); reason != "" {
+					ui.Text(c, reason).FontSize(12).TextColor(t.TextMuted).Padding(12, 16)
+				}
+				a.sessionsPane(c)
+			} else {
+				a.agentUsagePane(c, root)
+			}
+			a.statusBar(c)
+			return
+		}
 		if a.allClear(c) {
 			a.statusBar(c)
 			return
@@ -493,6 +509,9 @@ func (a *App) listPane(c *ui.Context) {
 			if a.page == "issues" {
 				selected = ps.chosen.Has(rows[i].key)
 			}
+			if rows[i].section != "" {
+				ui.Text(c, rows[i].section).FontSize(11).FontWeight(600).TextColor(t.TextMuted).Padding(12, 10, 4, 10)
+			}
 			a.paintRow(c, rows[i], selected)
 		}).Grow(1).Padding(4, 8).Gap(2).Children(func() {
 			if len(rows) == 0 {
@@ -532,6 +551,9 @@ func (a *App) paintRow(c *ui.Context, r row, selected bool) {
 		ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, r.name).Grow(1).SingleLine()
+				if _, ok := a.agentPageRoot(); ok {
+					ui.Text(c, a.skillListUsage(r.entry)).FontSize(10).SingleLine().Tooltip("近 30 天 · 按日志中的 Skill 调用名匹配")
+				}
 				if r.badge != "" {
 					if selected {
 						ui.Text(c, r.badge).FontSize(11).Shrink(0)
@@ -555,7 +577,7 @@ func (a *App) detailPane(c *ui.Context) {
 	rows := a.rows()
 	ps := a.state(a.page)
 	clamp(&ps.sel, len(rows))
-	ui.Scroll(c).Fill().Children(func() {
+	ui.Scroll(c).Fill().Label("技能详情内容").Children(func() {
 		if a.page == "issues" {
 			if entries := a.chosenIssues(); len(entries) > 1 {
 				a.issueBatchDetail(c, entries)
@@ -605,6 +627,7 @@ func (a *App) detail(c *ui.Context, r row) {
 				ui.Text(c, e.Description).FontSize(13).LineHeight(1.5).MaxLines(12)
 			})
 		}
+		a.skillUsage(c, e)
 		a.invocationSettings(c, e)
 		a.infoCard(c, r)
 		a.documentPane(c, e)
@@ -978,14 +1001,20 @@ func (a *App) buildRows() []row {
 		if !ok {
 			return nil
 		}
-		entries = a.entriesFor(root.ID)
+		entries = a.agentEntries(root)
 	}
 	var out []row
+	readonly := false
 	for _, e := range entries {
 		if !matchQuery(a.query, e.Name, e.Description, e.RootName, e.Path, e.LinkTarget, e.FrontName) {
 			continue
 		}
-		out = append(out, a.entryRow(e))
+		r := a.entryRow(e)
+		if (e.System || e.RootRole == skill.RoleBuiltin) && !readonly {
+			r.section = "自带 · 只读"
+			readonly = true
+		}
+		out = append(out, r)
 	}
 	return out
 }
@@ -1041,6 +1070,10 @@ func (a *App) entrySubtitle(e skill.Entry) string {
 
 func (a *App) pageTitle() string {
 	switch a.page {
+	case "overview":
+		return "总览"
+	case "sessions":
+		return "会话"
 	case effectivePage:
 		return "生效视图"
 	case "pool":
@@ -1052,7 +1085,7 @@ func (a *App) pageTitle() string {
 			return a.repoLabel(path)
 		}
 		if r, ok := a.rootByPage(a.page); ok {
-			return r.Name
+			return strings.TrimSuffix(r.Name, " 自带")
 		}
 		return "Skill"
 	}
@@ -1168,7 +1201,24 @@ func (a *App) statusBar(c *ui.Context) {
 	t := c.Theme()
 	ui.Row(c).Height(footerHeight).Shrink(0).Padding(0, 16).Gap(8).AlignItems(ui.Center).
 		BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Children(func() {
-		ui.Text(c, "以磁盘目录为准").FontSize(11).TextColor(t.TextMuted)
+		if a.page == "overview" || a.page == "sessions" {
+			text := "本地只读 · " + strings.Join(agentOptions()[1:], " / ")
+			if a.sessions.loading {
+				text = "正在增量读取本地会话…"
+			} else if a.sessions.cached {
+				text = "会话缓存 · 正在等待校验"
+			}
+			ui.Text(c, text).FontSize(11).TextColor(t.TextMuted).SingleLine()
+			if snap := a.sessions.snapshot; snap != nil && !snap.At.IsZero() {
+				files := 0
+				for _, source := range snap.Sources {
+					files += source.Files
+				}
+				ui.Textf(c, "%d 个会话文件 · %s", files, snap.At.Format("15:04")).FontSize(11).TextColor(t.TextMuted)
+			}
+		} else {
+			ui.Text(c, "以磁盘目录为准").FontSize(11).TextColor(t.TextMuted)
+		}
 		ui.Box(c).Grow(1)
 		a.barStatus(c)
 		if a.sideCollapsed {

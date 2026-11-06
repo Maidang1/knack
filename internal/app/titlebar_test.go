@@ -217,12 +217,12 @@ func TestSidebarHeaderAlignment(t *testing.T) {
 					a := New(home)
 					a.startScan()
 					a.page = effectivePage
-					a.hidden["issues"], a.hidden["pool"] = hideBrowse, hideBrowse
+					a.hidden["overview"], a.hidden["sessions"], a.hidden["issues"] = hideBrowse, hideBrowse, hideBrowse
 					tt := ui.NewTester(a.View, width, 760)
 					tt.SetTitleBar(bar)
-					heading := "浏览"
+					heading := "总览"
 					if hideBrowse {
-						heading = "Agent"
+						heading = "技能"
 					}
 					side, ok := tt.Find(heading)
 					if !ok {
@@ -233,7 +233,7 @@ func TestSidebarHeaderAlignment(t *testing.T) {
 						t.Fatal("missing effective list header")
 					}
 					if d := side.Y + side.H/2 - count.Y - count.H/2; d < -1 || d > 1 {
-						t.Errorf("sidebar heading and list header are misaligned: sidebar=%+v, list=%+v", side, count)
+						t.Errorf("first sidebar item and list header are misaligned: sidebar=%+v, list=%+v", side, count)
 					}
 				})
 			}
@@ -249,15 +249,15 @@ func TestSidebarHeaderAlignmentWithLargeFont(t *testing.T) {
 			a := New(home)
 			a.startScan()
 			a.page = effectivePage
-			a.hidden["issues"], a.hidden["pool"] = hideBrowse, hideBrowse
+			a.hidden["overview"], a.hidden["sessions"], a.hidden["issues"] = hideBrowse, hideBrowse, hideBrowse
 			tt := ui.NewTester(func(c *ui.Context) {
 				theme := *c.Theme()
 				theme.FontSize = 18
 				ui.Themed(c, &theme).Fill().Children(func() { a.View(c) })
 			}, 1180, 760)
-			heading := "浏览"
+			heading := "总览"
 			if hideBrowse {
-				heading = "Agent"
+				heading = "技能"
 			}
 			side, sideOK := tt.Find(heading)
 			count, countOK := tt.Find("1 项生效")
@@ -265,7 +265,7 @@ func TestSidebarHeaderAlignmentWithLargeFont(t *testing.T) {
 				t.Fatal("missing sidebar or list heading")
 			}
 			if d := side.Y + side.H/2 - count.Y - count.H/2; d < -1 || d > 1 {
-				t.Fatalf("large font misaligned headings: sidebar=%+v, list=%+v", side, count)
+				t.Fatalf("large font misaligned first item: sidebar=%+v, list=%+v", side, count)
 			}
 		})
 	}

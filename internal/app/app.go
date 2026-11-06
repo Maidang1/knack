@@ -26,10 +26,11 @@ type App struct {
 	catalogPath string
 	cached      bool
 
-	settingsPath string
-	hidden       map[string]bool // agent root IDs left out of the sidebar
-	settingsOpen bool
-	settingsTab  int
+	settingsPath  string
+	foldLongSteps bool
+	hidden        map[string]bool // agent root IDs left out of the sidebar
+	settingsOpen  bool
+	settingsTab   int
 
 	repos      []store.Repo
 	snap       *skill.Snapshot
@@ -37,6 +38,9 @@ type App struct {
 
 	invocations   map[string]manage.Invocation
 	invocationErr string
+	sessions      sessionState
+	activity      *sessionActivity
+	skillPeriod   int
 
 	cache       viewCache
 	documents   map[string]*documentState
@@ -56,7 +60,6 @@ type App struct {
 	page          string
 	filter        int
 	agentsOpen    bool
-	builtinsOpen  bool
 	reposOpen     bool
 	pages         map[string]*pageState
 	sideW, listW  float32
@@ -78,6 +81,7 @@ type pageState struct {
 	chosen      ui.Selection[string]
 	choiceScope string
 	choiceSnap  *skill.Snapshot
+	agentTab    int
 	view        int    // 0 the list, 1 the dependency graph
 	node        string // the node chosen in the graph
 	graph       graphCanvasState
@@ -114,16 +118,16 @@ func New(home string) *App {
 		catalogPath:  filepath.Join(home, ".cache", "skill-manager", "catalog.json"),
 		settingsPath: filepath.Join(home, ".config", "skill-manager", "settings.json"),
 		hidden:       map[string]bool{},
-		page:         "issues",
+		skillPeriod:  1,
+		page:         "overview",
 		pages:        map[string]*pageState{},
 		documents:    map[string]*documentState{},
 		comparisons:  map[string]*comparisonState{},
 		graphs:       map[string]*graphState{},
-		sideW:        248,
+		sideW:        224,
 		listW:        440,
 		graphW:       720,
 		agentsOpen:   true,
-		builtinsOpen: true,
 		reposOpen:    true,
 	}
 	repos, err := store.Load(a.configPath)
@@ -134,6 +138,7 @@ func New(home string) *App {
 	if st, err := store.LoadSettings(a.settingsPath); err != nil {
 		a.loadErr = err.Error()
 	} else {
+		a.foldLongSteps = st.FoldLongSteps
 		for _, id := range st.HiddenAgents {
 			a.hidden[id] = true
 		}
@@ -144,6 +149,7 @@ func New(home string) *App {
 		a.cached = true
 		a.refreshInvocations()
 	}
+	a.loadSessions()
 	return a
 }
 
@@ -173,6 +179,7 @@ func (a *App) startScan() {
 		return
 	}
 	a.rescanPending = false
+	a.startSessionScan()
 	a.scanGen++
 	gen := a.scanGen
 	a.scanning = true

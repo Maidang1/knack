@@ -34,11 +34,11 @@ func TestOverviewScanRelinkAndUndo(t *testing.T) {
 
 	a := New(home)
 	tt := ui.NewTester(a.View, 1200, 860)
-	if !tt.HasText("还没有扫描结果") {
+	if a.page != "overview" || !tt.HasText("每日 Token") {
 		t.Fatalf("home before scan: %q", tt.Texts())
 	}
 	click(t, tt, "重新扫描")
-	if !tt.HasText("问题") || tt.HasText("总览") {
+	if !tt.HasText("问题") || !tt.HasText("总览") {
 		t.Fatalf("after scan: %q", tt.Texts())
 	}
 
@@ -184,7 +184,7 @@ func TestEmptyDirAndBuiltinReadOnly(t *testing.T) {
 		t.Fatal("offered to remove a directory that still has files")
 	}
 
-	click(t, tt, "Grok 自带")
+	click(t, tt, "Grok")
 	if !tt.HasText("只展示") || tt.HasText("改为软链") {
 		t.Fatalf("builtin: %q", tt.Texts())
 	}
@@ -387,6 +387,7 @@ func TestRepairAllAndUndo(t *testing.T) {
 	a := New(home)
 	tt := ui.NewTester(a.View, 1200, 860)
 	click(t, tt, "重新扫描")
+	click(t, tt, "问题")
 	if !tt.HasText("一键修复 3 项") {
 		t.Fatalf("repair bar: %q", tt.Texts())
 	}

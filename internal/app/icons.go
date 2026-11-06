@@ -18,6 +18,7 @@ const svgHead = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fil
 // marks places and actions of the window; the second marks agents.
 var glyphs = map[string]string{
 	// window
+	"sessions":  `<path d="M4 4h16v12H9l-5 4V4z"/><path d="M8 8h8M8 12h5"/>`,
 	"effective": `<circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/>`,
 	"overview":  `<rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/>`,
 	"pool":      `<path d="M12 3 3 8l9 5 9-5-9-5z"/><path d="m3 12.5 9 5 9-5"/><path d="m3 17 9 5 9-5"/>`,

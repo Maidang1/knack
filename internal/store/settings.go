@@ -9,6 +9,7 @@ import (
 
 // Settings are display preferences. They never change what is scanned.
 type Settings struct {
+	FoldLongSteps bool `json:"foldLongSteps"`
 	// HiddenAgents holds root IDs of agents left out of the sidebar.
 	HiddenAgents []string `json:"hiddenAgents"`
 }

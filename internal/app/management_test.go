@@ -169,7 +169,7 @@ func TestHideAgentFromSidebar(t *testing.T) {
 	}
 	a.page = "root:cline-skills"
 	a.setAgentShown("cline-skills", false)
-	if !a.hidden["cline-skills"] || a.page != "issues" {
+	if !a.hidden["cline-skills"] || a.page != "overview" {
 		t.Fatalf("hidden=%v page=%s", a.hidden, a.page)
 	}
 	click(t, tt, "共享池")
@@ -189,7 +189,7 @@ func TestHideBrowseItems(t *testing.T) {
 	a := New(home)
 	tt := ui.NewTester(a.View, 1200, 860)
 	click(t, tt, "重新扫描")
-	a.setAgentShown("issues", false)
+	a.setAgentsShown([]string{"overview", "sessions", "issues"}, false)
 	if a.page != "pool" {
 		t.Fatalf("page=%s", a.page)
 	}

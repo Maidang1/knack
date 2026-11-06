@@ -18,6 +18,7 @@ func TestIssueHeaderLayout(t *testing.T) {
 			t.Run(fmt.Sprintf("width=%d/list=%g", width, listWidth), func(t *testing.T) {
 				a := New(home)
 				a.startScan()
+				a.page = "issues"
 				a.listW = listWidth
 				tt := ui.NewTester(a.View, width, 560)
 				tt.SetTitleBar(ui.TitleBar{Height: 52, Left: 70})

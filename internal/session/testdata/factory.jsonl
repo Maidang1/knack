@@ -1,0 +1,11 @@
+{"type":"session_start","id":"factory-one","title":"Factory 测试","cwd":"/work/factory","version":2}
+{"type":"message","timestamp":"2026-11-01T00:00:00Z","id":"hook","message":{"role":"user","content":[],"hookEventName":"SessionStart"}}
+{"type":"message","timestamp":"2026-11-01T00:00:01Z","id":"fu1","message":{"role":"user","content":[{"type":"text","text":"PRIVATE_FACTORY_PROMPT"}]}}
+{"type":"message","timestamp":"2026-11-01T00:00:03Z","id":"fa1","message":{"role":"assistant","content":[{"type":"thinking","durationMs":500,"thinking":"PRIVATE_THINKING"},{"type":"tool_use","id":"fs1","name":"Skill","input":{"skill":"inspect"}}],"modelId":"custom:test-model"}}
+{"type":"message","timestamp":"2026-11-01T00:00:08Z","id":"fr1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"fs1","content":"PRIVATE_FACTORY_OUTPUT"}]}}
+{"type":"message","timestamp":"2026-11-01T00:00:10Z","id":"fa2","message":{"role":"assistant","content":[{"type":"text","text":"PRIVATE_FACTORY_REPLY"}],"modelId":"custom:test-model"}}
+{"type":"message","timestamp":"2026-11-01T00:00:20Z","id":"fu2","message":{"role":"user","content":[{"type":"text","text":"PRIVATE_FACTORY_SECOND_PROMPT"}]}}
+{"type":"message","timestamp":"2026-11-01T00:00:22Z","id":"fa3","message":{"role":"assistant","content":[{"type":"tool_use","id":"fb1","name":"Execute","input":{"command":"PRIVATE_FACTORY_COMMAND"}}],"modelId":"custom:test-model"}}
+{"type":"message","timestamp":"2026-11-01T00:00:25Z","id":"fr2","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"fb1","content":"PRIVATE_FACTORY_RESULT","is_error":true}]}}
+{"type":"compaction_state","id":"fc1","timestamp":"2026-11-01T00:00:26Z","summaryText":"PRIVATE_COMPACTION_SUMMARY"}
+{"type":"agent_turn_outcome","turnId":"factory-turn","reason":"completed","resultKind":"text"}
