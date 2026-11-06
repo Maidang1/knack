@@ -55,6 +55,7 @@ type sessionTrack struct {
 }
 type modelSpeed struct {
 	name             string
+	sessions         int
 	requests         int
 	output           int64
 	usageKnown       bool

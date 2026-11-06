@@ -24,7 +24,7 @@ type graphCanvasState struct {
 	zoom, x, y         float32
 	width, height      float32
 	contentW, contentH float32
-	dragging           bool
+	dragging, placed   bool
 	last               ui.Point
 	hover, focus       string
 	graph              *skill.Graph
@@ -49,6 +49,7 @@ func (s *graphCanvasState) prepare(g *skill.Graph) {
 	}
 	s.hover, s.focus = "", ""
 	s.highlight = graphHighlight{}
+	s.placed = false
 	s.constrain()
 }
 

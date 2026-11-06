@@ -13,10 +13,11 @@ type viewCache struct {
 	removals map[string]repair.Removal
 	fixes    map[string][]repair.Fix
 	plan     []repair.Fix
+	dirs     map[string]dirStat
 	planRead bool
 
 	page, query string
-	filter      int
+	filter, lib int
 	rows        []row
 	rowsRead    bool
 }
@@ -86,9 +87,9 @@ func (a *App) rows() []row {
 		return nil
 	}
 	cache := a.viewCache()
-	if !cache.rowsRead || cache.page != a.page || cache.query != a.query || cache.filter != a.filter {
+	if !cache.rowsRead || cache.page != a.page || cache.query != a.query || cache.filter != a.filter || cache.lib != a.libFilter*10+a.libSort {
 		cache.rows = a.buildRows()
-		cache.page, cache.query, cache.filter = a.page, a.query, a.filter
+		cache.page, cache.query, cache.filter, cache.lib = a.page, a.query, a.filter, a.libFilter*10+a.libSort
 		cache.rowsRead = true
 	}
 	return cache.rows

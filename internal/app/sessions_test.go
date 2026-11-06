@@ -29,7 +29,7 @@ func TestSessionPalette(t *testing.T) {
 			if sessionColor(name, false) != ui.Hex(pair[0]) || pair[0] == pair[1] {
 				t.Fatal("missing theme-specific palette")
 			}
-			for _, background := range []string{"#1e1e20", "#2a2a2d", "#343438", "#3e3e43"} {
+			for _, background := range []string{"#161618", "#1e1e21", "#2a2a2e", "#2e2e33"} {
 				x, y := luminance(sessionColor(name, true)), luminance(ui.Hex(background))
 				if x < y {
 					x, y = y, x
@@ -50,14 +50,14 @@ func TestOverviewActionableEmptyState(t *testing.T) {
 		t.Fatal("missing positive empty state")
 	}
 	for _, text := range tt.Texts() {
-		if strings.HasPrefix(text, "0 个 skill") || strings.HasPrefix(text, "0 个共享 skill") || text == "0 个会话有耗时异常" {
+		if strings.HasPrefix(text, "0 个") {
 			t.Fatalf("zero actionable row: %q", text)
 		}
 	}
 	writeSkill(t, filepath.Join(a.home, ".agents/skills/orphan"), "orphan")
 	a.startScan()
 	tt.Frame()
-	if tt.HasText("目前没有需要处理的事") || !tt.HasText("1 个共享 skill 未挂到 Agent") {
+	if tt.HasText("目前没有需要处理的事") || !tt.HasText("1 个共享技能未挂出") {
 		t.Fatal("nonzero actionable item missing")
 	}
 }
@@ -71,12 +71,12 @@ func TestSessionBrowser(t *testing.T) {
 				if width == 880 {
 					height = 560
 				}
-				a.openSession("claude:parent", 0)
+				a.openSession("claude:parent")
 				tt := ui.NewTester(a.View, width, height)
 				tt.SetTitleBar(ui.TitleBar{Height: 52, Left: 70})
 				tt.SetDark(dark)
-				if !tt.HasText("Agent 调用") || !tt.HasText("模型速率") || !tt.HasText("P10 0.5 · 中位数 7.8 · P90 10.0 tok/s · 6 个样本（估算）") {
-					t.Fatalf("missing session overview: %q", tt.Texts())
+				if !tt.HasText("Agent 调用") || !tt.HasText("模型输出速率") || !tt.HasText("P10 0.5 · 中位数 7.8 · P90 10.0 tok/s · 6 个样本（估算）") {
+					t.Fatalf("missing session measures: %q", tt.Texts())
 				}
 				d := a.sessions.detail
 				if d.summary.Tokens.Total() != 227 || len(d.tracks) != 2 || len(d.turns) != 2 || d.phases.total != 96*time.Second {
@@ -88,65 +88,53 @@ func TestSessionBrowser(t *testing.T) {
 				if d.phases.away != time.Minute || d.phases.unknown != time.Second {
 					t.Fatalf("away/unknown attribution %+v", d.phases)
 				}
-				for _, label := range []string{"会话列表", "会话详情标签", "会话详情内容"} {
+				for _, label := range []string{"会话详情内容", "阶段占比条", "每轮耗时图表", "单轮步骤瀑布图"} {
 					r, ok := tt.Find(label)
 					if !ok || r.W < 80 || r.X < 0 || r.X+r.W > float32(width)+1 {
 						t.Fatalf("clipped %s: %+v", label, r)
 					}
 				}
-				exportSessionPreview(t, tt, fmt.Sprintf("session-overview-%d-dark-%t.png", width, dark))
+				exportSessionPreview(t, tt, fmt.Sprintf("session-page-%d-dark-%t.png", width, dark))
 				var revealed string
 				a.revealFn = func(path string) { revealed = path }
-				click(t, tt, "打开日志")
+				click(t, tt, "定位原始日志")
 				if revealed != d.session.Path {
 					t.Fatal("source log action selected wrong file")
 				}
-				click(t, tt, "概览")
-				tt.Key(0, ui.KeyRight)
-				if _, ok := tt.Find("轮次列表"); a.sessions.tab != 1 || !tt.Focused("轮次") || !ok {
-					t.Fatal("tab keyboard navigation")
-				}
-				exportSessionPreview(t, tt, fmt.Sprintf("session-timing-%d-dark-%t.png", width, dark))
-				// The longest concern is shown on its turn, which opens from the keyboard.
+				// The page opens on the turn of the longest concern, marked in the chart.
 				concern := d.concerns[0]
-				if !tt.HasText(concern.title) {
-					t.Fatalf("turn row hides its concern %q", concern.title)
+				if a.sessions.selectedTurn != d.turns[concern.turn].turn.ID {
+					t.Fatal("page did not open on the concern's turn")
 				}
-				focusSessionControl(t, tt, turnLabel(d.turns[concern.turn]))
-				tt.Key(0, ui.KeyEnter)
-				if !a.sessions.roundOpen || a.sessions.selectedTurn != d.turns[concern.turn].turn.ID {
-					t.Fatal("concern turn selected wrong round")
+				if _, ok := tt.Find("本轮有耗时异常"); !ok {
+					t.Fatal("turn chart hides the concern")
 				}
-				click(t, tt, "返回全部轮次")
-				// Enter the waterfall from the keyboard and retain its selection on return.
-				label := turnLabel(d.turns[0])
-				focusSessionControl(t, tt, label)
-				tt.Key(0, ui.KeyEnter)
-				if !a.sessions.roundOpen || a.sessions.selectedTurn != d.turns[0].turn.ID || !tt.HasText("调用链") {
-					t.Fatal("turn entry did not keep selection")
+				// The chart's bars take the arrows, and the choice follows the focus.
+				focusSessionControl(t, tt, turnLabel(d.turns[0]))
+				if a.sessions.selectedTurn != d.turns[0].turn.ID {
+					t.Fatal("focusing a bar did not choose its turn")
 				}
-				click(t, tt, "返回全部轮次")
-				if a.sessions.roundOpen || a.sessions.selectedTurn != d.turns[0].turn.ID {
-					t.Fatal("round return lost selection")
+				tt.Key(0, ui.KeyRight)
+				if !tt.Focused(turnLabel(d.turns[1])) || a.sessions.selectedTurn != d.turns[1].turn.ID {
+					t.Fatal("turn chart arrow navigation")
 				}
-				focusSessionControl(t, tt, label)
-				tt.Key(0, ui.KeyDown)
-				if !tt.Focused(turnLabel(d.turns[1])) {
-					t.Fatal("turn list arrow navigation")
+				tt.Key(0, ui.KeyEscape)
+				if a.sessions.open {
+					t.Fatal("Escape did not return to the list")
 				}
-				tt.Key(0, ui.KeyEnter)
-				if a.sessions.selectedTurn != d.turns[1].turn.ID {
-					t.Fatal("second round selection")
+				if _, ok := tt.Find("会话列表"); !ok {
+					t.Fatal("list missing after closing the session")
 				}
-				click(t, tt, "返回全部轮次")
+				exportSessionPreview(t, tt, fmt.Sprintf("session-list-%d-dark-%t.png", width, dark))
 				// Filtering uses the full parsed session, not the unsupported zero usage.
 				click(t, tt, "搜索会话")
 				tt.Type("Factory")
-				if rows := a.sessionRows(); len(rows) != 1 || rows[0].Agent != session.Factory {
+				rows := a.sessionRows()
+				if len(rows) != 1 || rows[0].Agent != session.Factory {
 					t.Fatal("session search")
 				}
-				click(t, tt, "概览")
-				if !tt.HasText("暂不支持") || !tt.HasText("速率暂不支持") {
+				click(t, tt, a.sessions.list.Label(0))
+				if !a.sessions.open || !tt.HasText("暂不支持") || !tt.HasText("速率暂不支持") {
 					t.Fatal("Factory usage must remain unsupported")
 				}
 			})
@@ -162,13 +150,14 @@ func TestSessionHomeLinks(t *testing.T) {
 			click(t, tt, recentRowLabel(s))
 		}
 	}
-	if a.page != "sessions" || a.sessions.selected != "claude:parent" || a.sessions.tab != 0 {
+	if a.page != "sessions" || a.sessions.selected != "claude:parent" || !a.sessions.open {
 		t.Fatal("recent session link")
 	}
-	click(t, tt, "总览")
+	click(t, tt, "首页")
 	click(t, tt, "查看耗时异常会话")
-	if a.page != "sessions" || a.sessions.tab != 1 || !a.sessions.anomaliesOnly || !tt.HasText("活跃 ≈") {
-		t.Fatal("anomaly metric link")
+	d := a.sessions.detail
+	if a.page != "sessions" || !a.sessions.open || !a.sessions.anomaliesOnly || a.sessions.selectedTurn != d.turns[d.concerns[0].turn].turn.ID {
+		t.Fatal("anomaly metric link must open the turn of the longest concern")
 	}
 	for _, row := range a.sessionRows() {
 		if !a.overviewData().anomalies[sessionID(row)] {
@@ -176,6 +165,10 @@ func TestSessionHomeLinks(t *testing.T) {
 		}
 	}
 	// Native list navigation must update the stable selection key and detail.
+	tt.Key(0, ui.KeyEscape)
+	if a.sessions.open {
+		t.Fatal("Escape did not return to the list")
+	}
 	click(t, tt, "搜索会话")
 	tt.Key(ui.Cmd, ui.KeyA)
 	tt.Type("")
@@ -186,11 +179,19 @@ func TestSessionHomeLinks(t *testing.T) {
 	if len(rows) < 2 {
 		t.Fatal("need multiple list rows")
 	}
-	click(t, tt, recentLabel(rows[0]))
-	before := a.sessions.selected
+	focusSessionControl(t, tt, "会话列表")
+	before := a.sessions.index
 	tt.Key(0, ui.KeyDown)
-	if a.sessions.selected == before {
-		t.Fatal("list Down did not change session")
+	if a.sessions.index == before || a.sessions.open {
+		t.Fatal("list Down must choose the next session without opening it")
+	}
+	tt.Key(0, ui.KeyEnter)
+	if !a.sessions.open || a.sessions.selected != sessionID(rows[a.sessions.index]) {
+		t.Fatal("Enter did not open the chosen session")
+	}
+	click(t, tt, "下一个会话")
+	if a.sessions.selected != sessionID(rows[before+2]) {
+		t.Fatal("next session")
 	}
 }
 
@@ -210,7 +211,7 @@ func TestSessionConcurrentPhaseDisplay(t *testing.T) {
 	turn := session.Turn{ID: "turn", Start: start, End: start.Add(100 * time.Second), Requests: []session.Request{{ID: "model", Start: start, End: start.Add(10 * time.Second), Elapsed: known(10 * time.Second), Thinking: known(2 * time.Second), Generation: known(8 * time.Second)}}, Tools: []session.ToolCall{tool("one", 10, 50), tool("parallel", 20, 40), agent, permission}, Waits: []session.Wait{{Start: start.Add(90 * time.Second), End: start.Add(100 * time.Second), Kind: "reply"}}}
 	root := session.Session{ID: "parallel", Agent: session.Claude, Start: start, End: turn.End, Turns: []session.Turn{turn}}
 	a.sessions.snapshot = &session.Snapshot{Sessions: []session.Session{root}}
-	a.openSession(sessionID(root), 1)
+	a.openSession(sessionID(root))
 	tt := ui.NewTester(a.View, 1180, 900)
 	want := [phaseCount]time.Duration{2 * time.Second, 8 * time.Second, 40 * time.Second, 30 * time.Second, 20 * time.Second, 0}
 	if got := a.sessions.detail.phases; got.values != want || got.unknown != 0 || got.total != 100*time.Second {

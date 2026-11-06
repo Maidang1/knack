@@ -1,9 +1,10 @@
 package app
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"math"
+	"maps"
 	"slices"
 	"strings"
 
@@ -17,236 +18,6 @@ const (
 	replayPreviewLines = 12
 	replayPreviewChars = 1600
 )
-
-// Step rows: padding 8, phase dot 6 and gap 8 precede the name column; a gap
-// 8, the 88pt duration and padding 8 follow the track. The axis-break overlay
-// uses the same offsets.
-const (
-	stepTrackLeft  = 8 + 6 + 8 + 8
-	stepTrackRight = 8 + 88 + 8
-)
-
-func (a *App) closeSessionRound() {
-	a.sessions.roundOpen = false
-	a.sessions.tab = 1
-	a.sessions.focusTurn = true
-}
-
-// sessionRound replays one turn as a trace: the prompt, then every model
-// request, tool call, sub-Agent and wait on a shared time axis, each with the
-// content the log recorded for it.
-func (a *App) sessionRound(c *ui.Context, d *sessionDetailData, width float32) {
-	index := -1
-	for i, turn := range d.turns {
-		if turn.turn.ID == a.sessions.selectedTurn {
-			index = i
-			break
-		}
-	}
-	if index < 0 {
-		a.closeSessionRound()
-		return
-	}
-	turn := d.turns[index]
-	t := c.Theme()
-	replay := a.sessionReplay(d)
-	content := replay.ready()
-	labelWidth := float32(150)
-	if width < 560 {
-		labelWidth = 104
-	}
-	ui.Column(c).Gap(14).Children(func() {
-		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-			if ui.Button(c, "全部轮次").Label("返回全部轮次").FontSize(11).AutoFocus().Clicked() {
-				a.closeSessionRound()
-				c.Invalidate()
-			}
-			ui.Spacer(c)
-			number(c, fmt.Sprintf("%d / %d", index+1, len(d.turns))).FontSize(11).TextColor(t.TextMuted)
-			if ui.Button(c, "上一轮").FontSize(11).Disabled(index == 0).Clicked() {
-				a.chooseSessionTurn(d, index-1)
-				c.Invalidate()
-			}
-			if ui.Button(c, "下一轮").FontSize(11).Disabled(index == len(d.turns)-1).Clicked() {
-				a.chooseSessionTurn(d, index+1)
-				c.Invalidate()
-			}
-		})
-		a.turnPromptCard(c, d, turn, replay, content)
-		axis := newStepAxis(turn, a.foldLongSteps)
-		ui.Column(c).Gap(8).Children(func() {
-			ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
-				overviewTitle(c, "调用链")
-				ui.Spacer(c)
-				mode := 0
-				if a.foldLongSteps {
-					mode = 1
-				}
-				tabs := ui.TabsBase(c.Key("step-scale"), &mode, 2)
-				tabs.List.Gap(3).Label("步骤时间比例").Children(func() {
-					for i, label := range []string{"真实比例", "折叠长步骤"} {
-						b := tabs.Tab(i).Padding(4, 7).Border(1, t.Border).Radius(4).Label(label)
-						if i == mode {
-							b.Border(1, t.Accent).Background(fade(t.Accent, 24))
-						}
-						b.Children(func() { ui.Text(c, label).FontSize(11) })
-					}
-				})
-				if tabs.List.Changed() {
-					a.setFoldLongSteps(mode == 1)
-					c.Invalidate()
-				}
-			})
-			ui.Row(c).Gap(12).Wrap().Children(func() {
-				for i := range int(phaseCount) {
-					ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
-						ui.Box(c).Size(6, 6).Radius(2).Background(sessionColor(phaseKeys[i], t.Dark))
-						ui.Text(c, phaseNames[i]).FontSize(10).TextColor(t.TextMuted)
-					})
-				}
-			})
-			axisLabel := "时间轴暂不支持"
-			if axis.total > 0 {
-				axisLabel = "以本轮开始为 0 · 末端 " + session.FormatDuration(axis.total)
-			}
-			for _, cut := range axis.cuts {
-				axisLabel += " · 折叠 " + session.FormatDuration(cut.to-cut.from) + "（+" + session.FormatDuration(cut.from) + " 至 +" + session.FormatDuration(cut.to) + "）"
-			}
-			if a.foldLongSteps && len(axis.cuts) == 0 {
-				axisLabel += " · 本轮没有符合条件的长步骤"
-			}
-			ui.Text(c, axisLabel).FontSize(10).TextColor(t.TextMuted).MaxLines(2)
-			a.sessions.selectedStep = max(0, min(a.sessions.selectedStep, len(turn.steps)-1))
-			ui.Column(c.Key("steps:" + turn.turn.ID)).Gap(4).FocusGroup(ui.Vertical).Label("单轮步骤瀑布图").DrawOver(func(p *ui.Painter, r ui.Rect) {
-				// One neutral axis break crosses the chart, never a phase-colored band.
-				trackX, trackW := r.X+labelWidth+stepTrackLeft, r.W-labelWidth-stepTrackLeft-stepTrackRight
-				for _, cut := range axis.cuts {
-					x := trackX + (axis.at(cut.from)+axis.at(cut.to))/2*trackW
-					for _, dx := range []float32{-2, 2} {
-						p.Fill(ui.Rect{X: float32(math.Round(float64(x + dx))), Y: r.Y, W: 1, H: r.H}, t.TextMuted, 0)
-					}
-				}
-			}).Children(func() {
-				if len(turn.steps) == 0 {
-					ui.Text(c, "本轮没有已记录的步骤").FontSize(12).TextColor(t.TextMuted)
-				}
-				for i, step := range turn.steps {
-					a.stepRow(c, d, turn, i, step, axis, content, labelWidth)
-				}
-			})
-			ui.Text(c, "区间为日志估算；并行步骤分行展示，不相加。超时事件只表示阈值。").FontSize(10).TextColor(t.TextMuted).MaxLines(2)
-		})
-		if events := turnEvents(content, index); len(events) > 0 {
-			ui.Column(c).Gap(4).Children(func() {
-				for _, e := range events {
-					text := e.Name
-					if e.Text != "" {
-						text += " · " + firstLine(e.Text)
-					}
-					number(c, stepClock(e.Start)+"  "+text).FontSize(11).TextColor(t.TextMuted).SingleLine().Tooltip(e.Text)
-				}
-			})
-		}
-	})
-}
-
-func (a *App) turnPromptCard(c *ui.Context, d *sessionDetailData, turn sessionTurnView, replay *replayState, content *replayIndex) {
-	t := c.Theme()
-	ui.Column(c).Padding(12, 14).Gap(8).Background(t.Surface).Border(1, t.Border).Radius(7).Label("单轮摘要").Children(func() {
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Textf(c, "第 %d 轮", turn.index+1).FontSize(14).FontWeight(600)
-			ui.Spacer(c)
-			number(c, stepClock(turn.turn.Start)).FontSize(11).TextColor(t.TextMuted)
-		})
-		switch {
-		case replay == nil || replay.err != "":
-			ui.Text(c, "对话内容暂不可用").FontSize(12).TextColor(t.TextMuted)
-		case content == nil:
-			ui.Text(c, "正在读取对话内容…").FontSize(12).TextColor(t.TextMuted)
-		default:
-			prompts := content.prompts[turn.index]
-			if len(prompts) == 0 {
-				text, _ := turnPrompt(turn, content)
-				ui.Text(c, text).FontSize(12).TextColor(t.TextMuted)
-			}
-			for i, e := range prompts {
-				a.replayText(c, fmt.Sprintf("prompt:%s:%d", turn.turn.ID, i), "", e.Text, e.Truncated, false)
-			}
-			if n := content.context[turn.index]; n > 0 {
-				ui.Textf(c, "另有 %d 条自动注入的上下文（指令、提醒、命令输出），未展示", n).FontSize(10).TextColor(t.TextMuted)
-			}
-		}
-		parts := []string{"活跃 " + activeText(turn)}
-		if turn.gap > 0 {
-			name := "之后等待你 ≈ "
-			if turn.gapAway {
-				name = "之后离开 ≈ "
-			}
-			parts = append(parts, name+session.FormatDuration(turn.gap))
-		}
-		if turn.turn.Elapsed.Known {
-			parts = append(parts, "日志报告 "+session.FormatDuration(turn.turn.Elapsed.Value))
-		}
-		parts = append(parts, fmt.Sprintf("模型 %d 次 · 工具 %d 次", len(turn.turn.Requests), len(turn.turn.Tools)))
-		if n := len(turn.turn.Subagents); n > 0 {
-			parts = append(parts, fmt.Sprintf("子 Agent %d 个", n))
-		}
-		if turn.usage {
-			parts = append(parts, tokenNumber(turn.tokens.Total())+" Token")
-		}
-		number(c, strings.Join(parts, " · ")).FontSize(11).TextColor(t.TextMuted).MaxLines(2)
-		models := []string{}
-		for _, r := range turn.turn.Requests {
-			if r.Model != "" && !slices.Contains(models, r.Model) {
-				models = append(models, r.Model)
-			}
-		}
-		if len(models) > 0 {
-			ui.Text(c, "模型 · "+strings.Join(models, "、")).FontSize(11).TextColor(t.TextMuted).SingleLine()
-		}
-		if turn.turn.Interrupted {
-			ui.Text(c, "本轮已中断").FontSize(11).TextColor(t.Warning)
-		}
-	})
-}
-
-func (a *App) stepRow(c *ui.Context, d *sessionDetailData, turn sessionTurnView, i int, step sessionStep, axis stepAxis, content *replayIndex, labelWidth float32) {
-	t := c.Theme()
-	selected := i == a.sessions.selectedStep
-	name, preview := stepContent(step, content)
-	label := fmt.Sprintf("步骤 %d · %s · %s", i+1, step.name, stepDuration(step))
-	b := ui.Button(c.Key(i), "").Label(label).Tooltip(label).Column().Gap(4).Padding(6, 8).AlignItems(ui.Stretch).Justify(ui.Start).Border(1, t.Border).Radius(5).Background(ui.Transparent).FontWeight(400)
-	if selected {
-		b.Border(1, t.Accent).Background(fade(t.Accent, 20))
-	}
-	b.Children(func() {
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Box(c).Size(6, 6).Radius(2).Background(sessionColor(phaseKeys[step.phase], t.Dark)).Shrink(0)
-			ui.Text(c, name).FontSize(11).Width(labelWidth).Shrink(0).SingleLine().Tooltip(name)
-			stepTrack(c, turn, step, axis)
-			value := stepDuration(step)
-			if a.foldLongSteps && step.elapsed.Known && session.FoldLongStep(step.elapsed.Value, turn.phases.total) && !step.start.IsZero() && !step.end.IsZero() {
-				value += " ∕∕"
-			}
-			v := number(c, value).FontSize(11).Width(88).Shrink(0).TextAlign(ui.End)
-			if stepFailed(step, content) {
-				v.TextColor(t.Warning)
-			}
-		})
-		if preview != "" {
-			ui.Text(c, preview).FontSize(10).TextColor(t.TextMuted).SingleLine().Padding(0, 0, 0, 14)
-		}
-	})
-	if b.Clicked() || b.Focused() {
-		if a.sessions.selectedStep != i {
-			a.sessions.selectedStep = i
-			c.Invalidate()
-		}
-	}
-	if selected {
-		a.sessionStepDetail(c, turn, step, d.session.Agent, content)
-	}
-}
 
 // stepContent names a step by what it did and previews its recorded content.
 func stepContent(s sessionStep, content *replayIndex) (string, string) {
@@ -337,6 +108,74 @@ func inputPreview(input string) string {
 	return firstLine(input)
 }
 
+// Arguments longer than this, or on several lines, show as their own block.
+const inputInlineChars = 160
+
+// inputParts splits a tool's JSON input into its short arguments, one per
+// line, and its long ones, unescaped, so a written file or a script reads as
+// itself rather than as one escaped line. Input that is not a JSON object is
+// all short.
+func inputParts(input string) (short string, long [][2]string) {
+	var args map[string]any
+	if json.Unmarshal([]byte(input), &args) != nil || len(args) == 0 {
+		return input, nil
+	}
+	var lines []string
+	for _, k := range slices.Sorted(maps.Keys(args)) {
+		v, ok := args[k].(string)
+		if !ok {
+			// Lists and objects stay on one line when short, indented when not.
+			v = encodeInput(args[k], "")
+			if len(v) > inputInlineChars {
+				v = encodeInput(args[k], "  ")
+			}
+		}
+		if strings.Contains(v, "\n") || len(v) > inputInlineChars {
+			long = append(long, [2]string{k, v})
+			continue
+		}
+		lines = append(lines, k+": "+v)
+	}
+	return strings.Join(lines, "\n"), long
+}
+
+func encodeInput(v any, indent string) string {
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", indent)
+	enc.Encode(v)
+	return strings.TrimSpace(b.String())
+}
+
+// toolInput shows what a tool was given: an edit as its diff, other input
+// as its arguments. limit caps the diff's lines when above zero.
+func (a *App) toolInput(c *ui.Context, key, input string, limit int) {
+	short, long := inputParts(input)
+	if diff := editDiff(input); len(diff) > 0 {
+		var rest []string
+		for _, line := range strings.Split(short, "\n") {
+			if line != "" && !strings.HasPrefix(line, "old_string: ") && !strings.HasPrefix(line, "new_string: ") {
+				rest = append(rest, line)
+			}
+		}
+		if len(rest) > 0 {
+			a.replayText(c, key, "输入", strings.Join(rest, "\n"), false, codeBlock)
+		}
+		ui.Column(c).Gap(4).Children(func() {
+			ui.Text(c, "改动").FontSize(11.5).FontWeight(600).TextColor(c.Theme().TextMuted)
+			diffBlock(c, diff, limit)
+		})
+		return
+	}
+	if short != "" || len(long) == 0 {
+		a.replayText(c, key, "输入", short, false, codeBlock)
+	}
+	for _, part := range long {
+		a.replayText(c, key+":"+part[0], "输入 · "+part[0], part[1], false, codeBlock)
+	}
+}
+
 func turnEvents(content *replayIndex, turn int) []session.Entry {
 	if content == nil || turn >= len(content.events) {
 		return nil
@@ -366,13 +205,13 @@ func stepTrack(c *ui.Context, turn sessionTurnView, step sessionStep, axis stepA
 				center := r.X + (axis.at(cut.from)+axis.at(cut.to))/2*r.W
 				if right > center-3 && left < center+3 {
 					if center-3 > left {
-						p.Fill(ui.Rect{X: left, Y: r.Y + 4, W: center - 3 - left, H: 8}, fill, 2)
+						p.Fill(ui.Rect{X: left, Y: r.Y + 2, W: center - 3 - left, H: 12}, fill, 2)
 					}
 					left = max(left, center+3)
 				}
 			}
 			if right > left {
-				p.Fill(ui.Rect{X: left, Y: r.Y + 4, W: right - left, H: 8}, fill, 2)
+				p.Fill(ui.Rect{X: left, Y: r.Y + 2, W: right - left, H: 12}, fill, 2)
 			}
 		}
 		paintSpan(x1, x1+w, color)
@@ -383,80 +222,18 @@ func stepTrack(c *ui.Context, turn sessionTurnView, step sessionStep, axis stepA
 	})
 }
 
-func (a *App) sessionStepDetail(c *ui.Context, turn sessionTurnView, s sessionStep, agent session.Agent, content *replayIndex) {
-	t := c.Theme()
-	ui.Column(c).Padding(10, 12).Gap(10).Border(1, t.Accent).Background(fade(t.Accent, 10)).Radius(6).Label("步骤详情").Children(func() {
-		ui.Column(c).Gap(4).Children(func() {
-			ui.Text(c, s.name).FontSize(13).FontWeight(600).MaxLines(2)
-			number(c, s.kind+" · "+stepDuration(s)+" · "+stepClock(s.start)+" → "+stepClock(s.end)).FontSize(11).TextColor(t.TextMuted)
-		})
-		facts := stepFacts(s, agent)
-		if len(facts) > 0 {
-			ui.Column(c).Gap(3).Children(func() {
-				for _, fact := range facts {
-					ui.Row(c).Gap(8).AlignItems(ui.Start).Children(func() {
-						ui.Text(c, fact[0]).FontSize(11).Width(84).Shrink(0).TextColor(t.TextMuted)
-						ui.Text(c, fact[1]).FontSize(11).Grow(1).MinWidth(0)
-					})
-				}
-			})
-		}
-		if s.tool != nil && s.tool.PermissionWait {
-			ui.Text(c, "权限等待为整个工具间隔的估算，包含执行时间。").FontSize(10).TextColor(t.TextMuted)
-		}
-		if content == nil {
-			return
-		}
-		key := turn.turn.ID + ":" + s.name
-		if r := s.request; r != nil {
-			entries := content.byRequest[r.ID]
-			if len(entries) == 0 && len(content.calls[r.ID]) == 0 {
-				ui.Text(c, "日志没有记录这次请求的内容").FontSize(11).TextColor(t.TextMuted)
-			}
-			for i, e := range entries {
-				switch e.Kind {
-				case session.EntryThinking:
-					if strings.TrimSpace(e.Text) == "" {
-						ui.Text(c, "思考 · 日志只保存了签名，没有思考正文").FontSize(11).TextColor(t.TextMuted)
-						continue
-					}
-					a.replayText(c, fmt.Sprintf("%s:%d", key, i), "思考", e.Text, e.Truncated, false)
-				case session.EntryAssistant:
-					a.replayText(c, fmt.Sprintf("%s:%d", key, i), "回复", e.Text, e.Truncated, false)
-				case session.EntryEvent:
-					a.replayText(c, fmt.Sprintf("%s:%d", key, i), e.Name, e.Text, e.Truncated, false)
-				}
-			}
-			if calls := content.calls[r.ID]; len(calls) > 0 {
-				names := []string{}
-				for _, call := range calls {
-					names = append(names, call.Name)
-				}
-				ui.Text(c, "发起工具调用 · "+strings.Join(compactNames(names), "、")+"（见后续步骤）").FontSize(11).TextColor(t.TextMuted).MaxLines(3)
-			}
-		}
-		if s.tool != nil {
-			e, ok := content.byTool[s.tool.ID]
-			if !ok {
-				ui.Text(c, "日志没有记录这次调用的输入和输出").FontSize(11).TextColor(t.TextMuted)
-				return
-			}
-			a.replayText(c, key+":in", "输入", e.Input, false, true)
-			title := "输出"
-			if e.Error {
-				title = "输出 · 失败"
-			}
-			if e.End.IsZero() {
-				ui.Text(c, "没有记录输出").FontSize(11).TextColor(t.TextMuted)
-			} else {
-				a.replayText(c, key+":out", title, e.Text, e.Truncated, true)
-			}
-		}
-	})
-}
+// How recorded text shows: prose wraps; code and tool output keep their
+// lines, on a quiet face or a terminal's.
+type blockKind int
+
+const (
+	proseBlock blockKind = iota
+	codeBlock
+	terminalBlock
+)
 
 // replayText shows recorded text, selectable, clipped until expanded.
-func (a *App) replayText(c *ui.Context, key, title, text string, truncated, mono bool) {
+func (a *App) replayText(c *ui.Context, key, title, text string, truncated bool, kind blockKind) {
 	t := c.Theme()
 	if a.sessions.expanded == nil {
 		a.sessions.expanded = map[string]bool{}
@@ -471,20 +248,24 @@ func (a *App) replayText(c *ui.Context, key, title, text string, truncated, mono
 	}
 	ui.Column(c.Key("replay:" + key)).Gap(4).Children(func() {
 		if title != "" {
-			ui.Text(c, title).FontSize(11).FontWeight(600).TextColor(t.TextMuted)
+			ui.Text(c, title).FontSize(11.5).FontWeight(600).TextColor(t.TextMuted)
 		}
 		if strings.TrimSpace(text) == "" {
 			ui.Text(c, "（空）").FontSize(11).TextColor(t.TextMuted)
 			return
 		}
-		if mono {
+		if kind != proseBlock {
 			// Code and tool output keep their lines; long unbroken paths and
 			// commands scroll instead of overflowing or being split.
-			ui.ScrollHorizontal(c.Key("replay-scroll:" + key)).Label(title).Background(t.Surface).Radius(5).Children(func() {
-				ui.Text(c, shown).Font("SF Mono, Menlo, monospace").FontSize(11).NoWrap().Selectable().Padding(8, 10)
+			face, ink := t.SurfaceHover, t.Text
+			if kind == terminalBlock {
+				face, ink = token(t, "code-bg"), token(t, "code-ink")
+			}
+			ui.ScrollHorizontal(c.Key("replay-scroll:" + key)).Label(title).Background(face).Radius(7).Children(func() {
+				ui.Text(c, shown).Font(monoFont).FontSize(11.5).LineHeight(1.55).TextColor(ink).NoWrap().Selectable().Padding(10, 12)
 			})
 		} else {
-			ui.Text(c, shown).FontSize(12).Selectable()
+			ui.Text(c, shown).FontSize(13).LineHeight(1.6).Selectable()
 		}
 		if long || truncated {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {

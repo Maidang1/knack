@@ -1,29 +1,11 @@
 package app
 
 import (
-	"github.com/egoist/mygo/ui"
 	"slices"
 	"strings"
 
 	"knack/internal/skill"
 )
-
-// Stock SidebarItem tints every icon blue. v2 reserves that color for the
-// selection and links; supply neutral icon content while retaining native
-// sidebar keyboard navigation and accessibility roles.
-func (a *App) navItem(c *ui.Context, id, icon, label string) ui.Element {
-	item := ui.SidebarItem(c, id, nil, "").Label(label)
-	item.Children(func() {
-		ui.Row(c).Grow(1000).Margin(0, 0, 0, -8).Gap(8).AlignItems(ui.Center).Children(func() {
-			glyph := ui.Icon(c, glyph(icon)).FontSize(16)
-			if a.page != id {
-				glyph.TextColor(c.Theme().TextMuted)
-			}
-			ui.Text(c, label).Grow(1).SingleLine()
-		})
-	})
-	return item
-}
 
 // Keep directory identities intact for management. Only navigation and list
 // composition change; every bundled entry retains its read-only source role.

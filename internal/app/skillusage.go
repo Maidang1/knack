@@ -176,48 +176,48 @@ func (a *App) skillUsage(c *ui.Context, e skill.Entry) {
 		agent = session.Agent(agentKey(a.home, e.RootPath))
 	}
 	ui.Column(c.Key("skill-usage:" + e.Path)).Gap(10).Label("技能使用情况").Children(func() {
+		muted := token(t, "ink-3")
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			overviewTitle(c, "使用情况")
+			ui.Text(c, "使用情况").FontSize(14).FontWeight(600).SingleLine().Shrink(0)
 			ui.Spacer(c)
-			ui.Segmented(c, &a.skillPeriod, "7 天", "30 天", "90 天").Label("技能使用时间范围").Height(24)
+			note := "按日志中的 Skill 调用名匹配，未记录实际加载路径；不能据此判断同名副本是否被使用。"
+			if agent == "" {
+				note += "跨 Agent 汇总已识别调用；Codex、Cursor 等缺少调用记录的来源不计为零。"
+			}
+			ui.Text(c, "按调用名统计，同名副本合并计数").FontSize(11.5).TextColor(muted).Shrink(1).MinWidth(0).SingleLine().Tooltip(note)
+			segmented(c, "技能使用时间范围", &a.skillPeriod, "7 天", "30 天", "90 天")
 		})
 		if agent != "" {
 			if reason := skillSupport(agent); reason != "" {
-				ui.Text(c, reason).FontSize(11).TextColor(t.TextMuted)
+				ui.Text(c, reason).FontSize(12).TextColor(t.TextMuted)
 				return
 			}
 		}
 		days := []int{7, 30, 90}[max(0, min(a.skillPeriod, 2))]
 		usage := a.sessionActivity().skillUsage(agent, skillNames(e), skillRange(days, time.Now()))
-		ui.Textf(c, "近 %d 天调用 %d 次 · %d 个会话", days, usage.calls, len(usage.sessions)).FontSize(13).FontWeight(600)
-		last := "未记录"
+		last := "—"
 		if !usage.last.IsZero() {
-			last = usage.last.Local().Format("2006/01/02 15:04")
+			last = ago(time.Now(), usage.last)
 		}
-		ui.Text(c, "最后使用 · "+last).FontSize(11).TextColor(t.TextMuted)
+		summary := fmt.Sprintf("近 %d 天调用 %d 次 · %d 个会话 · 主 Agent %d 次 · 子 Agent %d 次", days, usage.calls, len(usage.sessions), usage.main, usage.child)
+		ui.Row(c).Gap(28).AlignItems(ui.End).Label(summary).Children(func() {
+			stat := func(value, label, tip string) {
+				ui.Column(c).Gap(3).Shrink(0).Tooltip(tip).Children(func() {
+					if strings.ContainsFunc(value, func(r rune) bool { return r > 0x2e80 }) {
+						ui.Text(c, value).FontSize(16).FontWeight(600).Height(24).AlignContent(ui.End)
+					} else {
+						number(c, value).FontSize(20).FontWeight(600)
+					}
+					ui.Text(c, label).FontSize(11.5).TextColor(t.TextMuted)
+				})
+			}
+			stat(fmt.Sprint(usage.calls), "次调用", fmt.Sprintf("主 Agent %d 次 · 子 Agent %d 次", usage.main, usage.child))
+			stat(fmt.Sprint(len(usage.sessions)), "个会话", "")
+			stat(last, "最后使用", usage.last.Local().Format("2006/01/02 15:04"))
+			ui.Column(c).Grow(1).MinWidth(80).Children(func() { skillDailyChart(c, usage, days, agent) })
+		})
 		if usage.calls == 0 {
 			ui.Text(c, "这段时间内没有被调用").FontSize(12).TextColor(t.TextMuted)
-		} else {
-			ui.Textf(c, "主 Agent %d 次 · 子 Agent %d 次", usage.main, usage.child).FontSize(11).TextColor(t.TextMuted)
-			skillDailyChart(c, usage, days)
-			for _, use := range usage.sessions {
-				label := "使用会话 · " + use.label
-				b := ui.Button(c.Key(use.id+use.label), "").Label(label).Border(1, t.Border).Background(ui.Transparent).Radius(5).Padding(7, 9).Disabled(use.id == "")
-				b.Children(func() {
-					ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
-						ui.Text(c, use.label).FontSize(11).SingleLine().Tooltip(use.label)
-						ui.Textf(c, "%s · %d 次", use.last.Local().Format("01/02 15:04"), use.calls).FontSize(10).TextColor(t.TextMuted)
-					})
-				})
-				if b.Clicked() {
-					a.openSession(use.id, 0)
-					c.Invalidate()
-				}
-			}
-		}
-		ui.Text(c, "按日志中的 Skill 调用名匹配，未记录实际加载路径；不能据此判断同名副本是否被使用。").FontSize(10).TextColor(t.TextMuted)
-		if agent == "" {
-			ui.Text(c, "跨 Agent 汇总已识别调用；Codex、Cursor 等缺少调用记录的来源不计为零。").FontSize(10).TextColor(t.TextMuted)
 		}
 		if snap := a.sessions.snapshot; snap == nil || snap.Partial || len(snap.Warnings) > 0 {
 			ui.Text(c, "本地日志尚未完整读取，调用次数可能不完整。").FontSize(10).TextColor(t.Warning)
@@ -225,25 +225,32 @@ func (a *App) skillUsage(c *ui.Context, e skill.Entry) {
 	})
 }
 
-func skillDailyChart(c *ui.Context, usage *skillUsageData, days int) {
+// skillDailyChart is a bar a day, in the Agent's color, or neutral when it
+// adds up several Agents.
+func skillDailyChart(c *ui.Context, usage *skillUsageData, days int, agent session.Agent) {
 	now := time.Now()
 	start := skillRange(days, now).From
-	neutral := sessionColor("data-neutral", c.Theme().Dark)
+	t := c.Theme()
+	color := token(t, "ink-3")
+	if agent != "" {
+		color = agentColor(agent, t.Dark)
+	}
 	peak := 1
 	for _, count := range usage.days {
 		peak = max(peak, count)
 	}
-	ui.Row(c).Gap(2).Height(32).FocusGroup(ui.Horizontal).Label("Skill 每日调用").Children(func() {
+	ui.Row(c).Gap(2).Height(40).AlignItems(ui.Stretch).FocusGroup(ui.Horizontal).Label("Skill 每日调用").Children(func() {
 		for i := 0; i < days; i++ {
 			day := start.AddDate(0, 0, i).Format("2006-01-02")
 			count := usage.days[day]
 			label := fmt.Sprintf("%s · %d 次调用", day, count)
-			ui.Button(c.Key(day), "").Grow(1).MinWidth(0).Height(32).Padding(0).Border(0, ui.Transparent).Background(ui.Transparent).Label(label).Tooltip(label).Draw(func(p *ui.Painter, r ui.Rect) {
+			ui.ButtonBase(c.Key(day)).Grow(1).Basis(0).MinWidth(0).Label(label).Tooltip(label).Draw(func(p *ui.Painter, r ui.Rect) {
 				if count == 0 {
+					p.Fill(ui.Rect{X: r.X, Y: r.Y + r.H - 1, W: r.W, H: 1}, t.Border, 0)
 					return
 				}
-				h := float32(count) / float32(peak) * r.H
-				p.Fill(ui.Rect{X: r.X, Y: r.Y + r.H - h, W: r.W, H: h}, neutral, 1)
+				h := max(2, float32(count)/float32(peak)*r.H)
+				p.Fill(ui.Rect{X: r.X, Y: r.Y + r.H - h, W: r.W, H: h}, color, 1)
 			})
 		}
 	})

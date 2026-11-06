@@ -2,7 +2,9 @@ package app
 
 import (
 	"fmt"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"knack/internal/session"
@@ -38,84 +40,176 @@ func dayDescription(day overviewDay, series []session.Agent) string {
 	return text
 }
 
+// dailyChart stacks each day's Token by Agent. The chosen day is in full
+// color and the others recede, so the caption below reads as its legend.
 func (a *App) dailyChart(c *ui.Context, d *overviewData) {
 	t := c.Theme()
 	dark := t.Dark
+	muted := token(t, "ink-3")
 	var peak int64
 	for _, day := range d.days {
 		peak = max(peak, day.total())
 	}
-	card(c).Padding(12, 14).Gap(8).Children(func() {
-		ui.Row(c).Gap(10).AlignItems(ui.Center).Height(22).Children(func() {
-			overviewTitle(c, "每日 Token")
-			ui.Spacer(c)
+	selected := a.sessions.day
+	if selected < 0 || selected >= len(d.days) {
+		selected = len(d.days) - 1
+	}
+	ui.Column(c).Gap(14).Children(func() {
+		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, "每日 Token").FontSize(14).FontWeight(600).Grow(1).SingleLine()
 			for _, id := range d.series {
-				ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
-					ui.Box(c).Size(6, 6).Radius(3).Background(agentColor(id, dark))
-					ui.Text(c, seriesName(id)).FontSize(11).TextColor(t.TextMuted)
+				legendItem(c, agentColor(id, dark), seriesName(id))
+			}
+		})
+		ui.Column(c).Gap(6).Children(func() {
+			ui.Row(c).Height(160).Gap(8).AlignItems(ui.Stretch).Children(func() {
+				ui.Column(c).Width(30).Shrink(0).Justify(ui.SpaceBetween).Children(func() {
+					for _, v := range []int64{peak, peak * 2 / 3, peak / 3, 0} {
+						number(c, tokenNumber(v)).FontSize(10).TextColor(muted)
+					}
 				})
-			}
-		})
-		ui.Row(c).Height(136).Gap(8).AlignItems(ui.Stretch).Children(func() {
-			ui.Column(c).Width(38).Justify(ui.SpaceBetween).Children(func() {
-				number(c, tokenNumber(peak)).FontSize(10).TextColor(t.TextMuted)
-				number(c, tokenNumber(peak/2)).FontSize(10).TextColor(t.TextMuted)
-				number(c, "0").FontSize(10).TextColor(t.TextMuted)
-			})
-			ui.Row(c).Grow(1).Gap(3).AlignItems(ui.Stretch).FocusGroup(ui.Horizontal).Label("每日 Token 图表").BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
-				for i, day := range d.days {
-					description := filteredDayDescription(day, d)
-					bar := ui.Button(c.Key(day.date), "").Grow(1).Height(135).MinWidth(0).Padding(0).Border(0, ui.Transparent).Background(ui.Transparent).Label(description).Tooltip(description)
-					if i == a.sessions.day {
-						bar.Background(fade(t.Accent, 20)).Radius(3)
-					}
-					bar.Draw(func(p *ui.Painter, r ui.Rect) {
-						if peak == 0 {
-							return
+				ui.Row(c).Grow(1).Gap(4).AlignItems(ui.Stretch).FocusGroup(ui.Horizontal).Label("每日 Token 图表").Children(func() {
+					for i, day := range d.days {
+						description := filteredDayDescription(day, d)
+						bar := ui.ButtonBase(c.Key(day.date)).Grow(1).Basis(0).MinWidth(0).Label(description).Tooltip(description)
+						on := i == selected
+						bar.Draw(func(p *ui.Painter, r ui.Rect) {
+							if peak == 0 {
+								return
+							}
+							y := r.Y + r.H
+							w := min(r.W, float32(42))
+							for j, value := range day.tokens {
+								h := float32(float64(value)/float64(peak)) * r.H
+								if h <= 0 {
+									continue
+								}
+								color := agentColor(d.series[j], dark)
+								if !on {
+									color = fade(color, 110)
+								}
+								y -= h
+								// A one-point seam separates the stacked Agents.
+								p.Fill(ui.Rect{X: r.X + (r.W-w)/2, Y: y + 1, W: w, H: max(h-1, 1)}, color, 1)
+							}
+						})
+						if bar.Clicked() {
+							a.sessions.day = i
+							c.Invalidate()
 						}
-						y := r.Y + r.H
-						w := min(r.W, float32(18))
-						for j, value := range day.tokens {
-							h := float32(float64(value)/float64(peak)) * r.H
-							y -= h
-							p.Fill(ui.Rect{X: r.X + (r.W-w)/2, Y: y, W: w, H: h}, agentColor(d.series[j], dark), 0)
-						}
-					})
-					if bar.Clicked() {
-						a.sessions.day = i
-						c.Invalidate()
 					}
-				}
+				})
+			})
+			ui.Row(c).Padding(0, 0, 0, 38).Gap(4).Children(func() {
+				axisTicks(c, len(d.days), selected, false, func(i int) string { return dayTick(d.days, i) })
 			})
 		})
-		axis := ui.Row(c).Padding(0, 0, 0, 46).Justify(ui.SpaceBetween)
-		if len(d.days) == 1 {
-			axis.Justify(ui.Center)
-		}
-		axis.Children(func() {
-			if len(d.days) > 0 {
-				last := -1
-				for _, i := range []int{0, len(d.days) / 2, len(d.days) - 1} {
-					if i == last {
-						continue
-					}
-					last = i
-					ui.Text(c, strings.ReplaceAll(d.days[i].date[5:], "-", "/")).FontSize(10).TextColor(t.TextMuted)
-				}
-			}
-		})
-		selected := a.sessions.day
-		if selected < 0 || selected >= len(d.days) {
-			selected = len(d.days) - 1
-		}
 		if selected >= 0 {
-			caption := filteredDayDescription(d.days[selected], d)
+			day := d.days[selected]
+			caption := strings.TrimPrefix(filteredDayDescription(day, d), day.date+" · ")
 			if d.period == 3 {
-				caption += " · 图表显示最近 60 日，顶部汇总覆盖全部历史"
+				caption += " · 图表显示最近 60 日"
 			}
-			number(c, caption).FontSize(10).TextColor(t.TextMuted).SingleLine().Tooltip(caption)
+			ui.Row(c).Gap(8).Padding(8, 12).Radius(8).Background(t.Surface).Border(1, t.Border).AlignItems(ui.Center).Shrink(0).
+				Children(func() {
+					ui.Text(c, dayLabel(day.date)).FontSize(12).FontWeight(600).SingleLine()
+					ui.Text(c, caption).FontSize(12).TextColor(t.TextMuted).SingleLine().MinWidth(0).Tooltip(caption)
+				})
 		}
 	})
+}
+
+// axisTicks labels every few of n bars, always the chosen one, then the
+// last and the first. Each label spans the bars around its own, so it is
+// centered under its bar and is never cut short: a span of k cells grows k
+// times and adds back the k-1 gaps of 4 it covers. pill marks the chosen
+// label as the design's ink chip; otherwise it is bold.
+func axisTicks(c *ui.Context, n, selected int, pill bool, label func(int) string) {
+	t := c.Theme()
+	muted := token(t, "ink-3")
+	every := max(1, (n+13)/14)
+	if every%2 == 0 {
+		every++
+	}
+	half := every / 2
+	var marks []int
+	add := func(i int) {
+		if i < 0 || i >= n {
+			return
+		}
+		for _, m := range marks {
+			if i-m < every && m-i < every {
+				return
+			}
+		}
+		marks = append(marks, i)
+	}
+	add(selected)
+	add(n - 1)
+	for i := 0; i < n; i += every {
+		add(i)
+	}
+	slices.Sort(marks)
+	cell := func(from, to int) ui.Element {
+		k := float32(to - from + 1)
+		return ui.Row(c).Grow(k).Basis((k - 1) * 4).MinWidth(0)
+	}
+	next := 0
+	for _, i := range marks {
+		// A label at an edge spans inward instead, the same width.
+		from, to := i-half, i+half
+		if from < 0 {
+			from, to = 0, to-from
+		}
+		if to > n-1 {
+			from, to = from-(to-n+1), n-1
+		}
+		from, to = max(from, next), min(to, n-1)
+		if from > next {
+			cell(next, from-1)
+		}
+		align := ui.Center
+		if i-from < to-i {
+			align = ui.Start
+		} else if i-from > to-i {
+			align = ui.End
+		}
+		on := i == selected
+		cell(from, to).Justify(align).Children(func() {
+			text := number(c, label(i)).FontSize(10.5).TextColor(muted).SingleLine()
+			switch {
+			case on && pill:
+				text.TextColor(token(t, "on-ink")).FontWeight(600).Padding(1, 6).Radius(4).Background(t.Text)
+			case on:
+				text.TextColor(t.Text).FontWeight(600)
+			}
+		})
+		next = to + 1
+	}
+	if next < n {
+		cell(next, n-1)
+	}
+}
+
+// dayTick labels a bar: month and day where the month starts, else the day.
+func dayTick(days []overviewDay, i int) string {
+	at, err := time.Parse("2006-01-02", days[i].date)
+	if err != nil {
+		return days[i].date
+	}
+	if i == 0 || at.Day() == 1 {
+		return fmt.Sprintf("%d/%d", at.Month(), at.Day())
+	}
+	return fmt.Sprint(at.Day())
+}
+
+// dayLabel is a date with its weekday, as "11/2 周一".
+func dayLabel(date string) string {
+	at, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return date
+	}
+	return fmt.Sprintf("%d/%d %s", at.Month(), at.Day(), []string{"周日", "周一", "周二", "周三", "周四", "周五", "周六"}[at.Weekday()])
 }
 
 func filteredDayDescription(day overviewDay, d *overviewData) string {

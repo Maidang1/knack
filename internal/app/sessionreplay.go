@@ -26,6 +26,7 @@ type replayState struct {
 }
 
 type replayIndex struct {
+	turns     [][]session.Entry // per turn: every entry, in log order
 	prompts   [][]session.Entry // per turn: what the person typed
 	context   []int             // per turn: injected context entries
 	events    [][]session.Entry // per turn: interruptions, compaction, errors
@@ -93,6 +94,7 @@ func (a *App) sessionReplay(d *sessionDetailData) *replayState {
 // Entries join turns by time and requests/tools by their log identifiers.
 func buildReplayIndex(d *sessionDetailData, tr *session.Transcript) *replayIndex {
 	x := &replayIndex{
+		turns:     make([][]session.Entry, len(d.turns)),
 		prompts:   make([][]session.Entry, len(d.turns)),
 		context:   make([]int, len(d.turns)),
 		events:    make([][]session.Entry, len(d.turns)),
@@ -125,6 +127,7 @@ func buildReplayIndex(d *sessionDetailData, tr *session.Transcript) *replayIndex
 			continue
 		}
 		i := turnAt(e.Start)
+		x.turns[i] = append(x.turns[i], e)
 		switch e.Kind {
 		case session.EntryUser:
 			x.prompts[i] = append(x.prompts[i], e)

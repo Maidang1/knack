@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -22,15 +23,18 @@ type sessionState struct {
 	overview        *overviewData
 	browser         *sessionBrowserData
 	query           string
+	hits            sessionHits // sessions the sidebar's query matches
 	anomaliesOnly   bool
 	selected        string
 	index           int
 	list            ui.ListState
-	listW           float32
-	tab             int
+	open            bool // a session's page shows in place of the list
+	replayOpen      bool // its conversation shows in place of its page
+	replayQuery     string
+	replayFilter    int
 	selectedTurn    string
-	roundOpen       bool
 	selectedStep    int
+	stepOpen        bool // the chosen step shows its content under its row
 	focusTurn       bool
 	detail          *sessionDetailData
 	detailSource    *session.Snapshot
@@ -44,7 +48,7 @@ func (a *App) loadSessions() {
 	problems := session.LoadAgentConfig(filepath.Join(a.home, ".config", "skill-manager", "agents.json"))
 	path := filepath.Join(a.home, ".cache", "skill-manager", "sessions.json")
 	r, err := session.NewReader(a.home, path)
-	a.sessions = sessionState{reader: r, period: 2, agent: allAgents, day: -1, index: -1, listW: 300, agentProblems: problems}
+	a.sessions = sessionState{reader: r, period: 2, agent: allAgents, day: -1, index: -1, agentProblems: problems}
 	if err != nil {
 		a.sessions.err = "无法读取会话缓存，将重新读取本地日志"
 		return
@@ -116,7 +120,7 @@ func (a *App) sessionRows() []session.Session {
 			if s.anomaliesOnly && !view.anomalies[sessionID(row)] {
 				continue
 			}
-			if !matchQuery(s.query, recentLabel(row), row.CWD, row.GitBranch, row.ID, sessionAgentName(row.Agent)) {
+			if !matchSession(s.query, row) {
 				continue
 			}
 			cache.rows = append(cache.rows, row)
@@ -137,15 +141,17 @@ func (a *App) sessionRows() []session.Session {
 	return cache.rows
 }
 
-func (a *App) openSession(id string, tab int) {
+// openSession shows a session's page. Its turn is the one with the longest
+// concern unless one is chosen after.
+func (a *App) openSession(id string) {
 	s := &a.sessions
 	a.page = "sessions"
 	s.selected = id
-	s.tab = tab
+	s.open = true
+	s.replayOpen = false
 	s.query = ""
 	s.anomaliesOnly = false
 	s.browser = nil
-	s.roundOpen = false
 	s.selectedTurn = ""
 	// Direct links must also work after a narrower list filter was selected.
 	s.period = 3
@@ -155,12 +161,13 @@ func (a *App) openSession(id string, tab int) {
 func (a *App) openSessionAnomalies(view *overviewData) {
 	for _, row := range view.recent {
 		if view.anomalies[sessionID(row)] {
-			a.openSession(sessionID(row), 1)
+			a.openSession(sessionID(row))
 			a.sessions.anomaliesOnly = true
 			return
 		}
 	}
 	a.page = "sessions"
+	a.sessions.open = false
 	a.sessions.anomaliesOnly = true
 	a.sessions.browser = nil
 	a.notice = "当前日志中没有可打开的主会话；子 Agent 可能缺少父会话日志"
@@ -175,7 +182,6 @@ func (a *App) selectedSessionData(rows []session.Session) *sessionDetailData {
 	if s.detail == nil || s.detailSource != s.snapshot || sessionID(row) != sessionID(s.detail.session) {
 		if s.selected != sessionID(row) {
 			s.selectedTurn = ""
-			s.roundOpen = false
 		}
 		s.selected = sessionID(row)
 		s.detail = sessionDetail(s.snapshot, row)
@@ -184,44 +190,93 @@ func (a *App) selectedSessionData(rows []session.Session) *sessionDetailData {
 	return s.detail
 }
 
+// closeSession steps back: from the conversation to the session's page,
+// from the page to the list.
+func (a *App) closeSession() {
+	s := &a.sessions
+	if s.replayOpen {
+		s.replayOpen = false
+	} else {
+		s.open = false
+	}
+	s.focusTurn = true
+}
+
+// stepSession opens the session by moves rows away in the list.
+func (a *App) stepSession(by int) {
+	s := &a.sessions
+	rows := a.sessionRows()
+	if i := s.index + by; i >= 0 && i < len(rows) {
+		s.index = i
+		s.selected = sessionID(rows[i])
+		s.selectedTurn = ""
+	}
+}
+
 func (a *App) sessionsPane(c *ui.Context) {
 	s := &a.sessions
 	rows := a.sessionRows()
 	width, _ := c.Size()
 	content := width - a.sidebarWidth()
-	s.listW = max(220, min(s.listW, content*.45))
-	pane := ui.Split(c, &s.listW, func() { a.sessionList(c, rows) }, func() {
-		d := a.selectedSessionData(rows)
-		if d == nil {
-			ui.Column(c).Fill().Padding(24).Gap(10).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, "没有匹配的会话").FontSize(17).FontWeight(600)
-				ui.Text(c, "调整时间范围、Agent 或搜索条件").FontSize(12).TextColor(c.Theme().TextMuted)
-			})
-			return
+	d := a.selectedSessionData(rows)
+	switch {
+	case !s.open:
+		ui.Column(c).Grow(1).MinHeight(0).Children(func() { a.sessionList(c, rows) })
+	case d == nil:
+		ui.Column(c).Grow(1).Padding(24).Gap(10).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, "没有匹配的会话").FontSize(17).FontWeight(600)
+			ui.Text(c, "调整时间范围、Agent 或搜索条件").FontSize(12).TextColor(c.Theme().TextMuted)
+		})
+	case s.replayOpen:
+		ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() { a.sessionConversation(c, d, content) })
+	default:
+		ui.Column(c).Grow(1).MinHeight(0).Children(func() { a.sessionPage(c, d, content) })
+	}
+	// Escape steps back from within the page, and from anywhere else unless
+	// a focused control or a dialog takes it first.
+	if s.open && !a.settingsOpen && !a.ask.open && (a.repoDialog == nil || !a.repoDialog.open) {
+		c.OnShortcut(0, ui.KeyEscape, a.closeSession)
+		if c.Shortcut(0, ui.KeyEscape) {
+			a.closeSession()
+			c.Invalidate()
 		}
-		a.sessionDetailPane(c, d, content-s.listW)
-	}).Grow(1).MinHeight(0)
-	if s.roundOpen && !a.settingsOpen && !a.ask.open && (a.repoDialog == nil || !a.repoDialog.open) {
-		pane.OnShortcut(0, ui.KeyEscape, a.closeSessionRound)
 	}
 }
+
+// Columns of the session list after the session's own, which takes the rest.
+var sessionColumns = []struct {
+	title string
+	width float32
+}{{"Agent", 120}, {"轮次", 56}, {"时长", 84}, {"Token", 74}, {"最近活跃", 104}}
 
 func (a *App) sessionList(c *ui.Context, rows []session.Session) {
 	s := &a.sessions
 	t := c.Theme()
+	muted := token(t, "ink-3")
 	view := a.overviewData()
-	ui.Column(c).Fill().Children(func() {
-		ui.Column(c).Padding(12, 12, 8, 12).Gap(8).Children(func() {
-			ui.Textf(c, "%d 个会话", len(rows)).FontSize(13).FontWeight(600)
-			ui.Text(c, "按最近活跃排序 · 分叉数为子 Agent").FontSize(11).TextColor(t.TextMuted)
-			if s.err != "" {
-				ui.Text(c, s.err).FontSize(11).TextColor(t.Warning).MaxLines(2)
+	ui.Column(c).Fill().Padding(20, 32, 0, 32).Gap(12).Children(func() {
+		ui.Row(c).Gap(14).AlignItems(ui.Center).Children(func() {
+			field := ui.SearchField(c, &s.query).Label("搜索会话").Placeholder("标题、Agent、仓库或分支").Width(300).Height(30).Radius(7).
+				Background(t.Surface).Border(1, t.Border).PlaceholderColor(muted)
+			if field.Changed() {
+				a.query = s.query
 			}
-			if s.snapshot != nil && s.snapshot.Partial {
-				ui.Text(c, "日志尚未全部读取，当前结果不完整").FontSize(11).TextColor(t.TextMuted).MaxLines(2)
-			}
-			ui.SearchField(c, &s.query).Label("搜索会话").Placeholder("标题、Agent、仓库或分支").MinWidth(0)
 			ui.Checkbox(c, &s.anomaliesOnly, "只看耗时异常")
+			ui.Spacer(c)
+			ui.Textf(c, "%d 个会话 · 按最近活跃排序", len(rows)).FontSize(12).TextColor(muted)
+		})
+		if s.err != "" {
+			ui.Text(c, s.err).FontSize(12).TextColor(t.Warning).MaxLines(2)
+		}
+		a.partialBanner(c)
+		ui.Row(c).Height(28).Gap(12).Padding(0, 8, 0, 23).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
+			ui.Text(c, "会话").FontSize(11).TextColor(muted).Grow(1)
+			for i, col := range sessionColumns {
+				h := ui.Text(c, col.title).FontSize(11).TextColor(muted).Width(col.width).Shrink(0)
+				if i > 0 {
+					h.TextAlign(ui.End)
+				}
+			}
 		})
 		s.list.Key = func(i int) any {
 			if i < 0 || i >= len(rows) {
@@ -236,139 +291,114 @@ func (a *App) sessionList(c *ui.Context, rows []session.Session) {
 			return recentLabel(rows[i]) + " · " + sessionAgentName(rows[i].Agent) + " · " + sessionSpan(rows[i])
 		}
 		s.list.Selected = &s.index
+		now := time.Now()
 		list := ui.List(c, &s.list, len(rows), func(i int) {
 			row := rows[i]
-			selected := i == s.index
 			warning := view.anomalies[sessionID(row)]
-			box := ui.Column(c).Gap(6).Padding(10, 10).Radius(5)
-			if selected {
-				box.Background(t.Accent).TextColor(t.AccentText)
+			line := ui.Row(c.Key("row:"+sessionID(row))).Height(52).Gap(12).Padding(0, 8).Radius(6).AlignItems(ui.Center).Border(1, ui.Transparent)
+			switch {
+			case i == s.index:
+				// The list gives its chosen row the accent's text color; the
+				// row is raised instead, so it keeps the ink.
+				line.Background(t.Surface).Border(1, token(t, "line-strong")).TextColor(t.Text)
+			case line.Hovered():
+				line.Background(t.SurfaceHover)
 			}
-			box.Children(func() {
-				ui.Row(c).Gap(6).Children(func() {
-					ui.Text(c, recentLabel(row)).FontSize(12).Grow(1).MinWidth(0).SingleLine().Tooltip(recentLabel(row))
-					if warning {
-						color := t.Warning
-						if selected {
-							color = ui.Hex("#FFE6A8")
+			line.Children(func() {
+				ui.Box(c).Width(3).Height(30).Radius(2).Shrink(0).Background(agentColor(row.Agent, t.Dark))
+				ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
+					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, recentLabel(row)).FontSize(13).MinWidth(0).SingleLine().Tooltip(recentLabel(row))
+						if warning {
+							ui.Icon(c, glyph("issues")).FontSize(12).TextColor(t.Warning).Label("有耗时异常").Shrink(0)
 						}
-						ui.Icon(c, glyph("alert")).FontSize(13).TextColor(color).Label("有耗时异常")
-					}
-				})
-				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-					label := sessionAgentName(row.Agent)
+					})
+					meta := []string{}
 					if row.CWD != "" {
-						label += " · " + filepath.Base(row.CWD)
+						meta = append(meta, filepath.Base(row.CWD))
 					}
-					text := ui.Text(c, label).FontSize(11).Grow(1).MinWidth(0).SingleLine()
-					if !selected {
-						text.TextColor(t.TextMuted)
+					if row.GitBranch != "" {
+						meta = append(meta, row.GitBranch)
 					}
-					children := 0
-					for _, tr := range row.Turns {
-						children += len(tr.Subagents)
+					if n := a.childCount(row); n > 0 {
+						meta = append(meta, fmt.Sprintf("%d 子 Agent", n))
 					}
-					if a.sessions.snapshot != nil {
-						for _, child := range a.sessions.snapshot.UnlinkedSubagents {
-							if child.Agent == row.Agent && child.ParentID == row.ID {
-								children++
-							}
-						}
-					}
-					if children > 0 {
-						number(c, fmt.Sprintf("⑂ %d", children)).FontSize(10).Tooltip("子 Agent 数量")
-					}
-					duration := number(c, sessionSpan(row)).FontSize(11)
-					if warning {
-						color := t.Warning
-						if selected {
-							color = ui.Hex("#FFE6A8")
-						}
-						duration.TextColor(color)
-					} else if !selected {
-						duration.TextColor(t.TextMuted)
-					}
+					ui.Text(c, strings.Join(meta, " · ")).FontSize(11).TextColor(muted).SingleLine()
 				})
-				if !row.End.IsZero() {
-					text := number(c, row.End.Local().Format("01/02 15:04")).FontSize(10)
-					if !selected {
-						text.TextColor(t.TextMuted)
-					}
+				cell := func(i int, value string) ui.Element {
+					return number(c, value).FontSize(12.5).TextColor(t.TextMuted).Width(sessionColumns[i].width).Shrink(0).TextAlign(ui.End).SingleLine()
 				}
+				ui.Text(c, sessionAgentName(row.Agent)).FontSize(12.5).TextColor(t.TextMuted).Width(sessionColumns[0].width).Shrink(0).SingleLine()
+				cell(1, fmt.Sprint(len(row.Turns)))
+				span := cell(2, strings.TrimPrefix(sessionSpan(row), "≈ "))
+				if warning {
+					span.TextColor(t.Warning)
+				}
+				tokens := "—"
+				if total, known := sessionTokens(row); known {
+					tokens = tokenNumber(total)
+				}
+				cell(3, tokens)
+				active := "—"
+				if !row.End.IsZero() {
+					active = ago(now, row.End)
+				}
+				cell(4, active)
 			})
-		}).Grow(1).Padding(4, 8).Gap(3).Label("会话列表")
-		if list.Changed() {
-			s.roundOpen = false
-			s.selectedTurn = ""
+			if line.Clicked() {
+				s.index = i
+				a.openSession(sessionID(row))
+				c.Invalidate()
+			}
+		}).Grow(1).Gap(2).Padding(4, 0).Label("会话列表")
+		if list.Submitted() && s.index >= 0 && s.index < len(rows) {
+			a.openSession(sessionID(rows[s.index]))
 			c.Invalidate()
 		}
 		// Native List drops its old key when a search removes the selection.
-		// Select the first matching row after that reconciliation, so the detail
-		// never stays empty alongside a nonempty filtered list.
+		// Select the first matching row after that reconciliation.
 		clamp(&s.index, len(rows))
-		ui.Text(c, "Cursor 没有本地会话日志，暂不支持").FontSize(10).TextColor(t.TextMuted).Padding(8, 12).MaxLines(2)
+		var missing []string
+		for _, info := range session.Agents() {
+			if info.Unsupported != "" {
+				missing = append(missing, info.Name)
+			}
+		}
+		if len(missing) > 0 {
+			ui.Text(c, strings.Join(missing, "、")+" 没有本地会话日志，暂不支持").FontSize(11).TextColor(muted).Padding(8, 0, 12, 0).MaxLines(2)
+		}
 	})
 }
 
-func (a *App) sessionDetailPane(c *ui.Context, d *sessionDetailData, width float32) {
-	s := &a.sessions
-	t := c.Theme()
-	root := d.session
-	ui.Column(c).Fill().Children(func() {
-		ui.Column(c).Padding(14, 16, 8, 16).Gap(7).Children(func() {
-			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, recentLabel(root)).FontSize(16).FontWeight(600).Grow(1).MinWidth(0).SingleLine().Tooltip(recentLabel(root))
-				if ui.Button(c, "打开日志").FontSize(11).Tooltip("在文件管理器中定位原始日志").Clicked() {
-					a.reveal(root.Path)
-				}
-			})
-			where := sessionAgentName(root.Agent)
-			if root.CWD != "" {
-				where += " · " + shortPath(a.home, root.CWD)
+// sessionTokens adds the usage the session's own requests recorded.
+func sessionTokens(row session.Session) (int64, bool) {
+	var total int64
+	known := false
+	for _, turn := range row.Turns {
+		for _, r := range turn.Requests {
+			if r.UsageKnown {
+				total += r.Tokens.Total()
+				known = true
 			}
-			ui.Text(c, where).FontSize(11).TextColor(t.TextMuted).SingleLine().Tooltip(root.CWD)
-			meta := sessionSpan(root)
-			if root.GitBranch != "" {
-				meta = root.GitBranch + " · " + meta
+		}
+	}
+	return total, known
+}
+
+// childCount is how many sub-Agents a session started, linked or not.
+func (a *App) childCount(row session.Session) int {
+	n := 0
+	for _, tr := range row.Turns {
+		n += len(tr.Subagents)
+	}
+	if a.sessions.snapshot != nil {
+		for _, child := range a.sessions.snapshot.UnlinkedSubagents {
+			if child.Agent == row.Agent && child.ParentID == row.ID {
+				n++
 			}
-			if !root.Start.IsZero() && !root.End.IsZero() {
-				meta = root.Start.Local().Format("01/02 15:04") + "–" + root.End.Local().Format("15:04") + " · " + meta
-			}
-			number(c, meta).FontSize(11).TextColor(t.TextMuted)
-			tabs := ui.TabsBase(c.Key("session-detail-tabs"), &s.tab, 2)
-			tabs.List.Gap(6).Label("会话详情标签").Children(func() {
-				for i, label := range []string{"概览", "轮次"} {
-					tab := tabs.Tab(i).Padding(5, 12).Radius(5).Border(1, ui.Transparent).Label(label)
-					if i == s.tab {
-						tab.Border(1, t.Accent).Background(fade(t.Accent, 24))
-					}
-					tab.Children(func() { ui.Text(c, label).FontSize(12).FontWeight(600) })
-				}
-			})
-			if tabs.List.Changed() {
-				s.roundOpen = false
-				c.Invalidate()
-			}
-		})
-		ui.Scroll(c.Key("session-detail:" + s.selected + fmt.Sprint(s.tab, s.roundOpen))).Grow(1).MinHeight(0).Label("会话详情内容").Children(func() {
-			ui.Column(c).Padding(8, 16, 20, 16).Gap(18).Children(func() {
-				if root.UnsupportedReason != "" {
-					ui.Text(c, root.UnsupportedReason).FontSize(12).TextColor(t.TextMuted)
-					return
-				}
-				if root.Incomplete {
-					ui.Text(c, "当前会话记录不完整").FontSize(11).TextColor(t.Warning)
-				}
-				if s.tab == 0 {
-					a.sessionOverview(c, d, width)
-				} else if s.roundOpen {
-					a.sessionRound(c, d, width)
-				} else {
-					a.sessionTiming(c, d)
-				}
-			})
-		})
-	})
+		}
+	}
+	return n
 }
 
 func (a *App) chooseSessionTurn(d *sessionDetailData, index int) {
@@ -376,6 +406,63 @@ func (a *App) chooseSessionTurn(d *sessionDetailData, index int) {
 		return
 	}
 	a.sessions.selectedTurn = d.turns[index].turn.ID
-	a.sessions.roundOpen = true
-	a.sessions.selectedStep = 0
+	a.sessions.selectedStep, a.sessions.stepOpen = 0, false
+}
+
+// partialBanner says the session statistics stopped short of every log,
+// and offers to read again. While a read is running it says nothing.
+func (a *App) partialBanner(c *ui.Context) {
+	snap := a.sessions.snapshot
+	if snap == nil || !snap.Partial || a.sessions.loading {
+		return
+	}
+	t := c.Theme()
+	ink := token(t, "warn-ink")
+	ui.Column(c).Shrink(0).Padding(14, 16).Gap(8).Radius(8).Background(token(t, "warn-bg")).Label("会话统计还没读完").Children(func() {
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Icon(c, glyph("hourglass")).FontSize(14).TextColor(t.Warning)
+			ui.Text(c, "会话统计还没读完").FontSize(13).FontWeight(600).TextColor(ink)
+		})
+		ui.Text(c, "部分日志未能读取，下面的数字暂时偏少。重新读取可再次尝试。").FontSize(12).LineHeight(1.5).TextColor(ink)
+		if outlineButton(c, "read-again", "继续读取").AlignSelf(ui.Start).Disabled(a.scanning || a.mutating).Clicked() {
+			a.startScan()
+		}
+	})
+}
+
+type sessionHits struct {
+	query string
+	snap  *session.Snapshot
+	n     int
+}
+
+// matchSession reports whether a session answers a search.
+func matchSession(query string, row session.Session) bool {
+	return matchQuery(query, recentLabel(row), row.CWD, row.GitBranch, row.ID, sessionAgentName(row.Agent))
+}
+
+// sessionMatches counts the sessions of any time a query finds.
+func (a *App) sessionMatches(query string) int {
+	s := &a.sessions
+	if s.snapshot == nil || strings.TrimSpace(query) == "" {
+		return 0
+	}
+	if s.hits.query == query && s.hits.snap == s.snapshot {
+		return s.hits.n
+	}
+	n := 0
+	for _, row := range s.snapshot.Sessions {
+		if matchSession(query, row) {
+			n++
+		}
+	}
+	s.hits = sessionHits{query, s.snapshot, n}
+	return n
+}
+
+// searchSessions shows the sessions a query finds, over all of time.
+func (a *App) searchSessions(query string) {
+	s := &a.sessions
+	a.page, s.query, s.open, s.replayOpen = "sessions", query, false, false
+	s.period = len(periodLabels) - 1
 }

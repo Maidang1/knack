@@ -134,7 +134,7 @@ func TestProtectedManagementEntries(t *testing.T) {
 	if !tt.HasText("Claude") {
 		t.Fatal("missing linked agent")
 	}
-	click(t, tt, "删除 skill")
+	chooseMore(t, tt, "删除 skill")
 	if !a.ask.open || a.ask.alt == "" {
 		t.Fatal("referenced shared source did not offer a choice about its links")
 	}
@@ -189,7 +189,7 @@ func TestHideBrowseItems(t *testing.T) {
 	a := New(home)
 	tt := ui.NewTester(a.View, 1200, 860)
 	click(t, tt, "重新扫描")
-	a.setAgentsShown([]string{"overview", "sessions", "issues"}, false)
+	a.setAgentsShown([]string{"overview", "sessions", "issues", libraryPage, graphPage, usagePage}, false)
 	if a.page != "pool" {
 		t.Fatalf("page=%s", a.page)
 	}
@@ -226,7 +226,7 @@ func TestRemovePoolSkillWithLinksAndUndo(t *testing.T) {
 	tt := ui.NewTester(a.View, 1400, 860)
 	click(t, tt, "重新扫描")
 	click(t, tt, "共享池")
-	click(t, tt, "删除 skill")
+	chooseMore(t, tt, "删除 skill")
 	click(t, tt, "同时移除软链并删除")
 	for _, p := range []string{pool, claude, codex} {
 		if _, err := os.Lstat(p); !os.IsNotExist(err) {
@@ -250,7 +250,7 @@ func TestRemovePoolSkillKeepingLinks(t *testing.T) {
 	tt := ui.NewTester(a.View, 1400, 860)
 	click(t, tt, "重新扫描")
 	click(t, tt, "共享池")
-	click(t, tt, "删除 skill")
+	chooseMore(t, tt, "删除 skill")
 	click(t, tt, "只删除，保留软链")
 	if _, err := os.Lstat(pool); !os.IsNotExist(err) {
 		t.Fatalf("pool remained: %v", err)
@@ -258,4 +258,11 @@ func TestRemovePoolSkillKeepingLinks(t *testing.T) {
 	if _, err := os.Lstat(claude); err != nil {
 		t.Fatal("link was removed:", err)
 	}
+}
+
+// chooseMore picks an item from the detail bar's 更多 menu.
+func chooseMore(t *testing.T, tt *ui.Tester, item string) {
+	t.Helper()
+	click(t, tt, "更多")
+	click(t, tt, item)
 }

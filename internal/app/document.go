@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -70,10 +71,10 @@ func (a *App) documentPane(c *ui.Context, e skill.Entry) {
 		return
 	}
 	t := c.Theme()
-	card(c).Padding(12, 14).Gap(8).Children(func() {
+	ui.Column(c).Gap(10).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "SKILL.md 内容").FontSize(13).FontWeight(600).Grow(1)
-			if ui.Button(c, "重新读取").Disabled(state.loading).Clicked() {
+			ui.Text(c, "SKILL.md").FontSize(14).FontWeight(600).Grow(1)
+			if outlineButton(c, "reload-document", "重新读取").Disabled(state.loading).Clicked() {
 				delete(a.documents, documentKey(e))
 				c.Invalidate()
 			}
@@ -84,7 +85,21 @@ func (a *App) documentPane(c *ui.Context, e skill.Entry) {
 		case state.err != "":
 			ui.Text(c, state.err).FontSize(12).TextColor(t.Warning)
 		default:
-			ui.Text(c, state.document.Text).FontSize(12).LineHeight(1.5).Selectable()
+			// Numbers and text share a size and line height and never wrap,
+			// so each number stays beside its line.
+			text := strings.TrimRight(state.document.Text, "\n")
+			n := strings.Count(text, "\n") + 1
+			numbers := make([]string, n)
+			for i := range numbers {
+				numbers[i] = strconv.Itoa(i + 1)
+			}
+			ui.ScrollHorizontal(c).Label("SKILL.md 正文").Radius(8).Border(1, t.Border).Background(t.Surface).Children(func() {
+				ui.Row(c).Padding(12, 0).AlignItems(ui.Start).Children(func() {
+					ui.Text(c, strings.Join(numbers, "\n")).Font(monoFont).FontSize(12).LineHeight(1.7).NoWrap().
+						TextColor(token(t, "ink-3")).TextAlign(ui.End).MinWidth(28).Padding(0, 14, 0, 10).Shrink(0)
+					ui.Text(c, text).Font(monoFont).FontSize(12).LineHeight(1.7).NoWrap().Selectable().Padding(0, 18, 0, 4)
+				})
+			})
 		}
 	})
 }
@@ -94,28 +109,35 @@ func (a *App) compareButton(c *ui.Context, e skill.Entry) {
 		return
 	}
 	state := a.comparisons[e.Path]
+	t := c.Theme()
 	label := "比较共享池内容"
 	if state != nil && state.loading {
 		label = "正在比较…"
 	}
-	if ui.Button(c, label).AlignSelf(ui.Start).Disabled(a.scanning || a.mutating || (state != nil && state.loading)).Clicked() {
-		a.beginCompare(e)
-	}
-	if state == nil {
-		return
-	}
-	if state.err != "" {
-		ui.Text(c, state.err).FontSize(12).TextColor(c.Theme().Warning)
-		return
-	}
-	if state.loading {
-		return
-	}
-	ui.Text(c, state.entry.Relation.Label()).FontSize(12).TextColor(c.Theme().TextMuted)
-	// Only this explicitly compared pair is used to plan replacement.
-	for _, f := range state.fixes {
-		a.fixButton(c, f, false)
-	}
+	ink := token(t, "warn-ink")
+	ui.Column(c).Gap(8).Padding(10, 14).Radius(8).Background(token(t, "warn-bg")).Label("独立副本").Children(func() {
+		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+			ui.Icon(c, glyph("copy")).FontSize(14).TextColor(ink)
+			ui.Text(c, "这是一份独立副本，内容还没有和共享池比较。").FontSize(12.5).TextColor(ink).Grow(1).MinWidth(0)
+			if outlineButton(c, "compare", label).Disabled(a.scanning || a.mutating || (state != nil && state.loading)).Clicked() {
+				a.beginCompare(e)
+			}
+		})
+		if state == nil || state.loading {
+			return
+		}
+		if state.err != "" {
+			ui.Text(c, state.err).FontSize(12).TextColor(t.Warning)
+			return
+		}
+		ui.Text(c, state.entry.Relation.Label()).FontSize(12).TextColor(ink)
+		// Only this explicitly compared pair is used to plan replacement.
+		ui.Row(c).Gap(8).Wrap().Children(func() {
+			for _, f := range state.fixes {
+				a.fixButton(c, f, false)
+			}
+		})
+	})
 }
 
 func (a *App) comparisonSnapshot(state *comparisonState) *skill.Snapshot {

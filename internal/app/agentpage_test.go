@@ -115,9 +115,10 @@ func TestAgentPage(t *testing.T) {
 				if a.state(a.page).agentTab != 0 {
 					t.Fatal("cannot return to skills")
 				}
+				click(t, tt, "关联会话")
 				focusSessionControl(t, tt, "使用会话 · 构建另一项功能")
 				tt.Key(0, ui.KeyEnter)
-				if a.page != "sessions" || a.sessions.selected != "claude:other-claude" || a.sessions.tab != 0 {
+				if a.page != "sessions" || a.sessions.selected != "claude:other-claude" || !a.sessions.open {
 					t.Fatal("Skill-to-session deep link")
 				}
 				// A different Agent starts on its own skills tab, then keeps a scoped empty-state.
@@ -159,20 +160,28 @@ func TestSessionStage4Corrections(t *testing.T) {
 			t.Run(fmt.Sprintf("dark=%t/width=%d", dark, width), func(t *testing.T) {
 				a := sessionRoundFixture(t)
 				a.foldLongSteps = true
+				a.sessions.stepOpen = true
 				tt := ui.NewTester(a.View, width, 1000)
 				tt.SetDark(dark)
 				tt.SetTitleBar(ui.TitleBar{Height: 52, Left: 70})
-				if slices.Contains(tt.Texts(), "工具") || slices.Contains(tt.Texts(), "Skill") || slices.Contains(tt.Texts(), "是否超时") || slices.Contains(tt.Texts(), "权限等待来源") {
-					t.Fatalf("model details show inapplicable metadata: %q", tt.Texts())
+				// Only the inspector's own texts: step rows name their tools.
+				texts := tt.Texts()
+				from := slices.Index(texts, "步骤详情")
+				to := slices.IndexFunc(texts, func(s string) bool { return strings.HasPrefix(s, "内容从原始日志按需读取") })
+				if from < 0 || to < from {
+					t.Fatalf("missing step inspector: %q", texts)
 				}
+				inspector := texts[from:to]
+				if slices.Contains(inspector, "工具") || slices.Contains(inspector, "Skill") || slices.Contains(inspector, "是否超时") || slices.Contains(inspector, "权限等待来源") {
+					t.Fatalf("model details show inapplicable metadata: %q", inspector)
+				}
+				// An open step's content interrupts the break; check it across closed rows.
+				a.sessions.stepOpen = false
+				tt.Frame()
 				chart, _ := tt.Find("单轮步骤瀑布图")
-				labelW := float32(150)
-				if width == 880 {
-					labelW = 104
-				}
 				axis := newStepAxis(a.sessions.detail.turns[0], true)
 				cut := axis.cuts[0]
-				x := chart.X + labelW + stepTrackLeft + (axis.at(cut.from)+axis.at(cut.to))/2*(chart.W-labelW-stepTrackLeft-stepTrackRight) - 2
+				x := chart.X + stepTrackLeft + (axis.at(cut.from)+axis.at(cut.to))/2*(chart.W-stepTrackLeft-stepTrackRight) - 2
 				im := tt.Image()
 				continuous := 0
 				var neutral ui.Color
@@ -188,7 +197,6 @@ func TestSessionStage4Corrections(t *testing.T) {
 					t.Fatalf("missing continuous neutral break: %d/%f", continuous, chart.H)
 				}
 				exportSessionPreview(t, tt, fmt.Sprintf("corrected-folded-%d-dark-%t.png", width, dark))
-				click(t, tt, "返回全部轮次")
 				// A synthetic away interval is much longer than active work; it must not set the scale.
 				root := a.sessions.detail.session
 				root.Turns = append([]session.Turn(nil), root.Turns...)
@@ -201,7 +209,7 @@ func TestSessionStage4Corrections(t *testing.T) {
 				a.sessions.snapshot = &session.Snapshot{Sessions: []session.Session{root}}
 				tt.Frame()
 				// The away gap is a separator after the turn, never part of its active time.
-				if !tt.HasText("离开相关间隔 ≈ 4h（日志无精确起止）") || a.sessions.detail.turns[0].active.total >= time.Hour {
+				if !tt.HasText("之后约 4h 没有记录（日志无精确起止）") || a.sessions.detail.turns[0].active.total >= time.Hour {
 					t.Fatalf("missing turn/away wording %q", tt.Texts())
 				}
 				for _, text := range tt.Texts() {
@@ -226,7 +234,8 @@ func TestSessionStage4Corrections(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			a := &App{}
-			tt := ui.NewTester(func(c *ui.Context) { a.sessionStepDetail(c, sessionTurnView{}, tc.step, session.Claude, nil) }, 500, 500)
+			d := &sessionDetailData{session: session.Session{Agent: session.Claude}, turns: []sessionTurnView{{steps: []sessionStep{tc.step}}}}
+			tt := ui.NewTester(func(c *ui.Context) { a.stepInspector(c, d, 0, nil) }, 500, 500)
 			for _, text := range tc.present {
 				if !slices.Contains(tt.Texts(), text) {
 					t.Fatalf("missing %s", text)

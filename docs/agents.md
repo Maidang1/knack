@@ -1,6 +1,6 @@
 # 自定义 Agent
 
-Knack 内置读取 Claude、Codex 和 Factory 的本地会话日志。其他 Agent 只要把会话写成 JSON Lines（每行一个 JSON 记录），就可以在 `~/.config/skill-manager/agents.json` 中声明字段映射，让它进入会话总览、会话列表、轮次回放和 Agent 用量统计。
+Knack 内置读取 Claude、Codex 和 Factory 的本地会话日志。其他 Agent 只要把会话写成 JSON Lines（每行一个 JSON 记录），就可以在 `~/.config/skill-manager/agents.json` 中声明字段映射，让它进入首页统计、全部会话、轮次回放和 Agent 用量统计。
 
 映射只用于选择字段，不执行任何代码。自定义 Agent 和内置 Agent 遵守同样的约束：日志只读打开，不联网，缓存只保存统计元信息，回放内容只在打开会话时读取到内存中。
 
@@ -95,6 +95,6 @@ Anthropic 消息格式的日志把工具调用和结果放在 `content` 块里�
 
 ## 排错
 
-配置有问题时，总览底部会提示“自定义 Agent 配置有 N 个问题”，悬停可以看到具体原因。有问题的 Agent 不会加载，其他 Agent 不受影响。
+配置有问题时，首页底部会提示“自定义 Agent 配置有 N 个问题”，悬停可以看到具体原因。有问题的 Agent 不会加载，其他 Agent 不受影响。
 
-如果目录下有日志，但总览提示“没有可识别的会话记录”，通常是 `time` 或 `role` 的路径不对，或者 `roles` 没有包含日志里实际的角色值。
+如果目录下有日志，但首页提示“没有可识别的会话记录”，通常是 `time` 或 `role` 的路径不对，或者 `roles` 没有包含日志里实际的角色值。

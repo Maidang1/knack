@@ -61,13 +61,21 @@ func TestCustomAgentOverview(t *testing.T) {
 	if agentColor("my-agent", false) != sessionColor("agent-extra-0", false) {
 		t.Fatal("custom Agent needs its own chart color")
 	}
-	// The turn list and trace replay the mapped records.
-	a.openSession(sessionID(a.sessions.snapshot.Sessions[0]), 1)
+	// The replay's turn list and conversation show the mapped records.
+	a.openSession(sessionID(a.sessions.snapshot.Sessions[0]))
+	a.sessions.replayOpen = true
+	a.sideCollapsed = true // the status strip shows in place of the sidebar
 	tt.Frame()
 	if !tt.HasText("列出文件") || !tt.HasText("谢谢") || !tt.HasText("本地只读 · Claude / Codex / Factory / My Agent") || tt.HasText("My Agent · .") {
 		t.Fatalf("custom turns %q", tt.Texts())
 	}
 	click(t, tt, "第 1 轮 · 活跃 ≈ 8s")
+	a.sessions.replayFilter = replayToolsOnly
+	tt.Frame()
+	if !tt.HasText("shell") || tt.HasText("有 README.md 和 main.go。") {
+		t.Fatalf("tools-only filter %q", tt.Texts())
+	}
+	a.sessions.replayFilter = replayAll
 	tt.Frame()
 	if !tt.HasText("shell") || !tt.HasText("有 README.md 和 main.go。") {
 		t.Fatalf("custom trace %q", tt.Texts())

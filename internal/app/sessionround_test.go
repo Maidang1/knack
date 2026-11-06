@@ -34,7 +34,7 @@ func sessionRoundFixture(t *testing.T) *App {
 	}, Subagents: []session.Subagent{{ID: "child", Session: session.Session{ID: "child", Agent: session.Claude, Start: at(100), End: at(120)}}}, Events: []session.Event{{Kind: "compact", At: at(398), Duration: dur(2)}}}
 	root := session.Session{ID: "waterfall", Agent: session.Claude, Title: "单轮步骤示例", CWD: "/example/knack", Start: start, End: at(430), Turns: []session.Turn{turn, {ID: "round2", Start: at(418), End: at(430)}}}
 	a.sessions.snapshot = &session.Snapshot{Sessions: []session.Session{root}}
-	a.openSession(sessionID(root), 1)
+	a.openSession(sessionID(root))
 	a.chooseSessionTurn(sessionDetail(a.sessions.snapshot, root), 0)
 	return a
 }
@@ -54,7 +54,22 @@ func TestSessionRound(t *testing.T) {
 				if len(turn.steps) != 8 {
 					t.Fatalf("permission duplicated or steps lost: %+v", turn.steps)
 				}
-				for _, label := range []string{"单轮摘要", "步骤时间比例", "单轮步骤瀑布图", "步骤详情"} {
+				// A step's content opens under its row on click and closes on a second click.
+				if _, ok := tt.Find("步骤详情"); ok {
+					t.Fatal("step opened before it was clicked")
+				}
+				click(t, tt, stepLabel(0, turn.steps[0]))
+				first, _ := tt.Find(stepLabel(0, turn.steps[0]))
+				second, _ := tt.Find(stepLabel(1, turn.steps[1]))
+				if panel, ok := tt.Find("步骤详情"); !ok || panel.Y < first.Y+first.H || panel.Y+panel.H > second.Y {
+					t.Fatalf("step detail not under its row: %+v %+v %+v", first, panel, second)
+				}
+				click(t, tt, stepLabel(0, turn.steps[0]))
+				if _, ok := tt.Find("步骤详情"); ok || a.sessions.stepOpen {
+					t.Fatal("second click did not close the step")
+				}
+				click(t, tt, stepLabel(0, turn.steps[0]))
+				for _, label := range []string{"本轮输入", "每轮耗时图表", "单轮步骤瀑布图", "步骤详情"} {
 					r, ok := tt.Find(label)
 					if !ok || r.W < 100 || r.X+r.W > float32(width)+1 {
 						t.Fatalf("clipped %s: %+v", label, r)
@@ -66,7 +81,7 @@ func TestSessionRound(t *testing.T) {
 						t.Fatalf("duration clipped: %+v", r)
 					}
 				}
-				if !tt.HasText("模型 · claude-sonnet") || !tt.HasText("≈ 6m12s") {
+				if !tt.HasText("claude-sonnet") || !tt.HasText("≈ 6m12s") {
 					t.Fatalf("missing actual model/duration: %q", tt.Texts())
 				}
 				// The long tool's span must be visible in the screenshot, not merely in the tree.
@@ -74,7 +89,7 @@ func TestSessionRound(t *testing.T) {
 				pixels := 0
 				im := tt.Image()
 				for y := 0; y < im.Bounds().Dy(); y++ {
-					for x := int(a.sidebarWidth() + a.sessions.listW); x < width; x++ {
+					for x := int(a.sidebarWidth()); x < width; x++ {
 						p := im.RGBAAt(x, y)
 						if p.R == toolColor.R && p.G == toolColor.G && p.B == toolColor.B {
 							pixels++
@@ -104,13 +119,10 @@ func TestSessionRound(t *testing.T) {
 				if reloaded = New(a.home); reloaded.foldLongSteps || !reloaded.hidden["pool"] {
 					t.Fatal("real scale did not persist")
 				}
-				stepLabel := func(i int) string {
-					s := turn.steps[i]
-					return fmt.Sprintf("步骤 %d · %s · %s", i+1, s.name, stepDuration(s))
-				}
-				focusSessionControl(t, tt, stepLabel(0))
+				step := func(i int) string { return stepLabel(i, turn.steps[i]) }
+				focusSessionControl(t, tt, step(0))
 				tt.Key(0, ui.KeyDown)
-				if a.sessions.selectedStep != 1 {
+				if a.sessions.selectedStep != 1 || !a.sessions.stepOpen {
 					t.Fatal("step arrows do not update details")
 				}
 				permissionIndex := -1
@@ -125,17 +137,7 @@ func TestSessionRound(t *testing.T) {
 				if !tt.HasText("review") || !tt.HasText("user_temporary · allow") || !tt.HasText("是 · 阈值 5s") {
 					t.Fatal("missing permission/skill/status metadata")
 				}
-				scroll, _ := tt.Find("会话详情内容")
-				tt.Scroll(scroll.X+scroll.W/2, scroll.Y+scroll.H/2, 0, 2000)
 				exportSessionPreview(t, tt, fmt.Sprintf("round-detail-%d-dark-%t.png", width, dark))
-				tt.Key(0, ui.KeyEscape)
-				if a.sessions.roundOpen || a.sessions.selectedTurn != turn.turn.ID || !tt.Focused(turnLabel(turn)) {
-					t.Fatalf("Escape lost turn/focus: open=%t selected=%s focusPending=%t focused=%t", a.sessions.roundOpen, a.sessions.selectedTurn, a.sessions.focusTurn, tt.Focused(turnLabel(turn)))
-				}
-				tt.Key(0, ui.KeyEnter)
-				if !a.sessions.roundOpen {
-					t.Fatal("cannot reenter from restored turn focus")
-				}
 				focusSessionControl(t, tt, "下一轮")
 				tt.Key(0, ui.KeyEnter)
 				if a.sessions.selectedTurn != "round2" || !tt.HasText("本轮没有已记录的步骤") {
@@ -149,18 +151,33 @@ func TestSessionRound(t *testing.T) {
 				a.openSettings()
 				tt.Frame()
 				tt.Key(0, ui.KeyEscape)
-				if a.settingsOpen || !a.sessions.roundOpen {
+				if a.settingsOpen || !a.sessions.open {
 					t.Fatal("Escape stole dialog dismissal")
 				}
+				// The replay opens on the same turn; Escape steps back one level at a time.
+				click(t, tt, "回放对话")
+				if !a.sessions.replayOpen || !tt.Focused(turnLabel(turn)) {
+					t.Fatal("replay did not open on the chosen turn")
+				}
+				tt.Key(0, ui.KeyEscape)
+				if a.sessions.replayOpen || !a.sessions.open || a.sessions.selectedTurn != turn.turn.ID {
+					t.Fatal("Escape from the replay lost the session or its turn")
+				}
+				tt.Key(0, ui.KeyEscape)
+				if a.sessions.open {
+					t.Fatal("Escape did not close the session")
+				}
+				a.openSession(sessionID(d.session))
+				a.chooseSessionTurn(d, 0)
 				// At the short 880 window, keyboard navigation must scroll rows into view.
 				if width == 880 {
 					tt = ui.NewTester(a.View, 880, 560)
 					tt.SetDark(dark)
-					focusSessionControl(t, tt, stepLabel(0))
+					focusSessionControl(t, tt, step(0))
 					for range permissionIndex {
 						tt.Key(0, ui.KeyDown)
 					}
-					r, _ := tt.Find(stepLabel(permissionIndex))
+					r, _ := tt.Find(step(permissionIndex))
 					if r.Y < 0 || r.Y+r.H > 560 {
 						t.Fatalf("focused row not visible: %+v", r)
 					}
@@ -187,10 +204,10 @@ func TestSessionRoundUnavailable(t *testing.T) {
 	start := time.Now()
 	root := session.Session{ID: "codex", Agent: session.Codex, Start: start, End: start.Add(time.Minute), Turns: []session.Turn{{ID: "one", Start: start, End: start.Add(time.Minute), Requests: []session.Request{{ID: "request", Model: "gpt", End: start.Add(time.Minute)}}}}}
 	a.sessions.snapshot = &session.Snapshot{Sessions: []session.Session{root}}
-	a.openSession(sessionID(root), 1)
+	a.openSession(sessionID(root))
 	a.chooseSessionTurn(sessionDetail(a.sessions.snapshot, root), 0)
 	tt := ui.NewTester(a.View, 1180, 1100)
-	if !tt.HasText("暂不支持") || !tt.HasText("模型 · gpt") {
+	if !tt.HasText("暂不支持") || !tt.HasText("gpt") {
 		t.Fatalf("missing data appears measured: %q", tt.Texts())
 	}
 	for _, s := range a.sessions.detail.turns[0].steps {
@@ -202,12 +219,25 @@ func TestSessionRoundUnavailable(t *testing.T) {
 	root.Turns[0].Start = time.Time{}
 	a.sessions.snapshot = &session.Snapshot{Sessions: []session.Session{root}}
 	tt.Frame()
-	if !tt.HasText("活跃 暂不支持") || !tt.HasText("时间轴暂不支持") {
+	if !tt.HasText("暂不支持 · 1 步") || !tt.HasText("时间轴暂不支持") {
 		t.Fatal("missing turn timestamps appear as zero duration")
 	}
 	for _, text := range tt.Texts() {
 		if strings.Contains(text, "prompt") || strings.Contains(text, "复制命令") {
 			t.Fatal("private content action exposed")
 		}
+	}
+}
+
+func TestInputParts(t *testing.T) {
+	short, long := inputParts(`{"file_path":"/tmp/a.go","content":"package a\n\nfunc A() {}\n","opts":{"x":1}}`)
+	if short != "file_path: /tmp/a.go\nopts: {\"x\":1}" {
+		t.Fatalf("short %q", short)
+	}
+	if len(long) != 1 || long[0] != [2]string{"content", "package a\n\nfunc A() {}\n"} {
+		t.Fatalf("long %q", long)
+	}
+	if short, long := inputParts("ls -la"); short != "ls -la" || long != nil {
+		t.Fatalf("plain input %q %q", short, long)
 	}
 }

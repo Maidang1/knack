@@ -36,6 +36,14 @@ type row struct {
 	entry    skill.Entry
 	kind     skill.IssueKind
 	section  string
+	// For issues: the fix that loses nothing, if there is one, and how
+	// many rows its section has.
+	fix   *repair.Fix
+	count int
+	// For the library: the Agents' entries of the skill, and the worst
+	// thing wrong with it or them.
+	reach   []skill.Entry
+	problem skill.Relation
 }
 
 // View draws the window: a source list over the sidebar material, and an
@@ -62,9 +70,16 @@ func (a *App) View(c *ui.Context) {
 	// The themed wrapper paints nothing itself: the sidebar keeps the
 	// window's vibrancy, the content pane draws its own background.
 	ui.Themed(c, appTheme(c.Theme())).Fill().Background(ui.Transparent).Children(func() {
-		if a.sideCollapsed {
+		a.updateRail(c)
+		switch {
+		case a.sideCollapsed:
 			a.content(c)
-		} else {
+		case a.rail:
+			ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
+				a.railSidebar(c)
+				ui.Column(c).Grow(1).MinWidth(0).Children(func() { a.content(c) })
+			})
+		default:
 			ui.Split(c, &a.sideW, func() { a.sidebar(c) }, func() { a.content(c) }).Fill()
 		}
 		a.dialogs(c)
@@ -96,32 +111,52 @@ func (a *App) contentBar(c *ui.Context) {
 	}
 	// With the sidebar collapsed the content starts at the window's edge,
 	// so the title bar's controls set the leading padding.
-	padStart := float32(16)
+	padStart := float32(32)
 	if a.sideCollapsed && bar.Left > padStart {
 		padStart = bar.Left
 	}
+	if a.rail {
+		padStart = max(20, bar.Left-railWidth+8)
+	}
 	// The whole band is draggable, including its padding and gaps. Child
 	// controls take their own presses before this background drag handle.
-	ui.Row(c).Height(controlsBandHeight(bar)).Shrink(0).Padding(0, padEnd, 0, padStart).Gap(8).AlignItems(ui.Center).DragWindow().
+	ui.Row(c).Height(controlsBandHeight(bar)).Shrink(0).Padding(0, max(padEnd, 32), 0, padStart).Gap(8).AlignItems(ui.Center).DragWindow().
 		BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
-		if a.sideCollapsed {
+		if a.sideCollapsed || a.rail {
 			a.sidebarToggle(c)
 		}
-		title := ui.Text(c, a.pageTitle()).FontSize(13).FontWeight(600).Shrink(0).SingleLine()
+		if a.page == "sessions" && a.sessions.open {
+			a.sessionBar(c)
+			return
+		}
+		if a.splitBar() {
+			a.splitContentBar(c, padStart)
+			return
+		}
+		title := ui.Text(c, a.pageTitle()).FontSize(15).FontWeight(600).Shrink(0).SingleLine()
 		if strings.HasPrefix(a.page, "repo:") {
 			title.Shrink(1).MinWidth(0)
 		}
-		if _, ok := a.agentPageRoot(); ok {
-			a.agentTabs(c)
+		if a.page == "issues" && a.snap != nil && len(a.snap.Issues) > 0 {
+			ui.Textf(c, "%d 项", len(a.snap.Issues)).FontSize(12).TextColor(token(t, "ink-3")).Shrink(0)
 		}
-		if a.page == effectivePage {
-			ui.Toolbar(c, func() { a.effectiveToolbar(c) }).Label("生效范围").Padding(0).Gap(4).Margin(0, 0, 0, 8).MinWidth(0)
+		if root, ok := a.agentPageRoot(); ok {
+			a.agentMeta(c, root)
+		}
+		if a.page == graphPage {
+			a.graphPicker(c)
 		}
 		ui.Box(c).Grow(1).MinWidth(8)
-		if a.page == "overview" || a.page == "sessions" {
+		if a.page == effectivePage {
+			ui.Toolbar(c, func() { a.effectiveToolbar(c) }).Label("生效范围").Padding(0).Gap(8).MinWidth(0)
+		}
+		if a.page == graphPage {
+			a.graphLegend(c)
+		}
+		if a.page == "overview" || a.page == "sessions" || a.page == usagePage {
 			a.overviewToolbar(c)
-		} else if _, ok := a.agentPageRoot(); ok && a.state(a.page).agentTab != 0 {
-			ui.Segmented(c, &a.sessions.period, "今天", "7 天", "30 天", "全部").Label("统计时间范围").Height(toolbarControlHeight)
+		} else if root, ok := a.agentPageRoot(); ok && a.state(a.page).agentTab != 0 && logSupport(session.Agent(agentKey(a.home, root.Path))) == "" {
+			segmented(c, "统计时间范围", &a.sessions.period, periodLabels...)
 		}
 	})
 }
@@ -129,48 +164,15 @@ func (a *App) contentBar(c *ui.Context) {
 // viewTabs puts navigation beside the content it changes, without a
 // toolbar face. TabsBase keeps arrow-key navigation and selected states.
 func viewTabs(c *ui.Context, selected *int, labels ...string) {
-	t := c.Theme()
-	tabs := ui.TabsBase(c, selected, len(labels))
-	tabs.List.Gap(16).Label("视图").Children(func() {
-		for i, label := range labels {
-			on := i == *selected
-			tab := tabs.Tab(i).Height(24).AlignItems(ui.Center).Radius(3)
-			color := t.TextMuted
-			if on || tab.Hovered() {
-				color = t.Text
-			}
-			tab.Children(func() { ui.Text(c, label).FontSize(12).FontWeight(600).TextColor(color).SingleLine() })
-			if on {
-				tab.DrawOver(func(p *ui.Painter, r ui.Rect) {
-					p.Fill(ui.Rect{X: r.X, Y: r.Y + r.H - 2, W: r.W, H: 2}, t.Text, 1)
-				})
-			}
-		}
-	})
-	if tabs.List.Changed() {
-		c.Invalidate()
-	}
-}
-
-func (a *App) browseTabs(c *ui.Context) {
-	if a.browsePage() {
-		ui.Row(c).Padding(6, 16, 4, 16).Children(func() {
-			viewTabs(c, &a.state(a.page).view, "列表", "依赖图")
-		})
-	}
+	segmented(c, "视图", selected, labels...)
 }
 
 func (a *App) listSearch(c *ui.Context) {
 	placeholder := "搜索名称、说明或路径"
-	if a.page == effectivePage {
-		placeholder = "搜索生效 skill"
-		if a.eff.matrix == 1 {
-			placeholder = "搜索 skill"
-		}
-	}
+	t := c.Theme()
 	ui.Row(c).Padding(0, 16, 8, 16).Children(func() {
-		ui.SearchField(c, &a.query).Grow(1).MinWidth(0).Height(toolbarControlHeight).
-			Border(0, ui.Transparent).Background(c.Theme().SurfaceHover).Label("搜索").Placeholder(placeholder)
+		ui.SearchField(c, &a.query).Grow(1).MinWidth(0).Height(30).Radius(7).Background(t.Surface).Border(1, t.Border).
+			PlaceholderColor(token(t, "ink-3")).Label("搜索").Placeholder(placeholder)
 	})
 }
 
@@ -224,6 +226,9 @@ func (a *App) sidebarWidth() float32 {
 	if a.sideCollapsed {
 		return 0
 	}
+	if a.rail {
+		return railWidth
+	}
 	return a.sideW
 }
 
@@ -245,13 +250,19 @@ func (a *App) warnings(c *ui.Context) {
 		return
 	}
 	t := c.Theme()
+	ink := token(t, "warn-ink")
 	n := min(len(a.snap.Warnings), 3)
-	for _, w := range a.snap.Warnings[:n] {
-		ui.Text(c, w).Padding(6, 16, 0, 16).FontSize(12).TextColor(t.Warning).SingleLine()
-	}
-	if extra := len(a.snap.Warnings) - n; extra > 0 {
-		ui.Textf(c, "还有 %d 条提示", extra).Padding(2, 16, 0, 16).FontSize(12).TextColor(t.TextMuted)
-	}
+	ui.Row(c).Shrink(0).Margin(12, 32, 0, 32).Padding(10, 14).Gap(10).Radius(8).Background(token(t, "warn-bg")).Label("扫描提示").Children(func() {
+		ui.Icon(c, glyph("alert")).FontSize(14).TextColor(t.Warning).Shrink(0).Margin(1, 0, 0, 0)
+		ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
+			for _, w := range a.snap.Warnings[:n] {
+				ui.Text(c, w).FontSize(12).TextColor(ink).SingleLine().Tooltip(w)
+			}
+			if extra := len(a.snap.Warnings) - n; extra > 0 {
+				ui.Textf(c, "还有 %d 条提示", extra).FontSize(11.5).TextColor(ink)
+			}
+		})
+	})
 }
 
 // controlsBandHeight keeps every toolbar control on the traffic lights'
@@ -263,106 +274,6 @@ func controlsBandHeight(bar ui.TitleBar) float32 {
 		h = max(h-16, 0)
 	}
 	return h
-}
-
-// Top-level navigation starts directly below the title bar in v2.
-func (a *App) sidebarTopInset(c *ui.Context) float32 {
-	if a.hidden["overview"] && a.hidden["sessions"] && a.hidden["issues"] {
-		_, height := c.MeasureText(0, ui.Span{Text: "技能", Size: c.Theme().FontSize - 1, Weight: 600})
-		return max(0, 18-c.Theme().Space(1)-height/2)
-	}
-	_, height := c.MeasureText(0, ui.Span{Text: "总览", Size: c.Theme().FontSize})
-	return max(0, 12-max(16, height)/2)
-}
-
-func (a *App) sidebar(c *ui.Context) {
-	t := c.Theme()
-	frosted := a.frosted(c)
-	col := ui.Column(c).Fill()
-	if !frosted {
-		col.Background(t.Surface)
-	}
-	col.Children(func() {
-		// The band keeps the traffic lights clear and carries the control
-		// that hides the sidebar, at its trailing edge as in a source list.
-		ui.Row(c).Height(controlsBandHeight(c.TitleBar())).Shrink(0).Padding(0, 6).AlignItems(ui.Center).DragWindow().Children(func() {
-			ui.Box(c).Grow(1)
-			a.sidebarToggle(c)
-		})
-		side := ui.Sidebar(c, &a.page, func() {
-			if !a.hidden["overview"] {
-				a.navItem(c, "overview", "overview", "总览")
-			}
-			if !a.hidden["sessions"] {
-				item := a.navItem(c, "sessions", "sessions", "会话")
-				if a.sessions.snapshot != nil && len(a.sessions.snapshot.Sessions) > 0 {
-					item.Children(func() { ui.Badge(c, fmt.Sprint(len(a.sessions.snapshot.Sessions))) })
-				}
-			}
-			if !a.hidden["issues"] {
-				item := a.navItem(c, "issues", "issues", "问题")
-				if a.snap != nil && len(a.snap.Issues) > 0 {
-					item.Children(func() { ui.Badge(c, fmt.Sprint(len(a.snap.Issues))) })
-				}
-			}
-			ui.SidebarSection(c, "技能", nil, func() {
-				if !a.hidden["pool"] {
-					item := a.navItem(c, "pool", "pool", "共享池")
-					if a.snap != nil {
-						item.Children(func() { ui.Badge(c, fmt.Sprint(len(a.snap.EntriesFor("pool")))) })
-					}
-				}
-				a.navItem(c, effectivePage, "effective", "生效视图")
-			})
-			if agents := a.sidebarAgents(); len(agents) > 0 {
-				ui.SidebarSection(c, "Agent", &a.agentsOpen, func() {
-					for _, root := range agents {
-						a.sideRoot(c, root)
-					}
-				})
-			}
-			a.repoSection(c)
-		}).Grow(1).Padding(a.sidebarTopInset(c), t.Space(2.5), t.Space(2.5), t.Space(2.5)).Label("位置")
-		if frosted {
-			side.Background(ui.Transparent)
-		}
-		// The footer is as tall as the status bar beside it, so the rule
-		// above both runs straight across the window.
-		ui.Row(c).Height(footerHeight).Shrink(0).Padding(0, 6).AlignItems(ui.Center).
-			BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Children(func() {
-			a.footerActions(c)
-		})
-	})
-}
-
-func (a *App) sideRoot(c *ui.Context, r skill.Root) {
-	id := "root:" + r.ID
-	badge := 0
-	if a.snap != nil {
-		badge = len(a.agentEntries(r))
-	}
-	logo, plain := sideLogo(a.home, r)
-	if logo == nil {
-		item := ui.SidebarItem(c.Key(id), id, glyph(lookOf(a.home, r).glyph), r.Name)
-		if badge > 0 {
-			item.Children(func() { ui.Badge(c, fmt.Sprint(badge)) })
-		}
-		return
-	}
-	// A sidebar icon is tinted by the theme, so a logo in its own colors is
-	// drawn as the item's content instead.
-	ui.SidebarItem(c.Key(id), id, nil, "").Label(r.Name).Children(func() {
-		ui.Row(c).Grow(1000).Margin(0, 0, 0, -8).AlignItems(ui.Center).Gap(8).Children(func() {
-			img := ui.Image(c, logo).Size(16, 16).Shrink(0)
-			if plain {
-				img.TextColor(c.Theme().Text)
-			}
-			ui.Text(c, r.Name).Grow(1).SingleLine()
-			if badge > 0 {
-				ui.Badge(c, fmt.Sprint(badge))
-			}
-		})
-	})
 }
 
 func (a *App) roots(role skill.Role) []skill.Root {
@@ -386,6 +297,9 @@ func (a *App) content(c *ui.Context) {
 			ui.Text(c, a.loadErr).Padding(6, 16, 0, 16).TextColor(t.Danger)
 		}
 		a.warnings(c)
+		if root, ok := a.agentPageRoot(); ok {
+			a.agentTabs(c, root)
+		}
 		if a.page == "overview" {
 			a.overviewPane(c)
 			a.statusBar(c)
@@ -396,11 +310,20 @@ func (a *App) content(c *ui.Context) {
 			a.statusBar(c)
 			return
 		}
+		if a.page == usagePage {
+			a.usagePane(c)
+			a.statusBar(c)
+			return
+		}
+		if a.page == graphPage {
+			a.graphPage(c)
+			a.statusBar(c)
+			return
+		}
 		if root, ok := a.agentPageRoot(); ok && a.state(a.page).agentTab != 0 {
-			if a.state(a.page).agentTab == 1 {
-				if reason := logSupport(session.Agent(agentKey(a.home, root.Path))); reason != "" {
-					ui.Text(c, reason).FontSize(12).TextColor(t.TextMuted).Padding(12, 16)
-				}
+			if reason := logSupport(session.Agent(agentKey(a.home, root.Path))); reason != "" {
+				a.noLogs(c, root, reason)
+			} else if a.state(a.page).agentTab == 1 {
 				a.sessionsPane(c)
 			} else {
 				a.agentUsagePane(c, root)
@@ -417,30 +340,10 @@ func (a *App) content(c *ui.Context) {
 			a.statusBar(c)
 			return
 		}
-		split := &a.listW
-		if a.inGraph() {
-			split = &a.graphW
-			width, _ := c.Size()
-			a.graphW = min(a.graphW, max(280, width-a.sidebarWidth()-280-2))
-		} else {
-			// Leave room for management controls in a narrow window.
-			width, _ := c.Size()
-			a.listW = min(a.listW, max(180, width-a.sidebarWidth()-320-2))
-		}
-		ui.Column(c).Width(*split).Shrink(0).Children(func() { a.browseTabs(c) })
-		ui.Split(c, split, func() {
-			if a.inGraph() {
-				a.graphPane(c)
-				return
-			}
-			a.listPane(c)
-		}, func() {
-			if a.inGraph() {
-				a.graphDetail(c)
-				return
-			}
-			a.detailPane(c)
-		}).Grow(1)
+		// Leave room for management controls in a narrow window.
+		width, _ := c.Size()
+		a.listW = min(a.listW, max(180, width-a.sidebarWidth()-320-2))
+		ui.Split(c, &a.listW, func() { a.listPane(c) }, func() { a.detailPane(c) }).Grow(1)
 		a.statusBar(c)
 	})
 }
@@ -469,18 +372,18 @@ func (a *App) listPane(c *ui.Context) {
 			for i, f := range issueFilters {
 				labels[i] = f.label
 			}
-			filters := ui.Segmented(c, &a.filter, labels...).Margin(0, 16, 8, 16).Wrap().Label("问题类别")
-			if filters.Changed() {
-				c.Invalidate()
-			}
+			ui.Row(c).Padding(12, 16, 8, 16).Children(func() { segmentedFill(c, "问题类别", &a.filter, labels...) })
+		}
+		rows := a.rows()
+		if a.page == libraryPage {
+			a.libraryHead(c)
 		}
 		a.listSearch(c)
-		rows := a.rows()
+		a.sessionSearchLink(c)
 		ps := a.state(a.page)
 		clamp(&ps.sel, len(rows))
 		if a.page == "issues" {
 			a.syncIssueSelection(rows)
-			a.repairBar(c)
 			a.issueSelectionBar(c, rows)
 		}
 		if path, ok := strings.CutPrefix(a.page, "repo:"); ok {
@@ -509,8 +412,16 @@ func (a *App) listPane(c *ui.Context) {
 			if a.page == "issues" {
 				selected = ps.chosen.Has(rows[i].key)
 			}
+			if a.page == "issues" {
+				a.paintIssueRow(c, rows[i], selected)
+				return
+			}
+			if a.page == libraryPage {
+				a.paintLibraryRow(c, rows[i], selected)
+				return
+			}
 			if rows[i].section != "" {
-				ui.Text(c, rows[i].section).FontSize(11).FontWeight(600).TextColor(t.TextMuted).Padding(12, 10, 4, 10)
+				ui.Text(c, rows[i].section).FontSize(11).FontWeight(600).LetterSpacing(0.3).TextColor(token(t, "ink-3")).Padding(14, 10, 4, 10)
 			}
 			a.paintRow(c, rows[i], selected)
 		}).Grow(1).Padding(4, 8).Gap(2).Children(func() {
@@ -523,6 +434,10 @@ func (a *App) listPane(c *ui.Context) {
 		})
 		if list.Changed() {
 			c.Invalidate()
+		}
+		if a.page == "issues" {
+			a.anomalyGroup(c)
+			a.repairBar(c)
 		}
 	})
 }
@@ -550,7 +465,7 @@ func (a *App) paintRow(c *ui.Context, r row, selected bool) {
 		}
 		ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, r.name).Grow(1).SingleLine()
+				ui.Text(c, r.name).Font(monoFont).FontSize(13).FontWeight(500).Grow(1).SingleLine()
 				if _, ok := a.agentPageRoot(); ok {
 					ui.Text(c, a.skillListUsage(r.entry)).FontSize(10).SingleLine().Tooltip("近 30 天 · 按日志中的 Skill 调用名匹配")
 				}
@@ -563,7 +478,7 @@ func (a *App) paintRow(c *ui.Context, r row, selected bool) {
 				}
 			})
 			if r.subtitle != "" {
-				sub := ui.Text(c, r.subtitle).FontSize(12).SingleLine()
+				sub := ui.Text(c, r.subtitle).FontSize(11.5).SingleLine()
 				if !selected {
 					sub.TextColor(t.TextMuted)
 				}
@@ -603,40 +518,54 @@ func (a *App) detailPane(c *ui.Context) {
 	})
 }
 
+// detail is the design's skill page: the name in the face of a directory,
+// what it does, where it lives, then how it reaches the Agents, how it is
+// used and what it says.
 func (a *App) detail(c *ui.Context, r row) {
 	t := c.Theme()
 	e := r.entry
-	ui.Column(c).Padding(24, 28).Gap(14).MaxWidth(680).Children(func() {
-		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-			tile(c, lookOf(a.home, skill.Root{ID: e.RootID, Name: e.RootName, Path: e.RootPath, Role: e.RootRole}), 28)
-			ui.Column(c).Grow(1).MinWidth(0).Gap(5).Children(func() {
-				ui.Text(c, e.Name).FontSize(17).FontWeight(600).SingleLine()
+	ui.Column(c).Padding(26, 32, 36, 32).Gap(18).MaxWidth(820).Children(func() {
+		ui.Column(c).Gap(8).Children(func() {
+			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, e.Name).Font(monoFont).FontSize(26).FontWeight(600).MinWidth(0).SingleLine().Tooltip(e.Name)
 				if r.badge != "" {
-					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+					tone := toneColor(t, r.tone)
+					ui.Row(c).Gap(5).Padding(2, 8).Radius(5).AlignItems(ui.Center).Background(fade(tone, 26)).Shrink(0).Children(func() {
 						if r.glyph != "" {
-							ui.Icon(c, glyph(r.glyph)).FontSize(12).TextColor(toneColor(t, r.tone)).Shrink(0)
+							ui.Icon(c, glyph(r.glyph)).FontSize(12).TextColor(tone)
 						}
-						pill(c, r.badge, toneColor(t, r.tone))
+						ui.Text(c, r.badge).FontSize(11.5).TextColor(tone).SingleLine()
 					})
 				}
 			})
-		})
-		a.actions(c, e)
-		if e.Description != "" {
-			card(c).Padding(12, 14).Children(func() {
-				ui.Text(c, e.Description).FontSize(13).LineHeight(1.5).MaxLines(12)
-			})
-		}
-		a.skillUsage(c, e)
-		a.invocationSettings(c, e)
-		a.infoCard(c, r)
-		a.documentPane(c, e)
-		if a.browsePage() && !a.inGraph() && a.hasDeps(e) {
-			if ui.Button(c, "在依赖图中查看").AlignSelf(ui.Start).Clicked() {
-				a.showGraph(e.Name)
-				c.Invalidate()
+			if e.Description != "" {
+				ui.Text(c, e.Description).FontSize(13.5).LineHeight(1.55).TextColor(t.TextMuted).MaxLines(6).Selectable()
 			}
+			a.skillMeta(c, e)
+		})
+		if a.splitBar() {
+			if e.System || e.RootRole == skill.RoleBuiltin {
+				ui.Text(c, "自带 skill 只展示，这里不会修改它。").FontSize(12).TextColor(t.TextMuted)
+			}
+			a.actionNotes(c, e)
+			if !a.removalFor(e).Unlinkable {
+				a.removalNote(c, e)
+			}
+		} else {
+			a.actions(c, e)
 		}
+		if e.RootRole == skill.RolePool && a.snap != nil {
+			a.copyBanner(c, e)
+			a.mountMap(c, e)
+		} else {
+			a.compareButton(c, e)
+		}
+		if e.Usable() {
+			a.skillUsage(c, e)
+		}
+		a.invocationSettings(c, e)
+		a.infoCard(c, r, a.splitBar())
+		a.detailTabs(c, e)
 	})
 }
 
@@ -647,8 +576,10 @@ type detailLine struct {
 }
 
 // infoCard is the panel of facts about an entry: where it is, what it
-// points at, what it relates to, what it contains.
-func (a *App) infoCard(c *ui.Context, r row) {
+// points at, what it relates to, what it contains. Brief leaves out where
+// it is and which Agents link it, which the meta line and the mount map
+// already say.
+func (a *App) infoCard(c *ui.Context, r row, brief bool) {
 	t := c.Theme()
 	e := r.entry
 	var lines []detailLine
@@ -657,11 +588,16 @@ func (a *App) infoCard(c *ui.Context, r row) {
 			lines = append(lines, detailLine{s, col})
 		}
 	}
-	add(e.RootName+" · "+shortPath(a.home, e.Path), t.TextMuted)
-	if e.LinkTarget != "" {
+	if !brief {
+		add(e.RootName+" · "+shortPath(a.home, e.Path), t.TextMuted)
+	}
+	gone := e.Kind == skill.KindBroken && e.LinkTarget != ""
+	if gone {
+		add("指向 "+e.LinkTarget+"，目标已不存在", t.Danger)
+	} else if e.LinkTarget != "" {
 		add("指向 "+e.LinkTarget, t.TextMuted)
 	}
-	if a.page == "pool" {
+	if e.RootRole == skill.RolePool && !brief {
 		add(a.linkedText(e), t.TextMuted)
 	}
 	if e.FrontName != "" && e.FrontName != e.Name {
@@ -676,7 +612,7 @@ func (a *App) infoCard(c *ui.Context, r row) {
 	if e.TreeHash != "" {
 		add("内容 "+skill.ShortHash(e.TreeHash), t.TextMuted)
 	}
-	if e.MetaErr != "" {
+	if e.MetaErr != "" && !gone {
 		add(e.MetaErr, t.Danger)
 	}
 	if e.HashErr != "" {
@@ -685,11 +621,9 @@ func (a *App) infoCard(c *ui.Context, r row) {
 	if len(lines) == 0 {
 		return
 	}
-	box := card(c)
-	box.Dividers(1, t.Border)
-	box.Children(func() {
+	ui.Column(c).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Label("详细信息").Children(func() {
 		for _, l := range lines {
-			ui.Text(c, l.s).Padding(8, 14).FontSize(12).TextColor(l.col).Selectable()
+			ui.Text(c, l.s).Padding(8, 0).FontSize(12).TextColor(l.col).Selectable().BorderWidth(0, 0, 1, 0).BorderColor(t.Border)
 		}
 	})
 }
@@ -738,7 +672,6 @@ func (a *App) actions(c *ui.Context, e skill.Entry) {
 			}
 		}).Label("更多")
 	})
-	a.compareButton(c, e)
 	a.actionNotes(c, e)
 	a.removalNote(c, e)
 }
@@ -773,19 +706,7 @@ func (a *App) actionNotes(c *ui.Context, e skill.Entry) {
 // linkAgentMenu lets the user show a pool skill in an agent that has no
 // entry of that name yet.
 func (a *App) linkAgentMenu(c *ui.Context, pool skill.Entry) {
-	var free []skill.Root
-	for _, r := range a.roots(skill.RoleAgent) {
-		taken := false
-		for _, e := range a.snap.EntriesFor(r.ID) {
-			if e.Name == pool.Name {
-				taken = true
-				break
-			}
-		}
-		if !taken {
-			free = append(free, r)
-		}
-	}
+	free := a.freeAgents(pool)
 	if len(free) == 0 {
 		return
 	}
@@ -872,57 +793,6 @@ func (a *App) confirmReplace(review []repair.Fix) {
 	)
 }
 
-// repairBar is the fix for the issues listed below it: the ones that lose
-// nothing in one click, the ones that replace a different copy on their own.
-func (a *App) repairBar(c *ui.Context) {
-	if a.snap == nil || len(a.snap.Issues) == 0 {
-		return
-	}
-	t := c.Theme()
-	kind := a.issueScope()
-	safe, review := repair.Split(a.plan(kind))
-	card(c).Margin(10, 16, 6, 16).Padding(12, 14).Gap(10).Children(func() {
-		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-			tintedTile(c, "wand", t.Accent, 30)
-			msg := "这些问题需要你决定如何处理，可在列表中选择多项。"
-			switch {
-			case len(safe) > 0 && len(review) > 0:
-				msg = fmt.Sprintf("%d 项可以直接修复，%d 个不一致的副本要你确认", len(safe), len(review))
-			case len(safe) > 0:
-				msg = fmt.Sprintf("%d 项可以直接修复，每一步都能撤销", len(safe))
-			case len(review) > 0:
-				msg = fmt.Sprintf("%d 个不一致的副本要你确认后替换", len(review))
-			}
-			ui.Text(c, msg).FontSize(12).TextColor(t.TextMuted).Grow(1)
-		})
-		if len(safe) == 0 && len(review) == 0 {
-			return
-		}
-		ui.Row(c).Gap(8).Wrap().Children(func() {
-			if len(safe) > 0 {
-				label := fmt.Sprintf("一键修复 %d 项", len(safe))
-				if kind != "" {
-					label = fmt.Sprintf("修复这 %d 项", len(safe))
-				}
-				fix := ui.Button(c, "").Disabled(a.scanning || a.mutating).Label(label)
-				fix.Children(func() {
-					ui.Icon(c, glyph("wand"))
-					ui.Text(c, label).SingleLine()
-				})
-				if fix.Clicked() {
-					a.confirmBatch(append([]repair.Fix(nil), safe...), "修复")
-				}
-			}
-			if len(review) > 0 {
-				label := fmt.Sprintf("替换 %d 个不一致副本", len(review))
-				if ui.Button(c, label).Disabled(a.scanning || a.mutating).Clicked() {
-					a.confirmReplace(append([]repair.Fix(nil), review...))
-				}
-			}
-		})
-	})
-}
-
 func (a *App) confirm(title, message, ok, done string, run func() ([]manage.Record, error)) {
 	a.ask = ask{open: true, title: title, message: message, ok: ok, done: done, run: run}
 }
@@ -992,6 +862,9 @@ func (a *App) buildRows() []row {
 	if a.page == "issues" {
 		return a.issueRows()
 	}
+	if a.page == libraryPage {
+		return a.libraryRows()
+	}
 	var entries []skill.Entry
 	switch a.page {
 	case "pool":
@@ -1015,34 +888,6 @@ func (a *App) buildRows() []row {
 			readonly = true
 		}
 		out = append(out, r)
-	}
-	return out
-}
-
-func (a *App) issueRows() []row {
-	kind := ""
-	if a.filter >= 0 && a.filter < len(issueFilters) {
-		kind = issueFilters[a.filter].id
-	}
-	var out []row
-	for _, issue := range a.snap.Issues {
-		if kind != "" && string(issue.Kind) != kind {
-			continue
-		}
-		e := issue.Entry
-		if !matchQuery(a.query, e.Name, e.Description, e.RootName, e.Path, issue.Detail) {
-			continue
-		}
-		out = append(out, row{
-			key:      e.Path + "\x00" + string(issue.Kind),
-			name:     e.Name,
-			badge:    issue.Kind.Label(),
-			tone:     e.Relation.Tone(),
-			glyph:    issueGlyph(issue.Kind),
-			subtitle: e.RootName + " · " + oneLine(issue.Detail),
-			entry:    e,
-			kind:     issue.Kind,
-		})
 	}
 	return out
 }
@@ -1071,15 +916,21 @@ func (a *App) entrySubtitle(e skill.Entry) string {
 func (a *App) pageTitle() string {
 	switch a.page {
 	case "overview":
-		return "总览"
+		return "首页"
 	case "sessions":
-		return "会话"
+		return "全部会话"
 	case effectivePage:
 		return "生效视图"
 	case "pool":
 		return "共享池"
 	case "issues":
-		return "问题"
+		return "待处理"
+	case libraryPage:
+		return "技能库"
+	case graphPage:
+		return "依赖图"
+	case usagePage:
+		return "用量与耗时"
 	default:
 		if path, ok := strings.CutPrefix(a.page, "repo:"); ok {
 			return a.repoLabel(path)
@@ -1098,8 +949,6 @@ func (a *App) pageSubtitle() string {
 			return shortPath(a.home, p)
 		}
 		return shortPath(a.home, filepath.Join(a.home, ".agents", "skills"))
-	case "issues":
-		return "断链、空目录，以及没有 agent 挂上的共享池 skill；实体副本在详情中按需比较"
 	default:
 		if r, ok := a.rootByPage(a.page); ok {
 			return shortPath(a.home, r.Path)
@@ -1178,26 +1027,31 @@ func (a *App) allClear(c *ui.Context) bool {
 		return false
 	}
 	t := c.Theme()
-	ui.Column(c).Grow(1).Gap(6).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-		if a.snap == nil {
-			msg := "点「重新扫描」读取磁盘，⌘R 同样会扫描。"
-			if a.scanning {
-				msg = "正在读取磁盘。"
+	switch {
+	case a.snap == nil && a.scanning:
+		emptyState(c, "正在扫描", "search", t.TextMuted, "正在查找本机的技能", "只读取文件头部元数据，不改动任何文件。", func() {
+			ui.Spinner(c).Size(16, 16).Label("正在扫描")
+		})
+	case a.snap == nil:
+		emptyState(c, "还没有扫描结果", "search", t.TextMuted, "还没有扫描结果", "点「重新扫描」读取磁盘，⌘R 同样会扫描。", func() {
+			if inkButton(c, "first-scan", "refresh", "开始扫描").Clicked() {
+				a.startScan()
 			}
-			ui.Text(c, "还没有扫描结果").FontSize(17).FontWeight(600)
-			ui.Text(c, msg).FontSize(13).TextColor(t.TextMuted)
-			return
-		}
-		ui.Icon(c, glyph("check")).FontSize(36).TextColor(t.Success)
-		ui.Text(c, "没有待处理的问题").FontSize(17).FontWeight(600)
-		ui.Textf(c, "共享池 %d 项，%d 个 Agent，%d 个仓库都已核对。",
-			len(a.snap.EntriesFor("pool")), len(a.roots(skill.RoleAgent)), len(a.repos)).FontSize(13).TextColor(t.TextMuted)
-	})
+		})
+	default:
+		emptyState(c, "没有待处理的问题", "check", t.Success, "没有待处理的问题",
+			fmt.Sprintf("共享池 %d 项，%d 个 Agent，%d 个仓库都已核对。", len(a.snap.EntriesFor("pool")), len(a.roots(skill.RoleAgent)), len(a.repos)), nil)
+	}
 	return true
 }
 
-// statusBar is the strip along the foot of the content pane.
+// statusBar is the strip along the foot of the content pane. The sidebar's
+// footer carries the scan status, so the strip shows only while it is
+// collapsed.
 func (a *App) statusBar(c *ui.Context) {
+	if !a.sideCollapsed {
+		return
+	}
 	t := c.Theme()
 	ui.Row(c).Height(footerHeight).Shrink(0).Padding(0, 16).Gap(8).AlignItems(ui.Center).
 		BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Children(func() {
@@ -1236,21 +1090,35 @@ func (a *App) sheet(c *ui.Context) int {
 	chosen := -1
 	ui.DialogBase(c, &a.ask.open, func(backdrop ui.Element, panel ui.Element) {
 		backdrop.Background(ui.RGBA(0, 0, 0, 0.12)).Justify(ui.Start)
-		panel.Width(a.sheetWidth()).MaxWidth(520).Margin(bandHeight(c.TitleBar()), 0, 0, 0).Padding(18, 20, 16, 20).Gap(8).Radius(12).
+		panel.Width(a.sheetWidth()).MaxWidth(520).Margin(bandHeight(c.TitleBar()), 0, 0, 0).Padding(20, 22, 18, 22).Gap(8).Radius(12).
 			Background(t.Surface).Border(1, t.Border).Shadow(0, 12, 32, 0, ui.RGBA(0, 0, 0, 0.2)).
 			Label(a.ask.title)
-		ui.Text(c, a.ask.title).FontSize(13).FontWeight(600)
-		if a.ask.message != "" {
-			ui.Text(c, a.ask.message).FontSize(12).LineHeight(1.5).TextColor(t.TextMuted)
+		ui.Text(c, a.ask.title).FontSize(15).FontWeight(600)
+		// A message may end with the list of what it touches, after a
+		// blank line; that part is shown as paths.
+		message, list, _ := strings.Cut(a.ask.message, "\n\n")
+		if message != "" {
+			ui.Text(c, message).FontSize(12.5).LineHeight(1.6).TextColor(t.TextMuted)
 		}
-		ui.Row(c).Gap(8).Justify(ui.End).Margin(8, 0, 0, 0).Children(func() {
-			if ui.Button(c, "取消").Clicked() {
+		if list != "" {
+			ui.Column(c).Gap(5).Padding(4, 0).Children(func() {
+				for _, line := range strings.Split(list, "\n") {
+					if strings.HasSuffix(line, "：") {
+						ui.Text(c, line).FontSize(12.5).TextColor(t.TextMuted)
+						continue
+					}
+					ui.Text(c, line).Font(monoFont).FontSize(12).SingleLine().Tooltip(line)
+				}
+			})
+		}
+		ui.Row(c).Gap(8).Justify(ui.End).Margin(10, 0, 0, 0).Children(func() {
+			if outlineButton(c, "ask-cancel", "取消").Height(28).Clicked() {
 				chosen = 0
 			}
-			if a.ask.alt != "" && ui.Button(c, a.ask.alt).Clicked() {
+			if a.ask.alt != "" && outlineButton(c, "ask-alt", a.ask.alt).Height(28).Clicked() {
 				chosen = 2
 			}
-			if ui.PrimaryButton(c, a.ask.ok).AutoFocus().Clicked() {
+			if inkButton(c, "ask-ok", "", a.ask.ok).AutoFocus().Clicked() {
 				chosen = 1
 			}
 		})

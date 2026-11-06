@@ -38,11 +38,11 @@ func TestOverviewScanRelinkAndUndo(t *testing.T) {
 		t.Fatalf("home before scan: %q", tt.Texts())
 	}
 	click(t, tt, "重新扫描")
-	if !tt.HasText("问题") || !tt.HasText("总览") {
+	if !tt.HasText("待处理") || !tt.HasText("首页") {
 		t.Fatalf("after scan: %q", tt.Texts())
 	}
 
-	click(t, tt, "问题")
+	click(t, tt, "待处理")
 	if !tt.HasText("一键修复 3 项") || tt.HasText("替换 1 个不一致副本") {
 		t.Fatalf("issues: %q", tt.Texts())
 	}
@@ -158,7 +158,7 @@ func TestEmptyDirAndBuiltinReadOnly(t *testing.T) {
 	a := New(home)
 	tt := ui.NewTester(a.View, 1200, 860)
 	click(t, tt, "重新扫描")
-	click(t, tt, "问题")
+	click(t, tt, "待处理")
 	click(t, tt, "空目录")
 	click(t, tt, "blank")
 	if !tt.HasText("移走空目录") {
@@ -174,14 +174,16 @@ func TestEmptyDirAndBuiltinReadOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	click(t, tt, "问题")
+	click(t, tt, "待处理")
 	click(t, tt, "空目录")
 	click(t, tt, "scratch")
 	if !tt.HasText("不会自动移走") {
 		t.Fatalf("scratch: %q", tt.Texts())
 	}
-	if tt.HasText("移走空目录") {
-		t.Fatal("offered to remove a directory that still has files")
+	for _, f := range a.repairPlan() {
+		if f.Entry.Name == "scratch" {
+			t.Fatal("offered to remove a directory that still has files")
+		}
 	}
 
 	click(t, tt, "Grok")
@@ -268,14 +270,14 @@ func TestToolbarRowAlignment(t *testing.T) {
 							t.Errorf("%q overlaps window controls: %+v", label, r)
 						}
 					}
-					count, ok := tt.Find("1 项生效")
+					page, ok := tt.Find("生效视图内容")
 					if !ok {
-						t.Fatal("missing effective list header")
+						t.Fatal("missing effective page")
 					}
-					// The first tab keeps the old header's alignment with
-					// the sidebar, without making the title bar taller.
-					if want := 2*bar.center + 10; count.Y < want-1 || count.Y > want+1 {
-						t.Errorf("list header y=%.1f, want %.1f", count.Y, want)
+					// The page starts just under the title band, without
+					// the band growing taller.
+					if band := controlsBandHeight(bar.room); page.Y < band || page.Y > band+2 {
+						t.Errorf("page y=%.1f, want just under the band at %.1f", page.Y, band)
 					}
 				})
 			}
@@ -387,7 +389,7 @@ func TestRepairAllAndUndo(t *testing.T) {
 	a := New(home)
 	tt := ui.NewTester(a.View, 1200, 860)
 	click(t, tt, "重新扫描")
-	click(t, tt, "问题")
+	click(t, tt, "待处理")
 	if !tt.HasText("一键修复 3 项") {
 		t.Fatalf("repair bar: %q", tt.Texts())
 	}
@@ -456,24 +458,29 @@ func TestDependencyGraphView(t *testing.T) {
 	click(t, tt, "重新扫描")
 	click(t, tt, "添加仓库…")
 	click(t, tt, "依赖图")
-	if !tt.HasText("2 个 skill 有依赖关系 · 1 个互相独立 · 1 个依赖找不到") {
-		t.Fatalf("graph header: %q", tt.Texts())
+	click(t, tt, "依赖图技能：helper")
+	click(t, tt, "lead")
+	if a.page != graphPage || !strings.HasSuffix(a.graphPick, "lead") {
+		t.Fatalf("picker did not choose lead: %s", a.graphPick)
 	}
-	for _, name := range []string{"lead", "helper", "absent"} {
-		if !tt.HasText(name) {
+	for _, name := range []string{"SKILL.md", "helper", "absent"} {
+		if _, ok := tt.Find(name); !ok {
 			t.Fatalf("node %s missing: %q", name, tt.Texts())
 		}
 	}
-	if tt.HasText("solo") {
-		t.Fatal("a skill with no dependencies was drawn")
+	if _, ok := tt.Find("solo"); ok {
+		t.Fatal("a skill lead does not name was drawn")
+	}
+	if !tt.HasText("这个技能有 1 个找不到的技能") || !tt.HasText("SKILL.md 第 4 行依赖 absent") {
+		t.Fatalf("missing callout: %q", tt.Texts())
 	}
 	click(t, tt, "helper")
-	if !tt.HasText("被 lead 依赖") {
+	if !tt.HasText("被谁引用") || !tt.HasText("查看它的依赖图") {
 		t.Fatalf("detail of helper: %q", tt.Texts())
 	}
-	click(t, tt, "absent")
-	if !tt.HasText("找不到") {
-		t.Fatalf("detail of absent: %q", tt.Texts())
+	click(t, tt, "查看它的依赖图")
+	if !strings.HasSuffix(a.graphPick, "helper") {
+		t.Fatal("following a skill did not open its graph")
 	}
 }
 

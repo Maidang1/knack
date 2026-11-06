@@ -63,18 +63,21 @@ func (a *App) pageHidden() bool {
 	if id, ok := strings.CutPrefix(a.page, "root:"); ok {
 		return a.hidden[id]
 	}
-	return a.hidden[a.page] && (a.page == "overview" || a.page == "sessions" || a.page == "issues" || a.page == "pool")
+	return a.hidden[a.page] && slices.Contains(browsePages, a.page)
 }
 
 // homePage is the first page still switched on.
 func (a *App) homePage() string {
-	for _, id := range []string{"overview", "sessions", "issues", "pool"} {
+	for _, id := range browsePages {
 		if !a.hidden[id] {
 			return id
 		}
 	}
 	return effectivePage
 }
+
+// browsePages are the sidebar's places that settings can switch off.
+var browsePages = []string{"overview", "sessions", "issues", libraryPage, graphPage, usagePage, "pool"}
 
 type settingsRow struct {
 	id, name string
@@ -96,10 +99,13 @@ func (a *App) settingsDialog(c *ui.Context) {
 	}
 	t := c.Theme()
 	browse := []settingsRow{
-		{"overview", "总览", look{"overview", ui.Hex("#8E8E93")}},
-		{"sessions", "会话", look{"sessions", ui.Hex("#8E8E93")}},
-		{"issues", "问题", look{"issues", ui.Hex("#f59e0b")}},
-		{"pool", "共享池", look{"pool", ui.Hex("#2563eb")}},
+		{"overview", "首页", look{"overview", ui.Hex("#8E8E93")}},
+		{"sessions", "全部会话", look{"sessions", ui.Hex("#8E8E93")}},
+		{"issues", "待处理", look{"issues", ui.Hex("#f59e0b")}},
+		{libraryPage, "技能库", look{"pool", ui.Hex("#8E8E93")}},
+		{graphPage, "依赖图", look{"graph", ui.Hex("#8E8E93")}},
+		{usagePage, "用量与耗时", look{"chart", ui.Hex("#8E8E93")}},
+		{"pool", "共享池", look{"package", ui.Hex("#2563eb")}},
 	}
 	var agents, builtins []settingsRow
 	if a.snap != nil {
@@ -113,37 +119,43 @@ func (a *App) settingsDialog(c *ui.Context) {
 			}
 		}
 	}
-	categories := []struct{ name, icon, description string }{
-		{"浏览", "sidebar", "选择侧边栏中的浏览入口。"},
-		{"Agent", "bot", "选择在侧边栏显示的 Agent。"},
-		{"自带", "package", "选择在对应 Agent 技能列表中显示的自带内容。"},
+	categories := []struct{ name, icon, title, description string }{
+		{"浏览", "sidebar", "侧边栏浏览入口", "选择侧边栏中的浏览入口。"},
+		{"Agent", "bot", "在侧边栏显示的 Agent", "选择在侧边栏显示的 Agent。"},
+		{"自带", "package", "Agent 自带的技能", "选择在对应 Agent 技能列表中显示的自带内容。"},
 	}
 	a.settingsTab = max(0, min(a.settingsTab, len(categories)-1))
 	width, height := c.Size()
 	ui.DialogBase(c, &a.settingsOpen, func(backdrop ui.Element, panel ui.Element) {
 		backdrop.Background(ui.RGBA(0, 0, 0, 0.25)).Justify(ui.Center).AlignItems(ui.Center)
-		panel.Size(min(780, width-48), min(500, height-48)).Padding(0).Gap(0).Radius(12).
-			Background(t.Background).Border(1, t.Border).Shadow(0, 16, 40, 0, ui.RGBA(0, 0, 0, 0.35)).
+		panel.Size(min(680, width-48), min(540, height-48)).Padding(0).Gap(0).Radius(12).
+			Background(t.Surface).Border(1, t.Border).Shadow(0, 16, 40, 0, ui.RGBA(0, 0, 0, 0.3)).
 			Label("设置")
-		ui.Row(c).Fill().AlignItems(ui.Stretch).Radius(11).Clip().Children(func() {
-			ui.Column(c).Width(156).Shrink(0).Padding(24, 12, 16, 12).Gap(16).
-				Background(t.SurfaceHover).Children(func() {
-				ui.Text(c, "设置").FontSize(12).FontWeight(600).TextColor(t.TextMuted).Padding(0, 8)
+		ui.Column(c).Fill().Radius(11).Clip().Children(func() {
+			// The toolbar of a macOS settings window: the pane's name over
+			// a row of icon tabs.
+			ui.Column(c).Shrink(0).Padding(12, 16, 8, 16).Gap(8).AlignItems(ui.Center).
+				Background(token(t, "sidebar")).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
+				ui.Text(c, categories[a.settingsTab].name).FontSize(13).FontWeight(600)
 				tabs := ui.TabsBase(c, &a.settingsTab, len(categories))
-				tabs.List.Column().AlignItems(ui.Stretch).FocusGroup(ui.Vertical).Gap(4).Label("设置分类").Children(func() {
+				tabs.List.FocusGroup(ui.Horizontal).Gap(4).Label("设置分类").Children(func() {
 					for i, category := range categories {
-						tab := tabs.Tab(i).Height(34).Padding(0, 10).Gap(8).Radius(6).
+						on := i == a.settingsTab
+						tab := tabs.Tab(i).MinWidth(64).Padding(6, 12).Gap(4).Radius(7).Column().
 							AlignItems(ui.Center).Label("设置分类：" + category.name)
-						if i == a.settingsTab {
-							tab.Background(t.Selection)
+						if on {
+							tab.Background(token(t, "hover"))
 						} else if tab.Hovered() {
-							tab.Background(t.SurfacePressed)
+							tab.Background(t.SurfaceHover)
 						}
 						tab.Children(func() {
-							ui.Icon(c, glyph(category.icon)).FontSize(15).TextColor(t.TextMuted)
-							label := ui.Text(c, category.name).FontSize(13)
-							if i == a.settingsTab {
+							icon := ui.Icon(c, glyph(category.icon)).FontSize(17)
+							label := ui.Text(c, category.name).FontSize(11.5)
+							if on {
 								label.FontWeight(600)
+							} else {
+								icon.TextColor(t.TextMuted)
+								label.TextColor(t.TextMuted)
 							}
 						})
 					}
@@ -152,23 +164,22 @@ func (a *App) settingsDialog(c *ui.Context) {
 					c.Invalidate()
 				}
 			})
-			ui.Column(c).Grow(1).MinWidth(0).Padding(28, 28, 20, 28).Gap(20).Label("设置内容").Children(func() {
+			ui.Column(c).Grow(1).MinHeight(0).Padding(22, 28, 18, 28).Gap(16).Label("设置内容").Children(func() {
 				category := categories[a.settingsTab]
-				ui.Column(c).Gap(6).Shrink(0).Children(func() {
-					ui.Text(c, category.name).FontSize(20).FontWeight(600).Label("设置标题")
+				ui.Column(c).Gap(4).Shrink(0).Children(func() {
+					ui.Text(c, category.title).FontSize(15).FontWeight(600).Label("设置标题")
 					ui.Text(c, category.description).FontSize(12).TextColor(t.TextMuted)
 				})
 				ui.Scroll(c.Key("settings:" + category.name)).Grow(1).MinHeight(0).Label("设置列表").Children(func() {
 					rows := [][]settingsRow{browse, agents, builtins}[a.settingsTab]
 					a.settingsGroup(c, category.name, rows)
 				})
-				ui.Column(c).Gap(12).Shrink(0).Children(func() {
-					ui.Text(c, "隐藏只影响侧边栏显示，不会修改磁盘上的文件。").FontSize(11).TextColor(t.TextMuted)
-					ui.Row(c).Justify(ui.End).Children(func() {
-						if ui.Button(c, "完成").AutoFocus().Clicked() {
-							a.settingsOpen = false
-						}
-					})
+				ui.Row(c).Gap(12).Shrink(0).AlignItems(ui.Center).Children(func() {
+					ui.Icon(c, glyph("info")).FontSize(12).TextColor(token(t, "ink-3")).Shrink(0)
+					ui.Text(c, "隐藏只影响侧边栏显示，不会修改磁盘上的文件。").FontSize(11.5).TextColor(token(t, "ink-3")).Grow(1).MinWidth(0)
+					if inkButton(c, "settings-done", "", "完成").AutoFocus().Clicked() {
+						a.settingsOpen = false
+					}
 				})
 			})
 		})
@@ -193,24 +204,24 @@ func (a *App) settingsGroup(c *ui.Context, title string, rows []settingsRow) {
 			if title == "自带" {
 				label = "在 Agent 技能列表中显示"
 			}
-			ui.Text(c, label).FontSize(12).FontWeight(600).TextColor(t.TextMuted).Grow(1)
+			ui.Text(c, label).FontSize(12).TextColor(t.TextMuted).Grow(1)
 			if len(rows) > 1 {
-				if ui.Button(c, "全部显示").Label(title + "全部显示").Clicked() {
+				if outlineButton(c, "show:"+title, "全部显示").Label(title + "全部显示").Clicked() {
 					a.setAgentsShown(ids, true)
 				}
-				if ui.Button(c, "全部隐藏").Label(title+"全部隐藏").Margin(0, 0, 0, 6).Clicked() {
+				if outlineButton(c, "hide:"+title, "全部隐藏").Label(title+"全部隐藏").Margin(0, 0, 0, 6).Clicked() {
 					a.setAgentsShown(ids, false)
 				}
 			}
 		})
-		ui.Column(c).Background(t.Surface).Border(1, t.Border).Radius(10).Children(func() {
+		ui.Column(c).Background(t.Surface).Border(1, t.Border).Radius(10).Clip().Children(func() {
 			for i, r := range rows {
 				if i > 0 {
-					ui.Divider(c.Key("div:"+r.id)).Margin(0, 0, 0, 46)
+					ui.Divider(c.Key("div:"+r.id)).Margin(0, 0, 0, 48)
 				}
-				ui.Row(c.Key(r.id)).AlignItems(ui.Center).Gap(10).Padding(6, 12, 6, 10).Children(func() {
+				ui.Row(c.Key(r.id)).AlignItems(ui.Center).Gap(12).Padding(10, 14, 10, 12).Children(func() {
 					tile(c, r.look, 24)
-					ui.Text(c, r.name).FontSize(13).Grow(1).SingleLine()
+					ui.Text(c, r.name).FontSize(13).FontWeight(500).Grow(1).SingleLine()
 					shown := !a.hidden[r.id]
 					if ui.Switch(c, &shown).Label(r.name).Changed() {
 						a.setAgentShown(r.id, shown)

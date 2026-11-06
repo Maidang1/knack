@@ -27,12 +27,11 @@ func TestIssueHeaderLayout(t *testing.T) {
 					t.Fatal("missing issue filters")
 				}
 				search, _ := tt.Find("搜索")
-				subtitle, _ := tt.Find(a.pageSubtitle())
 				if track.X != search.X || track.X+track.W != search.X+search.W {
 					t.Errorf("filters and search edges differ: filters=%+v search=%+v", track, search)
 				}
-				if subtitle.Y+subtitle.H > track.Y || track.Y+track.H+4 > search.Y {
-					t.Errorf("header controls overlap or lack spacing: subtitle=%+v filters=%+v search=%+v", subtitle, track, search)
+				if track.Y < 36 || track.Y+track.H+4 > search.Y {
+					t.Errorf("header controls overlap or lack spacing: filters=%+v search=%+v", track, search)
 				}
 				for _, filter := range issueFilters {
 					r, ok := tt.Find(filter.label)

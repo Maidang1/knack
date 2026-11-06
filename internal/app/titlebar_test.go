@@ -63,7 +63,7 @@ func TestContentControlPlacement(t *testing.T) {
 				a.SetWorkDir(work)
 				tt := ui.NewTester(a.View, width, 760)
 				tt.SetTitleBar(ui.TitleBar{Height: 52, Left: 70})
-				labels := []string{"Agent：Claude", "视图", "重新扫描", "搜索"}
+				labels := []string{"Agent：Claude", "生效筛选", "重新扫描", "搜索"}
 				if _, ok := tt.Find("工作目录：" + shortPath(home, work)); !ok {
 					t.Fatal("short directory name unnecessarily moved into overflow")
 				}
@@ -81,6 +81,13 @@ func TestContentControlPlacement(t *testing.T) {
 								t.Errorf("agent left title bar: %+v", r)
 							}
 						case "重新扫描":
+							if a.rail {
+								// The rail keeps it at its foot.
+								if r.X+r.W > railWidth || r.Y < 600 {
+									t.Errorf("scan is not at the rail's foot: %+v", r)
+								}
+								continue
+							}
 							if r.Y < 760-footerHeight {
 								t.Errorf("scan is not in footer: %+v", r)
 							}
@@ -88,8 +95,8 @@ func TestContentControlPlacement(t *testing.T) {
 								t.Errorf("scan left sidebar: %+v", r)
 							}
 						default:
-							if r.Y < 36 || r.X < a.sidebarWidth() || r.X+r.W > a.sidebarWidth()+a.listW+1 {
-								t.Errorf("%q is not inside list pane: %+v", label, r)
+							if r.Y < 36 || r.X < a.sidebarWidth() || r.X+r.W > float32(width) {
+								t.Errorf("%q is not inside the page: %+v", label, r)
 							}
 						}
 					}
@@ -133,24 +140,21 @@ func TestContentTabsAndSearch(t *testing.T) {
 	if v == nil || errText != "" || len(a.effectiveRows(v)) != 1 {
 		t.Fatal("list search did not filter")
 	}
-	click(t, tt, "3 项生效")
+	click(t, tt, "全部")
 	tt.Key(0, ui.KeyRight)
-	if a.eff.matrix != 1 || !tt.HasText("生效来源") {
-		t.Fatal("keyboard did not switch to matrix")
-	}
-	if !tt.Focused("全貌") {
-		t.Fatal("matrix tab lost keyboard focus")
+	if a.eff.filter != 1 || !tt.Focused("存在覆盖") || !tt.HasText("其余 2 个技能只存在于一层，切换到「全部」查看。") {
+		t.Fatal("keyboard did not switch the filter")
 	}
 	search, ok := tt.Find("搜索")
 	if !ok || search.Y < 36 || search.X < a.sidebarWidth() {
 		t.Fatalf("matrix search misplaced: %+v", search)
 	}
 	if a.query != "writing" {
-		t.Fatal("matrix switch discarded query")
+		t.Fatal("filter switch discarded query")
 	}
 	tt.Key(0, ui.KeyLeft)
-	if a.eff.matrix != 0 || !tt.Focused("3 项生效") {
-		t.Fatal("keyboard did not return to list tab")
+	if a.eff.filter != 0 || !tt.Focused("全部") {
+		t.Fatal("keyboard did not return to every skill")
 	}
 	click(t, tt, "搜索")
 	tt.Key(ui.Cmd, ui.KeyA)
@@ -187,88 +191,52 @@ func TestFooterScanWithSidebarHidden(t *testing.T) {
 	}
 }
 
-func TestBrowseTabsKeepKeyboardFocus(t *testing.T) {
-	home, _ := effectiveHome(t)
-	a := New(home)
-	a.startScan()
-	a.page = "pool"
-	tt := ui.NewTester(a.View, 880, 560)
-	click(t, tt, "列表")
-	tt.Key(0, ui.KeyRight)
-	if !a.inGraph() || !tt.Focused("依赖图") {
-		t.Fatal("graph switch lost keyboard focus")
-	}
-	if tt.HasText("搜索") {
-		t.Fatal("graph should not offer a search that only filters the list")
-	}
-	tt.Key(0, ui.KeyLeft)
-	if a.inGraph() || !tt.Focused("列表") || !tt.HasText("搜索") {
-		t.Fatal("list switch lost focus or search")
-	}
-}
-
-func TestSidebarHeaderAlignment(t *testing.T) {
+// The sidebar's search sits under the title bar band, clear of the
+// traffic lights, and the first item follows it without overlapping.
+func TestSidebarSearchPlacement(t *testing.T) {
 	home := t.TempDir()
 	writeSkill(t, filepath.Join(home, ".claude", "skills", "alpha"), "alpha")
-	for _, bar := range []ui.TitleBar{{Height: 52, Left: 70}, {Height: 44, Right: 120}, {}} {
-		for _, width := range []int{1180, 880} {
-			for _, hideBrowse := range []bool{false, true} {
-				t.Run(fmt.Sprintf("bar=%+v/width=%d/hideBrowse=%t", bar, width, hideBrowse), func(t *testing.T) {
-					a := New(home)
-					a.startScan()
-					a.page = effectivePage
-					a.hidden["overview"], a.hidden["sessions"], a.hidden["issues"] = hideBrowse, hideBrowse, hideBrowse
-					tt := ui.NewTester(a.View, width, 760)
-					tt.SetTitleBar(bar)
-					heading := "总览"
-					if hideBrowse {
-						heading = "技能"
-					}
-					side, ok := tt.Find(heading)
-					if !ok {
-						t.Fatalf("missing sidebar heading %q", heading)
-					}
-					count, ok := tt.Find("1 项生效")
-					if !ok {
-						t.Fatal("missing effective list header")
-					}
-					if d := side.Y + side.H/2 - count.Y - count.H/2; d < -1 || d > 1 {
-						t.Errorf("first sidebar item and list header are misaligned: sidebar=%+v, list=%+v", side, count)
-					}
-				})
-			}
+	check := func(t *testing.T, tt *ui.Tester, band float32, first string) {
+		t.Helper()
+		search, ok := tt.Find("搜索技能")
+		if !ok || search.W <= 0 {
+			t.Fatalf("missing sidebar search: %q", tt.Texts())
+		}
+		item, ok := tt.Find(first)
+		if !ok {
+			t.Fatalf("missing first sidebar item %q", first)
+		}
+		if search.Y < band-1 || item.Y < search.Y+search.H {
+			t.Errorf("band=%.1f search=%+v %s=%+v", band, search, first, item)
 		}
 	}
-}
-
-func TestSidebarHeaderAlignmentWithLargeFont(t *testing.T) {
-	home := t.TempDir()
-	writeSkill(t, filepath.Join(home, ".claude", "skills", "alpha"), "alpha")
-	for _, hideBrowse := range []bool{false, true} {
-		t.Run(fmt.Sprintf("hideBrowse=%t", hideBrowse), func(t *testing.T) {
-			a := New(home)
-			a.startScan()
-			a.page = effectivePage
-			a.hidden["overview"], a.hidden["sessions"], a.hidden["issues"] = hideBrowse, hideBrowse, hideBrowse
-			tt := ui.NewTester(func(c *ui.Context) {
-				theme := *c.Theme()
-				theme.FontSize = 18
-				ui.Themed(c, &theme).Fill().Children(func() { a.View(c) })
-			}, 1180, 760)
-			heading := "总览"
-			if hideBrowse {
-				heading = "技能"
-			}
-			side, sideOK := tt.Find(heading)
-			count, countOK := tt.Find("1 项生效")
-			if !sideOK || !countOK {
-				t.Fatal("missing sidebar or list heading")
-			}
-			if d := side.Y + side.H/2 - count.Y - count.H/2; d < -1 || d > 1 {
-				t.Fatalf("large font misaligned first item: sidebar=%+v, list=%+v", side, count)
-			}
-		})
+	for _, bar := range []ui.TitleBar{{Height: 52, Left: 70}, {Height: 44, Right: 120}, {}} {
+		for _, hideBrowse := range []bool{false, true} {
+			t.Run(fmt.Sprintf("bar=%+v/hideBrowse=%t", bar, hideBrowse), func(t *testing.T) {
+				a := New(home)
+				a.startScan()
+				a.page = effectivePage
+				a.hidden["overview"], a.hidden["sessions"], a.hidden["issues"] = hideBrowse, hideBrowse, hideBrowse
+				tt := ui.NewTester(a.View, 880, 760)
+				tt.SetTitleBar(bar)
+				first := "首页"
+				if hideBrowse {
+					first = "技能"
+				}
+				check(t, tt, controlsBandHeight(bar), first)
+			})
+		}
 	}
+	t.Run("large font", func(t *testing.T) {
+		a := New(home)
+		a.startScan()
+		tt := ui.NewTester(func(c *ui.Context) {
+			theme := *c.Theme()
+			theme.FontSize = 18
+			ui.Themed(c, &theme).Fill().Children(func() { a.View(c) })
+		}, 1180, 760)
+		check(t, tt, controlsBandHeight(ui.TitleBar{}), "首页")
+	})
 }
 
 func TestTitleBarDragTargets(t *testing.T) {
@@ -313,8 +281,8 @@ func TestTitleBarDragTargets(t *testing.T) {
 			if a.query != "alpha" {
 				t.Fatal("drag handle intercepted search input")
 			}
-			click(t, tt, "全貌")
-			if a.eff.matrix != 1 {
+			click(t, tt, "存在覆盖")
+			if a.eff.filter != 1 {
 				t.Fatal("drag handle intercepted view switch")
 			}
 			toggle := "收起侧边栏"

@@ -60,11 +60,19 @@ type App struct {
 	page          string
 	filter        int
 	agentsOpen    bool
-	reposOpen     bool
 	pages         map[string]*pageState
 	sideW, listW  float32
 	graphW        float32
 	sideCollapsed bool
+	// rail is set each frame when the window is too narrow for the
+	// sidebar; railPeek shows it anyway until the page changes.
+	rail, railPeek bool
+	railPage       string
+	// 技能库: the filter chip and the order of each source's skills.
+	libFilter, libSort int
+	libCounts          [4]int
+	detailTab          int    // the skill detail's tab: SKILL.md, files, deps, sessions
+	graphPick          string // the path of the skill the 依赖图 page shows
 
 	win *mygo.Window
 	ask ask
@@ -73,6 +81,7 @@ type App struct {
 	pickDirFn func() (string, error)
 	revealFn  func(string)
 	copyFn    func(string)
+	openFn    func(string)
 }
 
 type pageState struct {
@@ -128,7 +137,6 @@ func New(home string) *App {
 		listW:        440,
 		graphW:       720,
 		agentsOpen:   true,
-		reposOpen:    true,
 	}
 	repos, err := store.Load(a.configPath)
 	if err != nil {
@@ -310,7 +318,6 @@ func (a *App) acceptRepo(path string, err error) {
 		return
 	}
 	a.page = "repo:" + path
-	a.reposOpen = true
 	a.notice = "已添加仓库，正在扫描"
 	a.refreshRepoScan()
 }
@@ -418,6 +425,17 @@ func (a *App) reveal(path string) {
 		return
 	}
 	mygo.Shell.ShowItemInFolder(path)
+}
+
+// openPath opens a file in the app the system gives it.
+func (a *App) openPath(path string) {
+	if a.openFn != nil {
+		a.openFn(path)
+		return
+	}
+	if err := mygo.Shell.OpenPath(path); err != nil {
+		a.notice = "无法打开：" + err.Error()
+	}
 }
 
 func (a *App) copyPath(path string) {

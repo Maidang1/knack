@@ -31,6 +31,7 @@ type overviewData struct {
 	recent            []session.Session
 	anomalies         map[string]bool
 	anomalyCount      map[string]int
+	timing            *usageTimingData // filled when a usage page first asks
 }
 
 func overviewFilter(period int, agent string, now time.Time) session.Filter {
@@ -203,11 +204,13 @@ func tokenNumber(n int64) string {
 	}
 	return fmt.Sprint(n)
 }
+
+// number sets a figure in the monospaced face, as the design's tables do.
 func number(c *ui.Context, value string) ui.Element {
-	return ui.Text(c, value).FontFeatures("tnum").SingleLine()
+	return ui.Text(c, value).Font(monoFont).FontFeatures("tnum").SingleLine()
 }
 func overviewTitle(c *ui.Context, title string) {
-	ui.Text(c, title).FontSize(13).FontWeight(600).SingleLine()
+	ui.Text(c, title).FontSize(14).FontWeight(600).SingleLine()
 }
 func overviewLink(c *ui.Context, label string, action func()) {
 	b := ui.Button(c, label).Padding(0).Height(24).Border(0, ui.Transparent).Background(ui.Transparent).TextColor(c.Theme().Accent).FontSize(11)
@@ -217,9 +220,11 @@ func overviewLink(c *ui.Context, label string, action func()) {
 	}
 }
 
+var periodLabels = []string{"今天", "7 天", "30 天", "全部"}
+
 func (a *App) overviewToolbar(c *ui.Context) {
-	ui.Select(c, &a.sessions.agent, agentOptions()).Label("统计 Agent").Height(toolbarControlHeight).Width(116)
-	ui.Segmented(c, &a.sessions.period, "今天", "7 天", "30 天", "全部").Label("统计时间范围").Height(toolbarControlHeight)
+	segmented(c, "统计时间范围", &a.sessions.period, periodLabels...)
+	selectStyle(c, ui.Select(c, &a.sessions.agent, agentOptions())).Label("统计 Agent").Width(116)
 }
 
 func recentLabel(s session.Session) string {

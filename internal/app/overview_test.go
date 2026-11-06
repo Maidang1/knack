@@ -88,14 +88,14 @@ func TestSessionOverview(t *testing.T) {
 				tt := ui.NewTester(a.View, width, height)
 				tt.SetTitleBar(ui.TitleBar{Height: 52, Left: 70})
 				tt.SetDark(dark)
-				if a.page != "overview" || !tt.HasText("每日 Token") || !tt.HasText("需要处理") || !tt.HasText("最近会话") {
+				if a.page != "overview" || !tt.HasText("每日 Token") || !tt.HasText("个会话有耗时异常") || !tt.HasText("最近会话") {
 					t.Fatalf("missing overview sections %q", tt.Texts())
 				}
 				d := a.overviewData()
 				if d.summary.Sessions != 3 || d.summary.Tokens.Total() != 407 || d.summary.UnmeteredRequests != 3 {
 					t.Fatalf("overview data %+v", d.summary)
 				}
-				if !tt.HasText("不在本地保存会话日志，暂时无法统计") || !tt.HasText("暂不支持") {
+				if !tt.HasText("无本地日志") || !tt.HasText("暂不支持") {
 					t.Fatal("unsupported sources look like measured values")
 				}
 				chart, ok := tt.Find("每日 Token 图表")
@@ -130,16 +130,16 @@ func TestSessionOverview(t *testing.T) {
 				a.sessions.agent = "全部 Agent"
 				a.sessions.period = 2
 				tt.Frame()
-				click(t, tt, "查看全部问题")
+				click(t, tt, "待处理")
 				if a.page != "issues" {
 					t.Fatal("issues navigation")
 				}
-				click(t, tt, "总览")
-				click(t, tt, "会话")
+				click(t, tt, "首页")
+				click(t, tt, "全部会话")
 				if a.page != "sessions" || !tt.HasText("会话列表") {
 					t.Fatal("session entry")
 				}
-				click(t, tt, "总览")
+				click(t, tt, "首页")
 				if dir := os.Getenv("KNACK_RENDER_DIR"); dir != "" {
 					if err := os.MkdirAll(dir, 0o755); err != nil {
 						t.Fatal(err)
