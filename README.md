@@ -66,7 +66,7 @@ Apple Silicon 构建产物位于 `dist/darwin-arm64/`：
 ```text
 dist/darwin-arm64/
 ├── Knack.app
-└── knack-0.1.0-arm64.dmg
+└── knack-0.1.1-arm64.dmg
 ```
 
 也可以指定目标平台；无需 cgo：
