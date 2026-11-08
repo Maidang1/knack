@@ -118,8 +118,8 @@ func (a *App) graphPicker(c *ui.Context) {
 		b.Background(t.SurfaceHover)
 	}
 	b.Children(func() {
-		ui.Text(c, name).Font(monoFont).FontSize(12).MinWidth(0).SingleLine()
-		ui.Icon(c, glyph("chevron-down")).FontSize(11).TextColor(token(t, "ink-3")).Shrink(0)
+		ui.Text(c, name).FontSize(13).MinWidth(0).SingleLine()
+		ui.Icon(c, glyph("chevron-down")).FontSize(11.5).TextColor(token(t, "ink-3")).Shrink(0)
 	})
 	b.PopoverMenuButton(func(m *ui.Menu) {
 		entries := a.libraryEntries()
@@ -165,7 +165,7 @@ func (a *App) graphPage(c *ui.Context) {
 	if state.graph == nil {
 		ui.Column(c).Fill().Center().Children(func() {
 			if state.err != "" {
-				ui.Text(c, state.err).FontSize(12).TextColor(t.Warning)
+				ui.Text(c, state.err).FontSize(13).TextColor(t.Warning)
 			} else {
 				ui.Spinner(c).Size(16, 16).Label("正在读取技能目录")
 			}
@@ -234,12 +234,12 @@ func (a *App) graphCanvas(c *ui.Context, ps *pageState, e skill.Entry, g *skill.
 		})
 	})
 	ui.Row(c).Padding(10, 24, 14, 24).Gap(8).AlignItems(ui.Center).Children(func() {
-		ui.Icon(c, glyph("info")).FontSize(12).TextColor(token(t, "ink-3")).Shrink(0)
+		ui.Icon(c, glyph("info")).FontSize(13).TextColor(token(t, "ink-3")).Shrink(0)
 		note := "只分析同一技能目录内的文件；指向其他技能的引用来自正文推断。"
 		if n := len(g.Isolated); n > 0 {
 			note += fmt.Sprintf("另有 %d 个文件没有被引用。", n)
 		}
-		ui.Text(c, note).FontSize(11.5).TextColor(token(t, "ink-3")).Grow(1).MinWidth(0).SingleLine().Tooltip(strings.Join(g.Isolated, "\n"))
+		ui.Text(c, note).FontSize(12).TextColor(token(t, "ink-3")).Grow(1).MinWidth(0).SingleLine().Tooltip(strings.Join(g.Isolated, "\n"))
 		a.zoomControls(c, s)
 	})
 }
@@ -252,7 +252,7 @@ func (a *App) zoomControls(c *ui.Context, s *graphCanvasState) {
 			if b.Hovered() {
 				b.Background(t.SurfaceHover)
 			}
-			b.Children(func() { number(c, text).FontSize(12) })
+			b.Children(func() { number(c, text).FontSize(13) })
 			return b
 		}
 		if zoom("−", "缩小依赖图", 26).Disabled(s.zoom <= graphMinZoom).Clicked() {
@@ -285,7 +285,7 @@ func (a *App) legend(c *ui.Context, label string, col ui.Color, dashed bool) {
 			}
 			p.StrokePath(path, 1.5, col)
 		})
-		ui.Text(c, label).FontSize(12).TextColor(t.TextMuted)
+		ui.Text(c, label).FontSize(13).TextColor(t.TextMuted)
 	})
 }
 
@@ -317,6 +317,8 @@ func (a *App) drawEdges(c *ui.Context, p *ui.Painter, r ui.Rect, g *skill.Graph,
 				col = t.Danger
 			case e.Inferred:
 				col = token(t, "line-strong")
+			case hot:
+				col = t.Accent
 			}
 			if hot {
 				width = 1.8
@@ -368,7 +370,7 @@ func inferredOnly(g *skill.Graph, name string) bool {
 }
 
 // graphNode is a file of the skill, drawn as the design's chip: mono path,
-// ink when chosen, red and dashed when it is not there.
+// accent when chosen, red and dashed when it is not there.
 func (a *App) graphNode(c *ui.Context, ps *pageState, g *skill.Graph, n skill.Node, at spot, highlight graphHighlight) {
 	t := c.Theme()
 	chosen := ps.node == n.Name
@@ -379,18 +381,18 @@ func (a *App) graphNode(c *ui.Context, ps *pageState, g *skill.Graph, n skill.No
 	fg, iconColor := t.Text, t.TextMuted
 	switch {
 	case chosen && n.Name == "SKILL.md":
-		chip.Background(t.Text).Border(1, t.Text)
-		fg, iconColor = token(t, "on-ink"), token(t, "on-ink")
+		chip.Background(t.Accent).Border(1, t.Accent)
+		fg, iconColor = t.AccentText, t.AccentText
 	case gone:
 		chip.Background(token(t, "danger-bg")).Border(1, t.Danger)
 		fg, iconColor = t.Danger, t.Danger
 	case chosen:
-		chip.Background(t.Surface).Border(2, t.Text)
+		chip.Background(token(t, "accent-bg")).Border(2, t.Accent)
 	case n.Name == "SKILL.md":
 		chip.Background(t.Text).Border(1, t.Text)
 		fg, iconColor = token(t, "on-ink"), token(t, "on-ink")
 	case lit:
-		chip.Background(t.Surface).Border(1.5, t.Text)
+		chip.Background(t.Surface).Border(1.5, t.Accent)
 	default:
 		chip.Background(t.Surface).Border(1, token(t, "line-strong"))
 	}
@@ -403,9 +405,9 @@ func (a *App) graphNode(c *ui.Context, ps *pageState, g *skill.Graph, n skill.No
 	}
 	chip.Children(func() {
 		ui.Icon(c, glyph(nodeGlyph(n))).FontSize(13).TextColor(iconColor).Shrink(0)
-		ui.Text(c, n.Name).Font(monoFont).FontSize(12).TextColor(fg).Grow(1).MinWidth(0).SingleLine()
+		ui.Text(c, n.Name).Font(monoFont).FontSize(13).TextColor(fg).Grow(1).MinWidth(0).SingleLine()
 		if n.Kind == skill.NodeSkill && inferredOnly(g, n.Name) {
-			ui.Text(c, "推断").FontSize(10).TextColor(token(t, "ink-3")).Shrink(0)
+			ui.Text(c, "推断").FontSize(11).TextColor(token(t, "ink-3")).Shrink(0)
 		}
 	})
 }
@@ -419,13 +421,13 @@ func (a *App) graphDetail(c *ui.Context, e skill.Entry, g *skill.Graph, name str
 	ui.Scroll(c.Key("graph-detail")).Fill().Label("依赖图节点详情").Children(func() {
 		ui.Column(c).Padding(24, 24).Gap(18).Children(func() {
 			if !ok {
-				ui.Text(c, "点一个节点，看它引用了什么、被谁引用。").FontSize(12).TextColor(t.TextMuted)
+				ui.Text(c, "点一个节点，看它引用了什么、被谁引用。").FontSize(13).TextColor(t.TextMuted)
 				return
 			}
 			ui.Column(c).Gap(5).Children(func() {
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-					ui.Icon(c, glyph(nodeGlyph(n))).FontSize(14).TextColor(t.TextMuted).Shrink(0)
-					ui.Text(c, path.Base(n.Name)).Font(monoFont).FontSize(14).FontWeight(600).MinWidth(0).SingleLine().Tooltip(n.Name)
+					ui.Icon(c, glyph(nodeGlyph(n))).FontSize(15).TextColor(t.TextMuted).Shrink(0)
+					ui.Text(c, path.Base(n.Name)).FontSize(15).FontWeight(600).MinWidth(0).SingleLine().Tooltip(n.Name)
 				})
 				sub := ""
 				switch n.Kind {
@@ -438,7 +440,7 @@ func (a *App) graphDetail(c *ui.Context, e skill.Entry, g *skill.Graph, name str
 				case skill.NodeMissing:
 					sub = "技能库里没有这个技能"
 				}
-				number(c, sub).FontSize(11.5).TextColor(muted).MinWidth(0).Tooltip(sub)
+				number(c, sub).FontSize(12).TextColor(muted).MinWidth(0).Tooltip(sub)
 			})
 			var by, uses [][2]string
 			for _, edge := range g.Edges {
@@ -484,11 +486,11 @@ func refList(c *ui.Context, title string, items [][2]string) {
 	}
 	t := c.Theme()
 	ui.Column(c).Label(title).Children(func() {
-		ui.Text(c, title).FontSize(11.5).TextColor(t.TextMuted).Padding(0, 0, 6, 0)
+		ui.Text(c, title).FontSize(12).TextColor(t.TextMuted).Padding(0, 0, 6, 0)
 		for _, item := range items {
 			ui.Row(c).Padding(7, 0).Gap(8).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
-				ui.Text(c, item[0]).Font(monoFont).FontSize(12).Grow(1).MinWidth(0).SingleLine().Tooltip(item[0])
-				ui.Text(c, item[1]).FontSize(11).TextColor(token(t, "ink-3")).Shrink(0)
+				ui.Text(c, item[0]).Font(monoFont).FontSize(13).Grow(1).MinWidth(0).SingleLine().Tooltip(item[0])
+				ui.Text(c, item[1]).FontSize(11.5).TextColor(token(t, "ink-3")).Shrink(0)
 			})
 		}
 	})
@@ -536,10 +538,10 @@ func (a *App) missingCallout(c *ui.Context, g *skill.Graph) {
 	ui.Column(c).Padding(12, 14).Gap(6).Radius(8).Background(token(t, "danger-bg")).Label("缺失引用").Children(func() {
 		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, glyph("file-question")).FontSize(13).TextColor(t.Danger)
-			ui.Text(c, "这个技能有 "+strings.Join(title, "、")).FontSize(12.5).FontWeight(600).TextColor(t.Danger)
+			ui.Text(c, "这个技能有 "+strings.Join(title, "、")).FontSize(13).FontWeight(600).TextColor(t.Danger)
 		})
 		for _, line := range lines {
-			ui.Text(c, line).FontSize(12).LineHeight(1.5).TextColor(t.Danger)
+			ui.Text(c, line).FontSize(13).LineHeight(1.5).TextColor(t.Danger)
 		}
 	})
 }

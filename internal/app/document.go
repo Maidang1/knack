@@ -73,7 +73,7 @@ func (a *App) documentPane(c *ui.Context, e skill.Entry) {
 	t := c.Theme()
 	ui.Column(c).Gap(10).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "SKILL.md").FontSize(14).FontWeight(600).Grow(1)
+			ui.Text(c, "SKILL.md").FontSize(15).FontWeight(600).Grow(1)
 			if outlineButton(c, "reload-document", "重新读取").Disabled(state.loading).Clicked() {
 				delete(a.documents, documentKey(e))
 				c.Invalidate()
@@ -81,9 +81,9 @@ func (a *App) documentPane(c *ui.Context, e skill.Entry) {
 		})
 		switch {
 		case state.loading:
-			ui.Text(c, "正在读取正文…").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "正在读取正文…").FontSize(13).TextColor(t.TextMuted)
 		case state.err != "":
-			ui.Text(c, state.err).FontSize(12).TextColor(t.Warning)
+			ui.Text(c, state.err).FontSize(13).TextColor(t.Warning)
 		default:
 			// Numbers and text share a size and line height and never wrap,
 			// so each number stays beside its line.
@@ -95,9 +95,9 @@ func (a *App) documentPane(c *ui.Context, e skill.Entry) {
 			}
 			ui.ScrollHorizontal(c).Label("SKILL.md 正文").Radius(8).Border(1, t.Border).Background(t.Surface).Children(func() {
 				ui.Row(c).Padding(12, 0).AlignItems(ui.Start).Children(func() {
-					ui.Text(c, strings.Join(numbers, "\n")).Font(monoFont).FontSize(12).LineHeight(1.7).NoWrap().
+					ui.Text(c, strings.Join(numbers, "\n")).Font(monoFont).FontSize(13).LineHeight(1.7).NoWrap().
 						TextColor(token(t, "ink-3")).TextAlign(ui.End).MinWidth(28).Padding(0, 14, 0, 10).Shrink(0)
-					ui.Text(c, text).Font(monoFont).FontSize(12).LineHeight(1.7).NoWrap().Selectable().Padding(0, 18, 0, 4)
+					ui.Text(c, text).Font(monoFont).FontSize(13).LineHeight(1.7).NoWrap().Selectable().Padding(0, 18, 0, 4)
 				})
 			})
 		}
@@ -117,8 +117,8 @@ func (a *App) compareButton(c *ui.Context, e skill.Entry) {
 	ink := token(t, "warn-ink")
 	ui.Column(c).Gap(8).Padding(10, 14).Radius(8).Background(token(t, "warn-bg")).Label("独立副本").Children(func() {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-			ui.Icon(c, glyph("copy")).FontSize(14).TextColor(ink)
-			ui.Text(c, "这是一份独立副本，内容还没有和共享池比较。").FontSize(12.5).TextColor(ink).Grow(1).MinWidth(0)
+			ui.Icon(c, glyph("copy")).FontSize(15).TextColor(ink)
+			ui.Text(c, "这是一份独立副本，内容还没有和共享池比较。").FontSize(13).TextColor(ink).Grow(1).MinWidth(0)
 			if outlineButton(c, "compare", label).Disabled(a.scanning || a.mutating || (state != nil && state.loading)).Clicked() {
 				a.beginCompare(e)
 			}
@@ -127,10 +127,10 @@ func (a *App) compareButton(c *ui.Context, e skill.Entry) {
 			return
 		}
 		if state.err != "" {
-			ui.Text(c, state.err).FontSize(12).TextColor(t.Warning)
+			ui.Text(c, state.err).FontSize(13).TextColor(t.Warning)
 			return
 		}
-		ui.Text(c, state.entry.Relation.Label()).FontSize(12).TextColor(ink)
+		ui.Text(c, state.entry.Relation.Label()).FontSize(13).TextColor(ink)
 		// Only this explicitly compared pair is used to plan replacement.
 		ui.Row(c).Gap(8).Wrap().Children(func() {
 			for _, f := range state.fixes {

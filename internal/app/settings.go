@@ -63,7 +63,7 @@ func (a *App) pageHidden() bool {
 	if id, ok := strings.CutPrefix(a.page, "root:"); ok {
 		return a.hidden[id]
 	}
-	return a.hidden[a.page] && slices.Contains(browsePages, a.page)
+	return a.hidden[a.page] && (a.page == storagePage || slices.Contains(browsePages, a.page))
 }
 
 // homePage is the first page still switched on.
@@ -77,7 +77,7 @@ func (a *App) homePage() string {
 }
 
 // browsePages are the sidebar's places that settings can switch off.
-var browsePages = []string{"overview", "sessions", "issues", libraryPage, graphPage, usagePage, "pool"}
+var browsePages = []string{"overview", "sessions", "issues", libraryPage, graphPage, usagePage, insightsPage, "pool"}
 
 type settingsRow struct {
 	id, name string
@@ -105,7 +105,9 @@ func (a *App) settingsDialog(c *ui.Context) {
 		{libraryPage, "技能库", look{"pool", ui.Hex("#8E8E93")}},
 		{graphPage, "依赖图", look{"graph", ui.Hex("#8E8E93")}},
 		{usagePage, "用量与耗时", look{"chart", ui.Hex("#8E8E93")}},
+		{insightsPage, "诊断", look{"wave", ui.Hex("#8E8E93")}},
 		{"pool", "共享池", look{"package", ui.Hex("#2563eb")}},
+		{storagePage, "磁盘清理", look{"disk", ui.Hex("#8E8E93")}},
 	}
 	var agents, builtins []settingsRow
 	if a.snap != nil {
@@ -150,7 +152,7 @@ func (a *App) settingsDialog(c *ui.Context) {
 						}
 						tab.Children(func() {
 							icon := ui.Icon(c, glyph(category.icon)).FontSize(17)
-							label := ui.Text(c, category.name).FontSize(11.5)
+							label := ui.Text(c, category.name).FontSize(12)
 							if on {
 								label.FontWeight(600)
 							} else {
@@ -168,16 +170,16 @@ func (a *App) settingsDialog(c *ui.Context) {
 				category := categories[a.settingsTab]
 				ui.Column(c).Gap(4).Shrink(0).Children(func() {
 					ui.Text(c, category.title).FontSize(15).FontWeight(600).Label("设置标题")
-					ui.Text(c, category.description).FontSize(12).TextColor(t.TextMuted)
+					ui.Text(c, category.description).FontSize(13).TextColor(t.TextMuted)
 				})
 				ui.Scroll(c.Key("settings:" + category.name)).Grow(1).MinHeight(0).Label("设置列表").Children(func() {
 					rows := [][]settingsRow{browse, agents, builtins}[a.settingsTab]
 					a.settingsGroup(c, category.name, rows)
 				})
 				ui.Row(c).Gap(12).Shrink(0).AlignItems(ui.Center).Children(func() {
-					ui.Icon(c, glyph("info")).FontSize(12).TextColor(token(t, "ink-3")).Shrink(0)
-					ui.Text(c, "隐藏只影响侧边栏显示，不会修改磁盘上的文件。").FontSize(11.5).TextColor(token(t, "ink-3")).Grow(1).MinWidth(0)
-					if inkButton(c, "settings-done", "", "完成").AutoFocus().Clicked() {
+					ui.Icon(c, glyph("info")).FontSize(13).TextColor(token(t, "ink-3")).Shrink(0)
+					ui.Text(c, "隐藏只影响侧边栏显示，不会修改磁盘上的文件。").FontSize(12).TextColor(token(t, "ink-3")).Grow(1).MinWidth(0)
+					if primaryButton(c, "settings-done", "", "完成").AutoFocus().Clicked() {
 						a.settingsOpen = false
 					}
 				})
@@ -191,7 +193,7 @@ func (a *App) settingsDialog(c *ui.Context) {
 func (a *App) settingsGroup(c *ui.Context, title string, rows []settingsRow) {
 	t := c.Theme()
 	if len(rows) == 0 {
-		ui.Text(c, "没有扫描到这一类内容。").FontSize(12).TextColor(t.TextMuted).Padding(0, 4, 0, 4)
+		ui.Text(c, "没有扫描到这一类内容。").FontSize(13).TextColor(t.TextMuted).Padding(0, 4, 0, 4)
 		return
 	}
 	ids := make([]string, len(rows))
@@ -204,7 +206,7 @@ func (a *App) settingsGroup(c *ui.Context, title string, rows []settingsRow) {
 			if title == "自带" {
 				label = "在 Agent 技能列表中显示"
 			}
-			ui.Text(c, label).FontSize(12).TextColor(t.TextMuted).Grow(1)
+			ui.Text(c, label).FontSize(13).TextColor(t.TextMuted).Grow(1)
 			if len(rows) > 1 {
 				if outlineButton(c, "show:"+title, "全部显示").Label(title + "全部显示").Clicked() {
 					a.setAgentsShown(ids, true)

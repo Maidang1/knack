@@ -1,6 +1,9 @@
 package session
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -40,6 +43,10 @@ type parseState struct {
 	// message or tool output) and the reasoning time observed since then.
 	InputAt time.Time
 	Think   time.Duration
+	// Claude: the /command a prompt invoked, until its skill text arrives.
+	// Codex: whether the current turn's prompt has been seen.
+	Command  string
+	Prompted bool
 }
 
 type position struct{ turn, item int }
@@ -183,7 +190,7 @@ func (p *parser) request(id, model string, at time.Time, usage Tokens, known boo
 	}
 }
 
-func (p *parser) use(id, name string, at time.Time, input object) {
+func (p *parser) use(id, name string, at time.Time, raw json.RawMessage) {
 	if id == "" {
 		return
 	}
@@ -191,11 +198,12 @@ func (p *parser) use(id, name string, at time.Time, input object) {
 		return
 	}
 	t := p.turn(at)
-	t.Tools = append(t.Tools, ToolCall{ID: id, Name: name, Start: at})
+	touchSkills(t, raw)
+	t.Tools = append(t.Tools, ToolCall{ID: id, Name: name, Start: at, InputHash: inputHash(raw)})
 	p.tools[id] = position{len(p.s.Session.Turns) - 1, len(t.Tools) - 1}
 	if name == "Skill" {
-		if skill := str(input, "skill"); skill != "" {
-			t.Skills = append(t.Skills, SkillCall{Name: skill, ToolID: id, At: at})
+		if skill := str(decode(raw), "skill"); skill != "" {
+			t.Skills = append(t.Skills, SkillCall{Name: skill, ToolID: id, At: at, Source: SkillByModel})
 		}
 	}
 	p.s.LastReply = time.Time{}
@@ -247,6 +255,21 @@ func claudeTokens(o object) Tokens {
 func codexTokens(o object) Tokens {
 	read, write := num(o, "cached_input_tokens"), num(o, "cache_write_input_tokens")
 	return Tokens{max(0, num(o, "input_tokens")-read-write), num(o, "output_tokens"), read, write}
+}
+
+// inputHash fingerprints a tool input. Inputs are compacted first, so
+// formatting differences between log writers do not split identical calls.
+func inputHash(raw json.RawMessage) string {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	var buf bytes.Buffer
+	if json.Compact(&buf, raw) == nil {
+		raw = buf.Bytes()
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:8])
 }
 
 func first(values ...string) string {

@@ -28,6 +28,7 @@ type Record struct {
 	Payload      string          `json:"payload,omitempty"`
 	Dir          string          `json:"dir"`
 	Invocation   *invocationUndo `json:"invocation,omitempty"`
+	Cleanup      *CleanupUndo    `json:"cleanup,omitempty"`
 }
 
 const (
@@ -230,6 +231,10 @@ func linkInto(root, name, target, undoRoot, where string) (Record, error) {
 // what the change wrote.
 func Restore(r Record) error {
 	switch r.Op {
+	case opCleanup:
+		if err := restoreCleanup(r); err != nil {
+			return err
+		}
 	case opInvocation:
 		if err := restoreInvocation(r); err != nil {
 			return err

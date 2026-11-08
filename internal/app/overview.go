@@ -205,15 +205,17 @@ func tokenNumber(n int64) string {
 	return fmt.Sprint(n)
 }
 
-// number sets a figure in the monospaced face, as the design's tables do.
+// number sets a figure in the system face with digits of one width, so
+// columns line up without the wide monospaced face, which also spreads the
+// Han characters of labels such as 「2 小时前」.
 func number(c *ui.Context, value string) ui.Element {
-	return ui.Text(c, value).Font(monoFont).FontFeatures("tnum").SingleLine()
+	return ui.Text(c, value).FontFeatures("tnum").SingleLine()
 }
 func overviewTitle(c *ui.Context, title string) {
-	ui.Text(c, title).FontSize(14).FontWeight(600).SingleLine()
+	ui.Text(c, title).FontSize(15).FontWeight(600).SingleLine()
 }
 func overviewLink(c *ui.Context, label string, action func()) {
-	b := ui.Button(c, label).Padding(0).Height(24).Border(0, ui.Transparent).Background(ui.Transparent).TextColor(c.Theme().Accent).FontSize(11)
+	b := ui.Button(c, label).Padding(0).Height(24).Border(0, ui.Transparent).Background(ui.Transparent).TextColor(c.Theme().Accent).FontSize(11.5)
 	if b.Clicked() {
 		action()
 		c.Invalidate()

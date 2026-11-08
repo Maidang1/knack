@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -27,6 +28,9 @@ func turnPrompt(turn sessionTurnView, index *replayIndex) (string, bool) {
 // promptLine is the first line of typed text. Attachment tags such as Codex's
 // <image name=[Image #1] path="…"> become a short marker before it.
 func promptLine(s string) string {
+	if line, ok := commandLine(s); ok {
+		return line
+	}
 	images := 0
 	for _, line := range strings.Split(s, "\n") {
 		line = strings.TrimSpace(line)
@@ -52,6 +56,40 @@ func promptLine(s string) string {
 		return fmt.Sprintf("[%d 张图片]", images)
 	}
 	return ""
+}
+
+var (
+	commandName = regexp.MustCompile(`<command-name>/?([^<\s]+)</command-name>`)
+	commandArgs = regexp.MustCompile(`(?s)<command-args>(.*?)</command-args>`)
+)
+
+// commandLine shows a Claude Code /command prompt as it was typed:
+// "/loop 全部开始实现" rather than its command-message markup.
+func commandLine(s string) (string, bool) {
+	m := commandName.FindStringSubmatch(s)
+	if m == nil {
+		return "", false
+	}
+	line := "/" + m[1]
+	if a := commandArgs.FindStringSubmatch(s); a != nil {
+		if args := firstLine(a[1]); args != "" {
+			line += " " + args
+		}
+	}
+	return line, true
+}
+
+// commandText is a prompt with a /command's markup turned into what was
+// typed, keeping every line of its arguments.
+func commandText(s string) string {
+	m := commandName.FindStringSubmatch(s)
+	if m == nil {
+		return s
+	}
+	if a := commandArgs.FindStringSubmatch(s); a != nil && strings.TrimSpace(a[1]) != "" {
+		return "/" + m[1] + " " + strings.TrimSpace(a[1])
+	}
+	return "/" + m[1]
 }
 
 func firstLine(s string) string {

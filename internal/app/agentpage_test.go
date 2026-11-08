@@ -139,8 +139,9 @@ func TestAgentPage(t *testing.T) {
 				exportSessionPreview(t, tt, fmt.Sprintf("agent-factory-usage-%d-dark-%t.png", width, dark))
 				click(t, tt, "Codex")
 				click(t, tt, "Agent 用量")
-				if !tt.HasText("Codex 本地日志没有可靠的 Skill 调用记录，Skill 使用情况暂不支持") {
-					t.Fatal("unsupported Skill count shown as zero")
+				// Codex loads skills by reading their SKILL.md, which the logs record.
+				if tt.HasText("Codex 本地日志没有可靠的 Skill 调用记录，Skill 使用情况暂不支持") {
+					t.Fatal("Codex Skill loads reported as unsupported")
 				}
 				// Replacing the snapshot invalidates the activity index and its query cache.
 				before := a.sessionActivity()

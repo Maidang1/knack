@@ -69,7 +69,7 @@ func TestSessionRound(t *testing.T) {
 					t.Fatal("second click did not close the step")
 				}
 				click(t, tt, stepLabel(0, turn.steps[0]))
-				for _, label := range []string{"本轮输入", "每轮耗时图表", "单轮步骤瀑布图", "步骤详情"} {
+				for _, label := range []string{"本轮输入", "轮次列表", "单轮步骤瀑布图", "步骤详情"} {
 					r, ok := tt.Find(label)
 					if !ok || r.W < 100 || r.X+r.W > float32(width)+1 {
 						t.Fatalf("clipped %s: %+v", label, r)

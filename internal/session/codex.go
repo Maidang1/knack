@@ -1,6 +1,9 @@
 package session
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 type codexFormat struct {
 	flatLayout
@@ -8,12 +11,11 @@ type codexFormat struct {
 }
 
 func (codexFormat) Info() AgentInfo {
-	return AgentInfo{ID: Codex, Name: "Codex",
-		SkillNote:  "Codex 本地日志没有可靠的 Skill 调用记录，Skill 使用情况暂不支持",
+	return AgentInfo{ID: Codex, Name: "Codex", Skills: true,
 		RateNote:   "无法可靠关联请求起止时间，tok/s 暂不支持",
 		TimingNote: "Codex 请求耗时按输入完成到用量记录的间隔估算；旧日志缺少逐请求用量时不计为零。"}
 }
-func (codexFormat) version() string { return "codex/1" }
+func (codexFormat) version() string { return "codex/3" }
 
 // Codex compresses older and archived rollouts in place.
 func (codexFormat) layout() layout {
@@ -72,13 +74,25 @@ func (codexFormat) parse(p *parser, o object, at time.Time) {
 			}
 			if str(pl, "role") == "user" {
 				s.InputAt, s.Think = at, 0
+				// The first typed prompt of a turn; injected context such as
+				// <environment_context> or AGENTS.md comes as user text too.
+				text := strings.TrimSpace(contentText(pl["content"]))
+				if !s.Prompted && text != "" && !strings.HasPrefix(text, "<") && !strings.HasPrefix(text, "# AGENTS.md") && len(s.Session.Turns) > 0 {
+					s.Prompted = true
+					if len(s.Session.Turns) > 1 {
+						s.Session.Turns[len(s.Session.Turns)-1].Corrects = correction(text)
+					}
+				}
 			}
 			// task_started is the observed authoritative turn boundary. User
 			// messages can also be replayed after compaction, so do not count them.
 		case "function_call", "custom_tool_call":
-			p.use(str(pl, "call_id"), str(pl, "name"), at, nil)
+			raw := first2(pl["arguments"], pl["input"])
+			p.use(str(pl, "call_id"), codexToolName(pl), at, raw)
+			p.codexSkills(str(pl, "call_id"), at, raw)
 		case "function_call_output", "custom_tool_call_output":
 			p.result(str(pl, "call_id"), at, nil, nil)
+			p.output(str(pl, "call_id"), contentText(pl["output"]))
 			s.InputAt, s.Think = at, 0
 		}
 	case "compacted":
@@ -94,7 +108,7 @@ func (codexFormat) parse(p *parser, o object, at time.Time) {
 				}
 			}
 		case "task_started":
-			s.InputAt, s.Think = at, 0
+			s.InputAt, s.Think, s.Prompted = at, 0, false
 			id := str(pl, "turn_id")
 			for _, t := range s.Session.Turns {
 				if t.ID == id && id != "" {
@@ -122,4 +136,14 @@ func (codexFormat) parse(p *parser, o object, at time.Time) {
 			}
 		}
 	}
+}
+
+// codexToolName qualifies an MCP tool with its namespace, mcp__<server>,
+// as Claude Code names them: mcp__<server>__<tool>.
+func codexToolName(pl object) string {
+	name, ns := str(pl, "name"), str(pl, "namespace")
+	if strings.HasPrefix(ns, "mcp__") && name != "" && !strings.HasPrefix(name, "mcp__") {
+		return ns + "__" + name
+	}
+	return name
 }

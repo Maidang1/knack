@@ -66,11 +66,31 @@ type ToolCall struct {
 	Interrupted, Failed                  bool
 	TimedOutAfter                        time.Duration
 	AgentID                              string // explicit toolUseResult.agentId, never inferred from prompt text
+	// InputHash fingerprints the call's input so repeated identical calls
+	// can be found. It is a truncated SHA-256, never the input itself.
+	InputHash string `json:",omitempty"`
+	// OutputBytes is the size of the text the tool returned into context.
+	OutputBytes int64 `json:",omitempty"`
 }
+
+// How a skill came to be loaded.
+const (
+	SkillByModel   = ""        // the model called the Skill tool
+	SkillByCommand = "command" // the person typed /name
+	SkillByRead    = "read"    // the model read its SKILL.md itself (Codex)
+)
 
 type SkillCall struct {
 	Name, ToolID string
 	At           time.Time
+	Source       string `json:",omitempty"`
+	// Dir is the skill's base directory when the log names it; Tokens
+	// estimates the instructions loaded into context.
+	Dir    string `json:",omitempty"`
+	Tokens int64  `json:",omitempty"`
+	// Uses counts the later tool calls in the turn whose input reaches
+	// into the skill's directory: its scripts, references or assets.
+	Uses int `json:",omitempty"`
 }
 
 type Wait struct {
@@ -97,6 +117,9 @@ type Turn struct {
 	Events      []Event
 	Subagents   []Subagent
 	Interrupted bool
+	// Corrects marks a prompt that pushes back on the previous turn ("不对",
+	// "still failing"). Only the flag is kept, never the prompt.
+	Corrects bool `json:",omitempty"`
 }
 
 type Subagent struct {

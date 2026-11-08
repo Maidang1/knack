@@ -138,7 +138,7 @@ func (a *App) contentBar(c *ui.Context) {
 			title.Shrink(1).MinWidth(0)
 		}
 		if a.page == "issues" && a.snap != nil && len(a.snap.Issues) > 0 {
-			ui.Textf(c, "%d 项", len(a.snap.Issues)).FontSize(12).TextColor(token(t, "ink-3")).Shrink(0)
+			ui.Textf(c, "%d 项", len(a.snap.Issues)).FontSize(13).TextColor(token(t, "ink-3")).Shrink(0)
 		}
 		if root, ok := a.agentPageRoot(); ok {
 			a.agentMeta(c, root)
@@ -153,7 +153,7 @@ func (a *App) contentBar(c *ui.Context) {
 		if a.page == graphPage {
 			a.graphLegend(c)
 		}
-		if a.page == "overview" || a.page == "sessions" || a.page == usagePage {
+		if a.page == "overview" || a.page == "sessions" || a.page == usagePage || a.page == insightsPage {
 			a.overviewToolbar(c)
 		} else if root, ok := a.agentPageRoot(); ok && a.state(a.page).agentTab != 0 && logSupport(session.Agent(agentKey(a.home, root.Path))) == "" {
 			segmented(c, "统计时间范围", &a.sessions.period, periodLabels...)
@@ -186,9 +186,9 @@ func (a *App) footerActions(c *ui.Context) {
 			if a.scanning || a.sessions.loading {
 				ui.Spinner(c).Size(14, 14).Label("正在扫描")
 			} else {
-				ui.Icon(c, glyph("refresh")).FontSize(14)
+				ui.Icon(c, glyph("refresh")).FontSize(15)
 			}
-			ui.Text(c, "重新扫描").FontSize(12).SingleLine()
+			ui.Text(c, "重新扫描").FontSize(13).SingleLine()
 		})
 		if scan.Clicked() {
 			a.startScan()
@@ -239,9 +239,9 @@ func (a *App) barStatus(c *ui.Context) {
 	switch {
 	case a.mutating:
 		ui.Spinner(c).Label("正在处理")
-		ui.Text(c, "正在处理…").FontSize(12).TextColor(t.TextMuted).Shrink(0)
+		ui.Text(c, "正在处理…").FontSize(13).TextColor(t.TextMuted).Shrink(0)
 	case a.cached:
-		ui.Text(c, "缓存").FontSize(12).TextColor(t.TextMuted).Shrink(0)
+		ui.Text(c, "缓存").FontSize(13).TextColor(t.TextMuted).Shrink(0)
 	}
 }
 
@@ -253,13 +253,13 @@ func (a *App) warnings(c *ui.Context) {
 	ink := token(t, "warn-ink")
 	n := min(len(a.snap.Warnings), 3)
 	ui.Row(c).Shrink(0).Margin(12, 32, 0, 32).Padding(10, 14).Gap(10).Radius(8).Background(token(t, "warn-bg")).Label("扫描提示").Children(func() {
-		ui.Icon(c, glyph("alert")).FontSize(14).TextColor(t.Warning).Shrink(0).Margin(1, 0, 0, 0)
+		ui.Icon(c, glyph("alert")).FontSize(15).TextColor(t.Warning).Shrink(0).Margin(1, 0, 0, 0)
 		ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
 			for _, w := range a.snap.Warnings[:n] {
-				ui.Text(c, w).FontSize(12).TextColor(ink).SingleLine().Tooltip(w)
+				ui.Text(c, w).FontSize(13).TextColor(ink).SingleLine().Tooltip(w)
 			}
 			if extra := len(a.snap.Warnings) - n; extra > 0 {
-				ui.Textf(c, "还有 %d 条提示", extra).FontSize(11.5).TextColor(ink)
+				ui.Textf(c, "还有 %d 条提示", extra).FontSize(12).TextColor(ink)
 			}
 		})
 	})
@@ -305,6 +305,11 @@ func (a *App) content(c *ui.Context) {
 			a.statusBar(c)
 			return
 		}
+		if a.page == storagePage {
+			a.storagePane(c)
+			a.statusBar(c)
+			return
+		}
 		if a.page == "sessions" {
 			a.sessionsPane(c)
 			a.statusBar(c)
@@ -312,6 +317,11 @@ func (a *App) content(c *ui.Context) {
 		}
 		if a.page == usagePage {
 			a.usagePane(c)
+			a.statusBar(c)
+			return
+		}
+		if a.page == insightsPage {
+			a.insightsPane(c)
 			a.statusBar(c)
 			return
 		}
@@ -365,7 +375,7 @@ func (a *App) listPane(c *ui.Context) {
 	t := c.Theme()
 	ui.Column(c).Fill().Children(func() {
 		if sub := a.pageSubtitle(); sub != "" {
-			ui.Text(c, sub).Padding(10, 16, 6, 16).FontSize(12).TextColor(t.TextMuted).MaxLines(2)
+			ui.Text(c, sub).Padding(10, 16, 6, 16).FontSize(13).TextColor(t.TextMuted).MaxLines(2)
 		}
 		if a.page == "issues" {
 			labels := make([]string, len(issueFilters))
@@ -407,6 +417,25 @@ func (a *App) listPane(c *ui.Context) {
 		if a.page == "issues" {
 			ps.list.Selection = &ps.chosen
 		}
+		// The rows draw their own choice (selectedRow), under the item and
+		// not its section heading, so the list's accent fill stays clear.
+		lt := t
+		if a.page != "issues" {
+			lt = quietList(t)
+		}
+		ui.Themed(c, lt).Grow(1).MinHeight(0).Background(ui.Transparent).Children(func() { a.listRows(c, rows) })
+		if a.page == "issues" {
+			a.anomalyGroup(c)
+			a.repairBar(c)
+		}
+	})
+}
+
+// listRows is the list of the list pane.
+func (a *App) listRows(c *ui.Context, rows []row) {
+	t := c.Theme()
+	ps := a.state(a.page)
+	{
 		list := ui.List(c, &ps.list, len(rows), func(i int) {
 			selected := i == ps.sel
 			if a.page == "issues" {
@@ -421,30 +450,26 @@ func (a *App) listPane(c *ui.Context) {
 				return
 			}
 			if rows[i].section != "" {
-				ui.Text(c, rows[i].section).FontSize(11).FontWeight(600).LetterSpacing(0.3).TextColor(token(t, "ink-3")).Padding(14, 10, 4, 10)
+				ui.Text(c, rows[i].section).FontSize(11.5).FontWeight(600).LetterSpacing(0.3).TextColor(token(t, "ink-3")).Padding(14, 10, 4, 10)
 			}
 			a.paintRow(c, rows[i], selected)
 		}).Grow(1).Padding(4, 8).Gap(2).Children(func() {
 			if len(rows) == 0 {
 				ui.Column(c).Padding(40, 12).Gap(10).AlignItems(ui.Center).Children(func() {
 					ui.Icon(c, glyph("empty")).FontSize(26).TextColor(t.TextMuted)
-					ui.Text(c, a.emptyText()).FontSize(12).TextColor(t.TextMuted)
+					ui.Text(c, a.emptyText()).FontSize(13).TextColor(t.TextMuted)
 				})
 			}
 		})
 		if list.Changed() {
 			c.Invalidate()
 		}
-		if a.page == "issues" {
-			a.anomalyGroup(c)
-			a.repairBar(c)
-		}
-	})
+	}
 }
 
 func (a *App) paintRow(c *ui.Context, r row, selected bool) {
 	t := c.Theme()
-	ui.Row(c).Padding(7, 10).Gap(10).Children(func() {
+	selectedRow(c, selected).Padding(7, 10).Gap(10).Children(func() {
 		if a.page == "issues" {
 			ps := a.state(a.page)
 			checked := ps.chosen.Has(r.key)
@@ -458,30 +483,20 @@ func (a *App) paintRow(c *ui.Context, r row, selected bool) {
 			}
 		}
 		if r.glyph != "" {
-			icon := ui.Icon(c, glyph(r.glyph)).FontSize(15).Shrink(0).Margin(2, 0, 0, 0)
-			if !selected {
-				icon.TextColor(toneColor(t, r.tone))
-			}
+			ui.Icon(c, glyph(r.glyph)).FontSize(15).Shrink(0).Margin(2, 0, 0, 0).TextColor(toneColor(t, r.tone))
 		}
 		ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, r.name).Font(monoFont).FontSize(13).FontWeight(500).Grow(1).SingleLine()
+				ui.Text(c, r.name).FontSize(13).FontWeight(500).Grow(1).SingleLine()
 				if _, ok := a.agentPageRoot(); ok {
-					ui.Text(c, a.skillListUsage(r.entry)).FontSize(10).SingleLine().Tooltip("近 30 天 · 按日志中的 Skill 调用名匹配")
+					ui.Text(c, a.skillListUsage(r.entry)).FontSize(11).SingleLine().Tooltip("近 30 天 · 按日志中的 Skill 调用名匹配")
 				}
 				if r.badge != "" {
-					if selected {
-						ui.Text(c, r.badge).FontSize(11).Shrink(0)
-					} else {
-						pill(c, r.badge, toneColor(t, r.tone))
-					}
+					pill(c, r.badge, toneColor(t, r.tone))
 				}
 			})
 			if r.subtitle != "" {
-				sub := ui.Text(c, r.subtitle).FontSize(11.5).SingleLine()
-				if !selected {
-					sub.TextColor(t.TextMuted)
-				}
+				ui.Text(c, r.subtitle).FontSize(12).TextColor(t.TextMuted).SingleLine()
 			}
 		})
 	})
@@ -510,7 +525,7 @@ func (a *App) detailPane(c *ui.Context) {
 		if !ok {
 			ui.Column(c).Padding(48, 24).Gap(10).AlignItems(ui.Center).Children(func() {
 				ui.Icon(c, glyph("nested")).FontSize(28).TextColor(t.TextMuted)
-				ui.Text(c, "在左边选择一个 skill。").FontSize(12).TextColor(t.TextMuted)
+				ui.Text(c, "在左边选择一个 skill。").FontSize(13).TextColor(t.TextMuted)
 			})
 			return
 		}
@@ -527,25 +542,25 @@ func (a *App) detail(c *ui.Context, r row) {
 	ui.Column(c).Padding(26, 32, 36, 32).Gap(18).MaxWidth(820).Children(func() {
 		ui.Column(c).Gap(8).Children(func() {
 			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, e.Name).Font(monoFont).FontSize(26).FontWeight(600).MinWidth(0).SingleLine().Tooltip(e.Name)
+				ui.Text(c, e.Name).FontSize(22).FontWeight(600).MinWidth(0).SingleLine().Tooltip(e.Name)
 				if r.badge != "" {
 					tone := toneColor(t, r.tone)
 					ui.Row(c).Gap(5).Padding(2, 8).Radius(5).AlignItems(ui.Center).Background(fade(tone, 26)).Shrink(0).Children(func() {
 						if r.glyph != "" {
-							ui.Icon(c, glyph(r.glyph)).FontSize(12).TextColor(tone)
+							ui.Icon(c, glyph(r.glyph)).FontSize(13).TextColor(tone)
 						}
-						ui.Text(c, r.badge).FontSize(11.5).TextColor(tone).SingleLine()
+						ui.Text(c, r.badge).FontSize(12).TextColor(tone).SingleLine()
 					})
 				}
 			})
 			if e.Description != "" {
-				ui.Text(c, e.Description).FontSize(13.5).LineHeight(1.55).TextColor(t.TextMuted).MaxLines(6).Selectable()
+				ui.Text(c, e.Description).FontSize(14).LineHeight(1.55).TextColor(t.TextMuted).MaxLines(6).Selectable()
 			}
 			a.skillMeta(c, e)
 		})
 		if a.splitBar() {
 			if e.System || e.RootRole == skill.RoleBuiltin {
-				ui.Text(c, "自带 skill 只展示，这里不会修改它。").FontSize(12).TextColor(t.TextMuted)
+				ui.Text(c, "自带 skill 只展示，这里不会修改它。").FontSize(13).TextColor(t.TextMuted)
 			}
 			a.actionNotes(c, e)
 			if !a.removalFor(e).Unlinkable {
@@ -623,7 +638,7 @@ func (a *App) infoCard(c *ui.Context, r row, brief bool) {
 	}
 	ui.Column(c).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Label("详细信息").Children(func() {
 		for _, l := range lines {
-			ui.Text(c, l.s).Padding(8, 0).FontSize(12).TextColor(l.col).Selectable().BorderWidth(0, 0, 1, 0).BorderColor(t.Border)
+			ui.Text(c, l.s).Padding(8, 0).FontSize(13).TextColor(l.col).Selectable().BorderWidth(0, 0, 1, 0).BorderColor(t.Border)
 		}
 	})
 }
@@ -650,7 +665,7 @@ func (a *App) actions(c *ui.Context, e skill.Entry) {
 	t := c.Theme()
 	readOnly := e.System || e.RootRole == skill.RoleBuiltin
 	if readOnly {
-		ui.Text(c, "自带 skill 只展示，这里不会修改它。").FontSize(12).TextColor(t.TextMuted)
+		ui.Text(c, "自带 skill 只展示，这里不会修改它。").FontSize(13).TextColor(t.TextMuted)
 	}
 	ui.Row(c).Gap(8).Wrap().AlignSelf(ui.Start).AlignItems(ui.Center).Children(func() {
 		if !readOnly {
@@ -679,7 +694,7 @@ func (a *App) actions(c *ui.Context, e skill.Entry) {
 // actionNotes says why an entry has no fix when the user has to decide.
 func (a *App) actionNotes(c *ui.Context, e skill.Entry) {
 	t := c.Theme()
-	note := func(s string) { ui.Text(c, s).FontSize(12).TextColor(t.TextMuted) }
+	note := func(s string) { ui.Text(c, s).FontSize(13).TextColor(t.TextMuted) }
 	switch e.RootRole {
 	case skill.RoleAgent:
 		switch {
@@ -915,6 +930,8 @@ func (a *App) entrySubtitle(e skill.Entry) string {
 
 func (a *App) pageTitle() string {
 	switch a.page {
+	case storagePage:
+		return "磁盘清理"
 	case "overview":
 		return "首页"
 	case "sessions":
@@ -931,6 +948,8 @@ func (a *App) pageTitle() string {
 		return "依赖图"
 	case usagePage:
 		return "用量与耗时"
+	case insightsPage:
+		return "诊断"
 	default:
 		if path, ok := strings.CutPrefix(a.page, "repo:"); ok {
 			return a.repoLabel(path)
@@ -1034,7 +1053,7 @@ func (a *App) allClear(c *ui.Context) bool {
 		})
 	case a.snap == nil:
 		emptyState(c, "还没有扫描结果", "search", t.TextMuted, "还没有扫描结果", "点「重新扫描」读取磁盘，⌘R 同样会扫描。", func() {
-			if inkButton(c, "first-scan", "refresh", "开始扫描").Clicked() {
+			if primaryButton(c, "first-scan", "refresh", "开始扫描").Clicked() {
 				a.startScan()
 			}
 		})
@@ -1062,16 +1081,16 @@ func (a *App) statusBar(c *ui.Context) {
 			} else if a.sessions.cached {
 				text = "会话缓存 · 正在等待校验"
 			}
-			ui.Text(c, text).FontSize(11).TextColor(t.TextMuted).SingleLine()
+			ui.Text(c, text).FontSize(11.5).TextColor(t.TextMuted).SingleLine()
 			if snap := a.sessions.snapshot; snap != nil && !snap.At.IsZero() {
 				files := 0
 				for _, source := range snap.Sources {
 					files += source.Files
 				}
-				ui.Textf(c, "%d 个会话文件 · %s", files, snap.At.Format("15:04")).FontSize(11).TextColor(t.TextMuted)
+				ui.Textf(c, "%d 个会话文件 · %s", files, snap.At.Format("15:04")).FontSize(11.5).TextColor(t.TextMuted)
 			}
 		} else {
-			ui.Text(c, "以磁盘目录为准").FontSize(11).TextColor(t.TextMuted)
+			ui.Text(c, "以磁盘目录为准").FontSize(11.5).TextColor(t.TextMuted)
 		}
 		ui.Box(c).Grow(1)
 		a.barStatus(c)
@@ -1098,16 +1117,16 @@ func (a *App) sheet(c *ui.Context) int {
 		// blank line; that part is shown as paths.
 		message, list, _ := strings.Cut(a.ask.message, "\n\n")
 		if message != "" {
-			ui.Text(c, message).FontSize(12.5).LineHeight(1.6).TextColor(t.TextMuted)
+			ui.Text(c, message).FontSize(13).LineHeight(1.6).TextColor(t.TextMuted)
 		}
 		if list != "" {
 			ui.Column(c).Gap(5).Padding(4, 0).Children(func() {
 				for _, line := range strings.Split(list, "\n") {
 					if strings.HasSuffix(line, "：") {
-						ui.Text(c, line).FontSize(12.5).TextColor(t.TextMuted)
+						ui.Text(c, line).FontSize(13).TextColor(t.TextMuted)
 						continue
 					}
-					ui.Text(c, line).Font(monoFont).FontSize(12).SingleLine().Tooltip(line)
+					ui.Text(c, line).Font(monoFont).FontSize(13).SingleLine().Tooltip(line)
 				}
 			})
 		}
@@ -1118,7 +1137,7 @@ func (a *App) sheet(c *ui.Context) int {
 			if a.ask.alt != "" && outlineButton(c, "ask-alt", a.ask.alt).Height(28).Clicked() {
 				chosen = 2
 			}
-			if inkButton(c, "ask-ok", "", a.ask.ok).AutoFocus().Clicked() {
+			if primaryButton(c, "ask-ok", "", a.ask.ok).AutoFocus().Clicked() {
 				chosen = 1
 			}
 		})

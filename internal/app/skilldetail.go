@@ -39,7 +39,7 @@ func (a *App) splitContentBar(c *ui.Context, padStart float32) {
 			if a.page == libraryPage {
 				n = a.libCounts[0]
 			}
-			number(c, fmt.Sprint(n)).FontSize(12).TextColor(token(t, "ink-3")).Shrink(0)
+			number(c, fmt.Sprint(n)).FontSize(13).TextColor(token(t, "ink-3")).Shrink(0)
 		}
 		ui.Spacer(c)
 		if a.page == libraryPage {
@@ -70,8 +70,8 @@ func (a *App) detailBar(c *ui.Context, e skill.Entry) {
 	muted := token(t, "ink-3")
 	ui.Row(c).Gap(6).AlignItems(ui.Center).Shrink(1).MinWidth(0).Label("位置：" + e.RootName + " / " + e.Name).Children(func() {
 		ui.Text(c, strings.TrimSuffix(e.RootName, " 自带")).FontSize(13).TextColor(muted).Shrink(0).SingleLine()
-		ui.Icon(c, glyph("chevron-right")).FontSize(11).TextColor(muted).Shrink(0)
-		ui.Text(c, e.Name).Font(monoFont).FontSize(13).MinWidth(0).SingleLine()
+		ui.Icon(c, glyph("chevron-right")).FontSize(11.5).TextColor(muted).Shrink(0)
+		ui.Text(c, e.Name).FontSize(13).MinWidth(0).SingleLine()
 	})
 	ui.Box(c).Grow(1).MinWidth(8)
 	compact := a.compactDetail(c)
@@ -82,7 +82,7 @@ func (a *App) detailBar(c *ui.Context, e skill.Entry) {
 	b.Children(func() {
 		ui.Icon(c, glyph("reveal")).FontSize(13)
 		if !compact {
-			ui.Text(c, "在访达中显示").FontSize(12).SingleLine()
+			ui.Text(c, "在访达中显示").FontSize(13).SingleLine()
 		}
 	})
 	if b.Clicked() {
@@ -120,7 +120,7 @@ func (a *App) detailBar(c *ui.Context, e skill.Entry) {
 	switch {
 	case len(fixes) > 0:
 		f := fixes[0]
-		if inkButton(c, f.Label+"|"+f.Title, "wand", f.Label).Disabled(a.scanning || a.mutating).Clicked() {
+		if primaryButton(c, f.Label+"|"+f.Title, "wand", f.Label).Disabled(a.scanning || a.mutating).Clicked() {
 			a.confirmFix(f)
 		}
 	case !readOnly && e.RootRole == skill.RolePool && e.Usable() && !a.cached:
@@ -128,7 +128,7 @@ func (a *App) detailBar(c *ui.Context, e skill.Entry) {
 		if len(free) == 0 {
 			return
 		}
-		b := inkButton(c, "link-agent", "link", "挂到 Agent…").Label("挂到 Agent").Disabled(a.scanning || a.mutating)
+		b := primaryButton(c, "link-agent", "link", "挂到 Agent…").Label("挂到 Agent").Disabled(a.scanning || a.mutating)
 		b.PopoverMenuButton(func(m *ui.Menu) {
 			for _, r := range free {
 				if m.Item(r.Name).Chosen() {
@@ -226,8 +226,8 @@ func (a *App) skillMeta(c *ui.Context, e skill.Entry) {
 	}
 	item := func(icon, text, tip string) {
 		ui.Row(c).Gap(5).AlignItems(ui.Center).MinWidth(0).Tooltip(tip).Children(func() {
-			ui.Icon(c, glyph(icon)).FontSize(12).TextColor(muted).Shrink(0)
-			number(c, text).FontSize(12).TextColor(muted).MinWidth(0)
+			ui.Icon(c, glyph(icon)).FontSize(13).TextColor(muted).Shrink(0)
+			number(c, text).FontSize(13).TextColor(muted).MinWidth(0)
 		})
 	}
 	ui.Row(c).Gap(14).Wrap().AlignItems(ui.Center).MinWidth(0).Label("技能概况").Children(func() {
@@ -295,8 +295,8 @@ func (a *App) copyBanner(c *ui.Context, pool skill.Entry) {
 		}
 		ui.Row(c.Key("copy:"+x.Path)).Padding(10, 14).Gap(10).Radius(8).AlignItems(ui.Center).Background(token(t, "warn-bg")).
 			Border(1, fade(t.Warning, 60)).Label("独立副本：" + x.RootName).Children(func() {
-			ui.Icon(c, glyph("copy")).FontSize(14).TextColor(ink).Shrink(0)
-			ui.Text(c, text).FontSize(12.5).TextColor(ink).Grow(1).MinWidth(0).MaxLines(2)
+			ui.Icon(c, glyph("copy")).FontSize(15).TextColor(ink).Shrink(0)
+			ui.Text(c, text).FontSize(13).TextColor(ink).Grow(1).MinWidth(0).MaxLines(2)
 			if copyEntry.Relation == skill.RelCopy {
 				state := a.comparisons[copyEntry.Path]
 				busy := state != nil && state.loading
@@ -312,7 +312,7 @@ func (a *App) copyBanner(c *ui.Context, pool skill.Entry) {
 				if link.Hovered() {
 					link.Background(fade(t.Warning, 30))
 				}
-				link.Children(func() { ui.Text(c, f.Label).FontSize(12).FontWeight(600).TextColor(ink) })
+				link.Children(func() { ui.Text(c, f.Label).FontSize(13).FontWeight(600).TextColor(ink) })
 				if link.Clicked() {
 					a.confirmFix(f)
 				}
@@ -345,14 +345,23 @@ func (a *App) mountMap(c *ui.Context, pool skill.Entry) {
 	const rowH, rowGap = 34, 8
 	ui.Column(c).Gap(10).Children(func() {
 		ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "挂载关系").FontSize(14).FontWeight(600).Shrink(0)
+			ui.Text(c, "挂载关系").FontSize(15).FontWeight(600).Shrink(0)
 			ui.Spacer(c)
-			ui.Text(c, "一份内容，通过软链共享给多个 Agent").FontSize(12).TextColor(muted).Shrink(1).MinWidth(0).SingleLine()
+			ui.Text(c, "一份内容，通过软链共享给多个 Agent").FontSize(13).TextColor(muted).Shrink(1).MinWidth(0).SingleLine()
 		})
 		if a.compactDetail(c) {
-			ui.Column(c).Padding(12).Gap(rowGap).Radius(10).Border(1, t.Border).Background(t.Surface).Label("挂载关系").Children(func() {
+			// Narrow, the map is a grouped list: one panel, its rows parted
+			// by hairlines rather than boxed again inside it.
+			ui.Column(c).Padding(0, 4).Radius(10).Border(1, t.Border).Background(t.Surface).Label("挂载关系").Children(func() {
 				for i, root := range agents {
-					a.mountRow(c, pool, root, found[i], rowH)
+					row := a.mountRow(c, pool, root, found[i], 40)
+					row.Radius(0).Border(0, ui.Transparent).Background(ui.Transparent)
+					if found[i] != nil && found[i].Relation == skill.RelStale {
+						row.Background(token(t, "warn-bg"))
+					}
+					if i < len(agents)-1 {
+						row.BorderWidth(0, 0, 1, 0).BorderColor(t.Border)
+					}
 				}
 			})
 			return
@@ -361,10 +370,10 @@ func (a *App) mountMap(c *ui.Context, pool skill.Entry) {
 			card := func(icon, title, text, tip string) {
 				ui.Column(c).Width(168).Shrink(1).MinWidth(110).Padding(9, 12).Gap(3).Radius(8).Border(1, token(t, "line-strong")).Background(t.Background).Tooltip(tip).Children(func() {
 					ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
-						ui.Icon(c, glyph(icon)).FontSize(12).TextColor(t.TextMuted)
-						ui.Text(c, title).FontSize(11).TextColor(t.TextMuted).SingleLine()
+						ui.Icon(c, glyph(icon)).FontSize(13).TextColor(t.TextMuted)
+						ui.Text(c, title).FontSize(11.5).TextColor(t.TextMuted).SingleLine()
 					})
-					ui.Text(c, text).Font(monoFont).FontSize(11.5).SingleLine()
+					ui.Text(c, text).Font(monoFont).FontSize(12).SingleLine()
 				})
 			}
 			if pool.LinkAbs != "" {
@@ -372,8 +381,8 @@ func (a *App) mountMap(c *ui.Context, pool skill.Entry) {
 				ui.Box(c).Width(48).Height(24).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
 					y := r.Y + r.H - 6
 					p.StrokePath((&ui.Path{}).MoveTo(r.X, y).LineTo(r.X+r.W, y), 1.2, token(t, "line-strong"))
-					lw, _ := p.MeasureText(r.W, ui.Span{Text: "软链", Size: 10, Color: muted})
-					p.RichText(r.X+(r.W-lw)/2, r.Y, r.W, ui.Span{Text: "软链", Size: 10, Color: muted})
+					lw, _ := p.MeasureText(r.W, ui.Span{Text: "软链", Size: 11, Color: muted})
+					p.RichText(r.X+(r.W-lw)/2, r.Y, r.W, ui.Span{Text: "软链", Size: 11, Color: muted})
 				})
 			}
 			card("package", "共享池", shortPath(a.home, filepath.Dir(pool.Path)), filepath.Dir(pool.Path))
@@ -406,7 +415,7 @@ func (a *App) mountMap(c *ui.Context, pool skill.Entry) {
 	})
 }
 
-func (a *App) mountRow(c *ui.Context, pool skill.Entry, root skill.Root, found *skill.Entry, height float32) {
+func (a *App) mountRow(c *ui.Context, pool skill.Entry, root skill.Root, found *skill.Entry, height float32) ui.Element {
 	t := c.Theme()
 	muted := token(t, "ink-3")
 	row := ui.Row(c.Key("mount:"+root.ID)).Height(height).Padding(0, 12).Gap(8).Radius(7).AlignItems(ui.Center).
@@ -420,9 +429,9 @@ func (a *App) mountRow(c *ui.Context, pool skill.Entry, root skill.Root, found *
 		status := func(icon, text string, color ui.Color) {
 			ui.Row(c).Gap(4).AlignItems(ui.Center).Shrink(1).MinWidth(0).Tooltip(text).Children(func() {
 				if icon != "" {
-					ui.Icon(c, glyph(icon)).FontSize(12).TextColor(color).Shrink(0)
+					ui.Icon(c, glyph(icon)).FontSize(13).TextColor(color).Shrink(0)
 				}
-				ui.Text(c, text).FontSize(12).TextColor(color).MinWidth(0).SingleLine()
+				ui.Text(c, text).FontSize(13).TextColor(color).MinWidth(0).SingleLine()
 			})
 		}
 		switch {
@@ -431,8 +440,8 @@ func (a *App) mountRow(c *ui.Context, pool skill.Entry, root skill.Root, found *
 			if pool.Usable() && !a.cached {
 				b := outlineButton(c, "mount:"+root.ID, "").Height(22).Padding(0, 8).Gap(4).Label("挂载到 " + root.Name).Disabled(a.scanning || a.mutating)
 				b.Children(func() {
-					ui.Icon(c, glyph("plus")).FontSize(11)
-					ui.Text(c, "挂载").FontSize(11.5)
+					ui.Icon(c, glyph("plus")).FontSize(11.5)
+					ui.Text(c, "挂载").FontSize(12)
 				})
 				if b.Clicked() {
 					a.confirmFix(repair.LinkToAgent(pool, root))
@@ -454,12 +463,12 @@ func (a *App) mountRow(c *ui.Context, pool skill.Entry, root skill.Root, found *
 			status("", found.Relation.Label(), t.TextMuted)
 		}
 	})
+	return row
 }
 
 // detailTabs are what the skill holds: its SKILL.md, its files, what it
 // points at, and the sessions that called it.
 func (a *App) detailTabs(c *ui.Context, e skill.Entry) {
-	t := c.Theme()
 	st := a.dirStats(e)
 	usage, _, ok := a.skillUsageFor(e)
 	sessions := ""
@@ -478,7 +487,7 @@ func (a *App) detailTabs(c *ui.Context, e skill.Entry) {
 	counts := []string{"", fmt.Sprint(len(st.files)), deps, sessions}
 	a.detailTab = max(0, min(a.detailTab, len(names)-1))
 	ui.Column(c).Gap(14).Children(func() {
-		ui.Row(c).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
+		ui.Row(c).Children(func() {
 			underlineTabs(c, "detail-tabs", "技能内容", "", &a.detailTab, names, counts)
 		})
 		switch a.detailTab {
@@ -497,7 +506,7 @@ func (a *App) detailTabs(c *ui.Context, e skill.Entry) {
 func (a *App) fileList(c *ui.Context, e skill.Entry, st dirStat) {
 	t := c.Theme()
 	if len(st.files) == 0 {
-		ui.Text(c, "目录里没有文件").FontSize(12).TextColor(t.TextMuted)
+		ui.Text(c, "目录里没有文件").FontSize(13).TextColor(t.TextMuted)
 		return
 	}
 	dir := e.Path
@@ -514,8 +523,8 @@ func (a *App) fileList(c *ui.Context, e skill.Entry, st dirStat) {
 			}
 			b.Children(func() {
 				ui.Icon(c, glyph(nodeGlyph(skill.Node{Name: f.rel, Kind: skill.NodeFile}))).FontSize(13).TextColor(t.TextMuted).Shrink(0)
-				ui.Text(c, f.rel).Font(monoFont).FontSize(12).Grow(1).MinWidth(0).SingleLine()
-				number(c, byteSize(f.size)).FontSize(11).TextColor(token(t, "ink-3"))
+				ui.Text(c, f.rel).Font(monoFont).FontSize(13).Grow(1).MinWidth(0).SingleLine()
+				number(c, byteSize(f.size)).FontSize(11.5).TextColor(token(t, "ink-3"))
 			})
 			if b.Clicked() {
 				a.openPath(file)
@@ -523,7 +532,7 @@ func (a *App) fileList(c *ui.Context, e skill.Entry, st dirStat) {
 		}
 	})
 	if st.more {
-		ui.Textf(c, "只列出前 %d 个文件", dirStatFiles).FontSize(11).TextColor(token(t, "ink-3"))
+		ui.Textf(c, "只列出前 %d 个文件", dirStatFiles).FontSize(11.5).TextColor(token(t, "ink-3"))
 	}
 }
 
@@ -532,9 +541,9 @@ func (a *App) depsPane(c *ui.Context, e skill.Entry, g *skill.Graph) {
 	ui.Column(c).Gap(10).Children(func() {
 		switch {
 		case !e.HasDocument:
-			ui.Text(c, "没有 SKILL.md，无法分析引用").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "没有 SKILL.md，无法分析引用").FontSize(13).TextColor(t.TextMuted)
 		case g == nil:
-			ui.Text(c, "正在读取技能目录…").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "正在读取技能目录…").FontSize(13).TextColor(t.TextMuted)
 		default:
 			var items [][2]string
 			for _, edge := range g.Edges {
@@ -545,7 +554,7 @@ func (a *App) depsPane(c *ui.Context, e skill.Entry, g *skill.Graph) {
 				items = append(items, [2]string{edge.To, note})
 			}
 			if len(items) == 0 {
-				ui.Text(c, "SKILL.md 没有引用目录里的其他文件或其他技能").FontSize(12).TextColor(t.TextMuted)
+				ui.Text(c, "SKILL.md 没有引用目录里的其他文件或其他技能").FontSize(13).TextColor(t.TextMuted)
 			}
 			refList(c, "引用", items)
 			a.missingCallout(c, g)
@@ -561,10 +570,10 @@ func (a *App) usedInSessions(c *ui.Context, usage *skillUsageData, ok bool) {
 	t := c.Theme()
 	switch {
 	case !ok:
-		ui.Text(c, "这个来源的调用记录暂不支持").FontSize(12).TextColor(t.TextMuted)
+		ui.Text(c, "这个来源的调用记录暂不支持").FontSize(13).TextColor(t.TextMuted)
 		return
 	case len(usage.sessions) == 0:
-		ui.Text(c, "这段时间内没有会话调用它").FontSize(12).TextColor(t.TextMuted)
+		ui.Text(c, "这段时间内没有会话调用它").FontSize(13).TextColor(t.TextMuted)
 		return
 	}
 	muted := token(t, "ink-3")
@@ -577,8 +586,8 @@ func (a *App) usedInSessions(c *ui.Context, usage *skillUsageData, ok bool) {
 				b.Background(t.SurfaceHover)
 			}
 			b.Children(func() {
-				ui.Text(c, use.label).FontSize(12.5).Grow(1).MinWidth(0).SingleLine().Tooltip(use.label)
-				number(c, fmt.Sprintf("%s · %d 次", use.last.Local().Format("01/02 15:04"), use.calls)).FontSize(11).TextColor(muted)
+				ui.Text(c, use.label).FontSize(13).Grow(1).MinWidth(0).SingleLine().Tooltip(use.label)
+				number(c, fmt.Sprintf("%s · %d 次", use.last.Local().Format("01/02 15:04"), use.calls)).FontSize(11.5).TextColor(muted)
 			})
 			if b.Clicked() {
 				a.openSession(use.id)
