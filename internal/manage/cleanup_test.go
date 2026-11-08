@@ -164,6 +164,139 @@ func TestRestoreCleanup(t *testing.T) {
 	})
 }
 
+func nestedCleanupFixture(t *testing.T) (storage.Group, string, string) {
+	t.Helper()
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := storage.DefaultLocations(home)
+	p := filepath.Join(l.Codex, "sessions", "2026", "01", "02", "rollout.jsonl")
+	if err := os.MkdirAll(filepath.Dir(p), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(strings.Repeat("session line\n", 500)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().Add(-60 * 24 * time.Hour)
+	if err := os.Chtimes(p, at, at); err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range storage.Scan(context.Background(), l, time.Now(), 30).Groups {
+		if g.ID == "codex-sessions" {
+			return g, p, filepath.Join(home, "undo")
+		}
+	}
+	t.Fatal("no group")
+	return storage.Group{}, "", ""
+}
+
+func TestCleanupEmptyDirectories(t *testing.T) {
+	t.Run("pruned then recreated on restore", func(t *testing.T) {
+		g, p, undo := nestedCleanupFixture(t)
+		original, _ := os.ReadFile(p)
+		rec, err := CleanupFile(context.Background(), g.Category, g.Candidates[0], undo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(filepath.Join(g.Root, "2026")); !os.IsNotExist(err) {
+			t.Fatal("empty parents remain", err)
+		}
+		if _, err := os.Stat(g.Root); err != nil {
+			t.Fatal("category root removed", err)
+		}
+		if err := Restore(rec); err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(p)
+		if err != nil || string(got) != string(original) {
+			t.Fatal("restore changed content", err)
+		}
+	})
+	t.Run("sibling keeps directory", func(t *testing.T) {
+		g, p, undo := nestedCleanupFixture(t)
+		sibling := filepath.Join(filepath.Dir(p), "keep.txt")
+		if err := os.WriteFile(sibling, []byte("keep"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := CleanupFile(context.Background(), g.Category, g.Candidates[0], undo); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(sibling); err != nil {
+			t.Fatal("sibling removed", err)
+		}
+	})
+	t.Run("restore refuses linked parent", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("symlink privilege required")
+		}
+		g, _, undo := nestedCleanupFixture(t)
+		rec, err := CleanupFile(context.Background(), g.Category, g.Candidates[0], undo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		outside := filepath.Join(filepath.Dir(g.Root), "outside")
+		if err := os.MkdirAll(outside, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, filepath.Join(g.Root, "2026")); err != nil {
+			t.Fatal(err)
+		}
+		if err := Restore(rec); err == nil {
+			t.Fatal("restored through link")
+		}
+		entries, _ := os.ReadDir(outside)
+		if len(entries) != 0 {
+			t.Fatal("wrote outside the category", entries)
+		}
+		if _, err := os.Stat(rec.Payload); err != nil {
+			t.Fatal("backup lost", err)
+		}
+	})
+}
+
+func TestEnsureCleanupDirNeverWritesThroughLinks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink privilege required")
+	}
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(base, "outside")
+	if err := os.Mkdir(outside, 0700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(base, "codex")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(link, "sessions")
+	if err := ensureCleanupDir(root, filepath.Join(root, "2026")); err == nil {
+		t.Fatal("accepted a linked ancestor of the category root")
+	}
+	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
+		t.Fatal("created directories through the link", entries)
+	}
+}
+
+func TestRestoreFailureLeavesNoNewDirectories(t *testing.T) {
+	g, _, undo := nestedCleanupFixture(t)
+	rec, err := CleanupFile(context.Background(), g.Category, g.Candidates[0], undo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(rec.Payload, []byte("broken"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Restore(rec); err == nil {
+		t.Fatal("accepted corrupt archive")
+	}
+	if _, err := os.Stat(filepath.Join(g.Root, "2026")); !os.IsNotExist(err) {
+		t.Fatal("failed restore left directories", err)
+	}
+}
+
 func TestPurgeCleanupBackups(t *testing.T) {
 	g, _, undo := cleanupFixture(t)
 	rec, err := CleanupFile(context.Background(), g.Category, g.Candidates[0], undo)

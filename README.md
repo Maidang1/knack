@@ -113,7 +113,7 @@ MyGo 使用纯 Go 构建，Windows 与 Linux 包由 Ubuntu runner 交叉编译�
 
 快捷键：`⌘R` 重新扫描，`⌘,` 打开设置。
 
-「维护 → 磁盘清理」可查看 Claude Code、Codex 的缓存、日志、Shell 快照与历史会话占用，按保留天数清理并压缩保留可恢复备份。历史会话与 Claude 文件回退快照需单独选择；清理备份可恢复或确认后永久清空。两种 Agent 都支持 SQLite 探测，发现有效数据库时可查看空闲页、整理碎片及合并 WAL；Claude Code 的 JSONL 会话通过文件清理处理。执行前会说明影响范围，详情见[磁盘清理说明](docs/storage-cleanup.md)。
+「维护 → 磁盘清理」可查看 Claude Code、Codex 的缓存、日志、Shell 快照与历史会话占用，按保留天数清理并压缩保留可恢复备份。历史会话与 Claude 文件回退快照需单独选择；活跃会话的附件自动保护；清理备份可按类别恢复或确认后永久清空。两种 Agent 都支持 SQLite 探测，发现有效数据库时可查看空闲页、整理碎片及合并 WAL；Claude Code 的 JSONL 会话通过文件清理处理。执行前会说明影响范围，详情见[磁盘清理说明](docs/storage-cleanup.md)。
 
 ## 数据与修改
 

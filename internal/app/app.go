@@ -3,6 +3,7 @@
 package app
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
@@ -383,9 +384,13 @@ func (a *App) undo(recs []manage.Record) {
 	a.beginMutation()
 	run := func() {
 		var first error
+		failed := 0
 		for i := len(recs) - 1; i >= 0; i-- {
-			if err := manage.Restore(recs[i]); err != nil && first == nil {
-				first = err
+			if err := manage.Restore(recs[i]); err != nil {
+				failed++
+				if first == nil {
+					first = err
+				}
 			}
 		}
 		a.post(func() {
@@ -393,6 +398,12 @@ func (a *App) undo(recs []manage.Record) {
 			a.notice = "已撤销"
 			if first != nil {
 				a.notice = first.Error()
+			}
+			if len(recs) > 0 && recs[0].Cleanup != nil {
+				a.storage.result = fmt.Sprintf("已恢复 %d 个文件。", len(recs)-failed)
+				if failed > 0 {
+					a.storage.result += fmt.Sprintf("%d 个未恢复：%s", failed, first.Error())
+				}
 			}
 			a.refreshAfter(recs)
 		})

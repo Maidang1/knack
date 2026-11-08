@@ -3,6 +3,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -29,11 +30,18 @@ type File struct {
 	info     os.FileInfo
 }
 
+// ageBandDays bounds Group.Ages and matches the retention choices.
+var ageBandDays = []int{7, 30, 90, 180}
+
+// AgeBands counts the bands of Group.Ages; the last one has no upper bound.
+const AgeBands = 5
+
 type Group struct {
 	Category
-	Bytes, EligibleBytes int64
-	Files, Eligible      int
-	Candidates           []File
+	Ages, ProtectedAges                  [AgeBands]int64
+	Bytes, EligibleBytes, ProtectedBytes int64
+	Files, Eligible, Protected           int
+	Candidates                           []File
 }
 
 type Snapshot struct {
@@ -64,10 +72,13 @@ func (l Locations) Categories() []Category {
 	add("claude-paste", "Claude Code", "粘贴缓存", l.Claude, "paste-cache", "旧粘贴内容；可能被历史会话引用。", true)
 	add("claude-shell", "Claude Code", "Shell 快照", l.Claude, "shell-snapshots", "旧终端环境快照。", false)
 	add("claude-history", "Claude Code", "文件回退快照", l.Claude, "file-history", "清理后会影响旧会话的 /rewind 文件恢复。", true)
-	add("claude-projects", "Claude Code", "历史会话", l.Claude, "projects", "仅清理 JSONL 会话文件；会影响恢复会话和用量统计，保留项目记忆文件。", true, ".jsonl")
+	add("claude-projects", "Claude Code", "历史会话", l.Claude, "projects", "仅清理 JSONL 会话文件及其子 Agent 元数据；会影响恢复会话和用量统计，保留项目记忆文件。", true, ".jsonl", ".meta.json")
 	add("claude-tool-results", "Claude Code", "工具输出附件", l.Claude, "projects", "旧工具输出、图片等附件；清理后历史会话引用的附件将不可用。", true)
 	out[len(out)-1].OnlyDir = "tool-results"
 	add("claude-plans", "Claude Code", "历史计划", l.Claude, "plans", "旧计划文档；清理后无法再从磁盘查看。", true)
+	add("claude-telemetry", "Claude Code", "遥测暂存", l.Claude, "telemetry", "发送失败后暂存的遥测事件；清理后不再重试发送。", false)
+	add("claude-todos", "Claude Code", "会话待办", l.Claude, "todos", "每个会话的待办列表；可能影响恢复旧会话时的任务状态。", true)
+	add("claude-transcripts", "Claude Code", "转录文件", l.Claude, "transcripts", "旧会话转录；清理后无法再从磁盘查看。", true)
 	add("codex-log", "Codex", "运行日志", l.Codex, "log", "诊断日志；清理后无法查看对应的旧运行记录。", false)
 	add("codex-cache", "Codex", "缓存", l.Codex, "cache", "可重新生成的本地缓存。", false)
 	add("codex-shell", "Codex", "Shell 快照", l.Codex, "shell_snapshots", "旧终端环境快照。", false)
@@ -125,6 +136,119 @@ func ValidatePath(root, path string) (os.FileInfo, error) {
 	return st, nil
 }
 
+// sessionOf names the Claude session a stored file belongs to, if any.
+func sessionOf(categoryID, rel string) string {
+	parts := strings.Split(rel, string(filepath.Separator))
+	switch categoryID {
+	case "claude-projects", "claude-tool-results":
+		if len(parts) >= 3 {
+			return parts[1]
+		}
+	case "claude-history":
+		if len(parts) >= 2 {
+			return parts[0]
+		}
+	case "claude-todos":
+		if id, _, ok := strings.Cut(parts[len(parts)-1], "-agent-"); ok {
+			return id
+		}
+	}
+	return ""
+}
+
+// ActiveSessions holds Claude sessions whose transcript changed within retention.
+// A resumed session keeps old attachments that its live transcript still needs.
+type ActiveSessions struct {
+	ids map[string]bool
+	// partial means the projects tree could not be read in full, so any
+	// session-owned file might belong to an active session.
+	partial bool
+}
+
+// Holds fails closed: a file is only released when its session is known inactive.
+func (a ActiveSessions) Holds(cat Category, path string) bool {
+	rel, err := filepath.Rel(cat.Root, path)
+	if err != nil {
+		return true
+	}
+	id := sessionOf(cat.ID, rel)
+	return id != "" && (a.partial || a.ids[id])
+}
+
+// ageBand uses the retention comparison, so a band edge never disagrees with it.
+func ageBand(now, modified time.Time) int {
+	for i, days := range ageBandDays {
+		if !modified.Before(retentionCutoff(now, days)) {
+			return i
+		}
+	}
+	return AgeBands - 1
+}
+
+func retentionCutoff(now time.Time, days int) time.Time {
+	return now.Add(-time.Duration(max(1, days)) * 24 * time.Hour)
+}
+
+// FindActiveSessions reads only transcript metadata, directly below each project.
+func FindActiveSessions(ctx context.Context, l Locations, now time.Time, days int) ActiveSessions {
+	active := ActiveSessions{ids: map[string]bool{}}
+	root := filepath.Join(l.Claude, "projects")
+	cutoff := retentionCutoff(now, days)
+	if _, err := ValidatePath(root, root); err != nil {
+		active.partial = !os.IsNotExist(err)
+		return active
+	}
+	projects, err := os.ReadDir(root)
+	if err != nil {
+		active.partial = true
+		return active
+	}
+	for _, project := range projects {
+		if ctx.Err() != nil {
+			active.partial = true
+			return active
+		}
+		dir := filepath.Join(root, project.Name())
+		st, err := project.Info()
+		if err != nil || fsutil.IsLink(dir, st) {
+			active.partial = true
+			continue
+		}
+		if !st.IsDir() {
+			continue
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			active.partial = true
+			continue
+		}
+		for _, entry := range entries {
+			id, ok := strings.CutSuffix(entry.Name(), ".jsonl")
+			if !ok || id == "" || entry.IsDir() {
+				continue
+			}
+			st, err := entry.Info()
+			if err != nil {
+				active.partial = true
+			} else if !st.ModTime().Before(cutoff) {
+				active.ids[id] = true
+			}
+		}
+	}
+	return active
+}
+
+// skipUnreadable keeps one vanished or denied entry from ending a whole category.
+func skipUnreadable(d fs.DirEntry, err error, unreadable *int) error {
+	if !os.IsNotExist(err) {
+		*unreadable++
+	}
+	if d != nil && d.IsDir() {
+		return fs.SkipDir
+	}
+	return nil
+}
+
 func (f File) Unchanged(root string) error {
 	st, err := ValidatePath(root, f.Path)
 	if err != nil {
@@ -140,10 +264,15 @@ func (f File) Unchanged(root string) error {
 // At least one day is always retained, including when a caller passes zero.
 func Scan(ctx context.Context, l Locations, now time.Time, days int) Snapshot {
 	out := Snapshot{At: now}
-	cutoff := now.Add(-time.Duration(max(1, days)) * 24 * time.Hour)
+	cutoff := retentionCutoff(now, days)
 	remaining := 100000
+	active := FindActiveSessions(ctx, l, now, days)
+	if active.partial {
+		out.Warnings = append(out.Warnings, "无法完整读取 Claude 项目目录，已保护全部会话附件")
+	}
 	for _, cat := range l.Categories() {
 		g := Group{Category: cat}
+		unreadable := 0
 		_, err := ValidatePath(cat.Root, cat.Root)
 		if os.IsNotExist(err) {
 			out.Groups = append(out.Groups, g)
@@ -159,7 +288,7 @@ func Scan(ctx context.Context, l Locations, now time.Time, days int) Snapshot {
 				return ctx.Err()
 			}
 			if err != nil {
-				return err
+				return skipUnreadable(d, err, &unreadable)
 			}
 			remaining--
 			if remaining < 0 {
@@ -167,7 +296,7 @@ func Scan(ctx context.Context, l Locations, now time.Time, days int) Snapshot {
 			}
 			st, err := d.Info()
 			if err != nil {
-				return err
+				return skipUnreadable(d, err, &unreadable)
 			}
 			if fsutil.IsLink(path, st) {
 				if d.IsDir() {
@@ -187,8 +316,8 @@ func Scan(ctx context.Context, l Locations, now time.Time, days int) Snapshot {
 			if databaseStorageFile(d.Name()) {
 				return nil
 			}
+			rel, _ := filepath.Rel(cat.Root, path)
 			if cat.OnlyDir != "" {
-				rel, _ := filepath.Rel(cat.Root, path)
 				if !slices.Contains(strings.Split(filepath.Dir(rel), string(filepath.Separator)), cat.OnlyDir) {
 					return nil
 				}
@@ -198,15 +327,29 @@ func Scan(ctx context.Context, l Locations, now time.Time, days int) Snapshot {
 			}
 			g.Files++
 			g.Bytes += st.Size()
+			band := ageBand(now, st.ModTime())
+			g.Ages[band] += st.Size()
 			if st.ModTime().Before(cutoff) {
+				if active.Holds(cat, path) {
+					g.Protected++
+					g.ProtectedBytes += st.Size()
+					g.ProtectedAges[band] += st.Size()
+					return nil
+				}
 				g.Eligible++
 				g.EligibleBytes += st.Size()
 				g.Candidates = append(g.Candidates, File{path, st.Size(), st.ModTime(), st})
 			}
 			return nil
 		})
+		if errors.Is(err, context.DeadlineExceeded) {
+			err = errors.New("扫描超时，结果不完整")
+		}
 		if err != nil {
 			out.Warnings = append(out.Warnings, cat.Name+"："+err.Error())
+		}
+		if unreadable > 0 {
+			out.Warnings = append(out.Warnings, fmt.Sprintf("%s %s：%d 个条目无法读取，已跳过", cat.Agent, cat.Name, unreadable))
 		}
 		out.Groups = append(out.Groups, g)
 		if remaining < 0 || ctx.Err() != nil {

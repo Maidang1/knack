@@ -248,3 +248,143 @@ func TestOpenDatabase(t *testing.T) {
 		}
 	}
 }
+
+func groupOf(t *testing.T, snap Snapshot, id string) Group {
+	t.Helper()
+	for _, g := range snap.Groups {
+		if g.ID == id {
+			return g
+		}
+	}
+	t.Fatal("missing group " + id)
+	return Group{}
+}
+
+func TestScanProtectsRecentSessions(t *testing.T) {
+	const old, day = 60 * 24 * time.Hour, 24 * time.Hour
+	l := DefaultLocations(t.TempDir())
+	live, gone := "11111111-live", "22222222-gone"
+	project := filepath.Join(l.Claude, "projects", "-work-demo")
+	putFile(t, filepath.Join(project, live+".jsonl"), day)
+	putFile(t, filepath.Join(project, gone+".jsonl"), old)
+	for _, id := range []string{live, gone} {
+		putFile(t, filepath.Join(project, id, "subagents", "agent-a.jsonl"), old)
+		putFile(t, filepath.Join(project, id, "subagents", "agent-a.meta.json"), old)
+		putFile(t, filepath.Join(project, id, "tool-results", "out.txt"), old)
+		putFile(t, filepath.Join(l.Claude, "file-history", id, "abc@v1"), old)
+		putFile(t, filepath.Join(l.Claude, "todos", id+"-agent-"+id+".json"), old)
+	}
+	snap := Scan(context.Background(), l, time.Now(), 30)
+	for id, want := range map[string]struct{ eligible, protected int }{
+		"claude-projects":     {3, 2},
+		"claude-tool-results": {1, 1},
+		"claude-history":      {1, 1},
+		"claude-todos":        {1, 1},
+	} {
+		g := groupOf(t, snap, id)
+		if g.Eligible != want.eligible || g.Protected != want.protected {
+			t.Fatalf("%s eligible=%d protected=%d, want %+v", id, g.Eligible, g.Protected, want)
+		}
+		for _, f := range g.Candidates {
+			if strings.Contains(f.Path, live) {
+				t.Fatalf("%s offered live session file %s", id, f.Path)
+			}
+		}
+	}
+}
+
+func TestScanProtectionFailsClosed(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink privilege required")
+	}
+	const old = 60 * 24 * time.Hour
+	l := DefaultLocations(t.TempDir())
+	external := filepath.Join(filepath.Dir(l.Claude), "external-project")
+	putFile(t, filepath.Join(external, "unknown.jsonl"), time.Hour)
+	if err := os.MkdirAll(filepath.Join(l.Claude, "projects"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(external, filepath.Join(l.Claude, "projects", "-linked")); err != nil {
+		t.Fatal(err)
+	}
+	putFile(t, filepath.Join(l.Claude, "file-history", "unknown", "abc@v1"), old)
+	putFile(t, filepath.Join(l.Claude, "debug", "old.log"), old)
+	snap := Scan(context.Background(), l, time.Now(), 30)
+	if g := groupOf(t, snap, "claude-history"); g.Eligible != 0 || g.Protected != 1 {
+		t.Fatalf("offered a file whose session is unknown: %+v", g)
+	}
+	if g := groupOf(t, snap, "claude-debug"); g.Eligible != 1 {
+		t.Fatalf("protection leaked into a sessionless category: %+v", g)
+	}
+	if len(snap.Warnings) != 1 || !strings.Contains(snap.Warnings[0], "已保护全部会话附件") {
+		t.Fatalf("%v", snap.Warnings)
+	}
+}
+
+func TestScanIgnoresUnnamedTranscript(t *testing.T) {
+	const old = 60 * 24 * time.Hour
+	l := DefaultLocations(t.TempDir())
+	putFile(t, filepath.Join(l.Claude, "projects", "-work", ".jsonl"), time.Hour)
+	putFile(t, filepath.Join(l.Claude, "debug", "old.log"), old)
+	putFile(t, filepath.Join(l.Claude, "todos", "plain.json"), old)
+	snap := Scan(context.Background(), l, time.Now(), 30)
+	for _, id := range []string{"claude-debug", "claude-todos"} {
+		if g := groupOf(t, snap, id); g.Eligible != 1 || g.Protected != 0 {
+			t.Fatalf("%s: %+v", id, g)
+		}
+	}
+}
+
+func TestScanContinuesPastUnreadableEntries(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Getuid() == 0 {
+		t.Skip("requires POSIX permissions as a normal user")
+	}
+	const old = 60 * 24 * time.Hour
+	l := DefaultLocations(t.TempDir())
+	locked := filepath.Join(l.Claude, "cache", "a-locked")
+	putFile(t, filepath.Join(locked, "hidden.bin"), old)
+	putFile(t, filepath.Join(l.Claude, "cache", "z-after.bin"), old)
+	if err := os.Chmod(locked, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(locked, 0700) })
+	snap := Scan(context.Background(), l, time.Now(), 30)
+	if g := groupOf(t, snap, "claude-cache"); g.Eligible != 1 {
+		t.Fatalf("walk stopped at unreadable directory: %+v", g)
+	}
+	if len(snap.Warnings) != 1 || !strings.Contains(snap.Warnings[0], "1 个条目无法读取") {
+		t.Fatalf("%v", snap.Warnings)
+	}
+}
+
+func TestScanNewCategories(t *testing.T) {
+	const old = 60 * 24 * time.Hour
+	l := DefaultLocations(t.TempDir())
+	putFile(t, filepath.Join(l.Claude, "telemetry", "1p_failed_events.json"), old)
+	putFile(t, filepath.Join(l.Claude, "transcripts", "ses_a.jsonl"), old)
+	snap := Scan(context.Background(), l, time.Now(), 30)
+	if g := groupOf(t, snap, "claude-telemetry"); g.Eligible != 1 || g.History {
+		t.Fatalf("%+v", g)
+	}
+	if g := groupOf(t, snap, "claude-transcripts"); g.Eligible != 1 || !g.History {
+		t.Fatalf("%+v", g)
+	}
+}
+
+func TestScanAgeBands(t *testing.T) {
+	const day = 24 * time.Hour
+	l := DefaultLocations(t.TempDir())
+	for i, age := range []time.Duration{day, 20 * day, 60 * day, 120 * day, 400 * day} {
+		putFile(t, filepath.Join(l.Claude, "debug", string(rune('a'+i))+".log"), age)
+	}
+	g := groupOf(t, Scan(context.Background(), l, time.Now(), 30), "claude-debug")
+	for i, bytes := range g.Ages {
+		if bytes != int64(len("local data")) {
+			t.Fatalf("band %d holds %d: %v", i, bytes, g.Ages)
+		}
+	}
+	// Bands above the retention choice must add up to what can be cleaned.
+	if sum := g.Ages[2] + g.Ages[3] + g.Ages[4]; sum != g.EligibleBytes {
+		t.Fatalf("bands=%d eligible=%d", sum, g.EligibleBytes)
+	}
+}

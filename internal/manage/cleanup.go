@@ -10,9 +10,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/klauspost/compress/zstd"
+	"knack/internal/fsutil"
 	"knack/internal/storage"
 )
 
@@ -20,10 +22,13 @@ const opCleanup = "cleanup-file"
 
 type CleanupUndo struct {
 	Root     string      `json:"root"`
+	Category string      `json:"category,omitempty"`
 	Size     int64       `json:"size"`
 	Mode     os.FileMode `json:"mode"`
 	Modified time.Time   `json:"modified"`
 	Digest   string      `json:"digest"`
+	// Stored is the backup's size on disk, filled in when records are listed.
+	Stored int64 `json:"-"`
 }
 
 type cleanupReader struct {
@@ -69,7 +74,7 @@ func CleanupFile(ctx context.Context, cat storage.Category, f storage.File, undo
 		return Record{}, err
 	}
 	rec.Payload = filepath.Join(rec.Dir, "payload.zst")
-	rec.Cleanup = &CleanupUndo{Root: cat.Root, Size: f.Size, Mode: st.Mode().Perm(), Modified: f.Modified}
+	rec.Cleanup = &CleanupUndo{Root: cat.Root, Category: cat.ID, Size: f.Size, Mode: st.Mode().Perm(), Modified: f.Modified}
 	fail := func(err error) (Record, error) { _ = os.RemoveAll(rec.Dir); return Record{}, err }
 	src, err := os.Open(f.Path)
 	if err != nil {
@@ -131,16 +136,63 @@ func CleanupFile(ctx context.Context, cat storage.Category, f storage.File, undo
 	if err = os.Remove(f.Path); err != nil {
 		return fail(err)
 	}
+	pruneEmptyDirs(cat.Root, filepath.Dir(f.Path))
 	return rec, nil
+}
+
+// pruneEmptyDirs removes directories emptied by cleanup, stopping below root.
+func pruneEmptyDirs(root, dir string) {
+	for strings.HasPrefix(dir, root+string(filepath.Separator)) {
+		st, err := os.Lstat(dir)
+		if err != nil || !st.IsDir() || fsutil.IsLink(dir, st) || os.Remove(dir) != nil {
+			return
+		}
+		dir = filepath.Dir(dir)
+	}
+}
+
+// ensureCleanupDir recreates pruned parents below the deepest existing,
+// link-free ancestor, so a refused path never gains directories.
+func ensureCleanupDir(root, dir string) error {
+	rel, err := filepath.Rel(root, dir)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("路径超出清理范围：%s", dir)
+	}
+	var missing []string
+	p := dir
+	for {
+		_, err := os.Lstat(p)
+		if err == nil {
+			break
+		}
+		if !os.IsNotExist(err) || filepath.Dir(p) == p {
+			return err
+		}
+		missing = append(missing, p)
+		p = filepath.Dir(p)
+	}
+	if _, err := storage.ValidatePath(p, p); err != nil {
+		return err
+	}
+	for i := len(missing) - 1; i >= 0; i-- {
+		if err := os.Mkdir(missing[i], 0700); err != nil && !os.IsExist(err) {
+			return err
+		}
+		st, err := os.Lstat(missing[i])
+		if err != nil {
+			return err
+		}
+		if fsutil.IsLink(missing[i], st) {
+			return fmt.Errorf("跳过链接路径：%s", missing[i])
+		}
+	}
+	return nil
 }
 
 func restoreCleanup(rec Record) error {
 	u := rec.Cleanup
 	if u == nil {
 		return errors.New("清理备份记录不完整")
-	}
-	if _, err := storage.ValidatePath(u.Root, filepath.Dir(rec.LinkPath)); err != nil {
-		return err
 	}
 	if err := expectAbsent(rec.LinkPath); err != nil {
 		return err
@@ -158,6 +210,9 @@ func restoreCleanup(rec Record) error {
 		return err
 	}
 	defer dec.Close()
+	if err = ensureCleanupDir(u.Root, filepath.Dir(rec.LinkPath)); err != nil {
+		return err
+	}
 	dst, err := os.OpenFile(rec.LinkPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return err
@@ -167,6 +222,7 @@ func restoreCleanup(rec Record) error {
 	err = errors.Join(copyErr, dst.Sync(), dst.Close())
 	if err != nil || n != u.Size || hex.EncodeToString(hash.Sum(nil)) != u.Digest {
 		_ = os.Remove(rec.LinkPath)
+		pruneEmptyDirs(u.Root, filepath.Dir(rec.LinkPath))
 		return fmt.Errorf("备份校验失败，未恢复：%s", rec.LinkPath)
 	}
 	if err = os.Chmod(rec.LinkPath, u.Mode); err != nil {
@@ -213,7 +269,8 @@ func CleanupRecords(undoRoot string) ([]Record, int64, error) {
 		if err != nil {
 			continue
 		}
-		bytes += st.Size() + int64(len(data))
+		rec.Cleanup.Stored = st.Size() + int64(len(data))
+		bytes += rec.Cleanup.Stored
 		records = append(records, rec)
 	}
 	return records, bytes, nil
