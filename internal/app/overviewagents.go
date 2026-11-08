@@ -105,7 +105,7 @@ func (a *App) agentUsage(c *ui.Context, d *overviewData) {
 		})
 	}
 	if a.hasUntrackedSessionAgents() {
-		ui.Text(c, "其他 Agent 尚未接入本地会话格式，暂不支持；可在 agents.json 中自定义").FontSize(11.5).TextColor(muted).Padding(8, 0, 0, 0)
+		ui.Text(c, "其他 Agent 尚未接入本地会话格式，暂不支持；可用 agents.json 或 JS 插件接入").FontSize(11.5).TextColor(muted).Padding(8, 0, 0, 0)
 	}
 }
 

@@ -59,6 +59,9 @@ func ReadTranscript(ctx context.Context, path string, agent Agent) (*Transcript,
 	if formatOf(agent) == nil {
 		return nil, fmt.Errorf("该 Agent 暂不支持回放")
 	}
+	if pf, ok := formatOf(agent).(pluginFormat); ok {
+		return readPluginTranscript(ctx, pf, path)
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("无法打开日志")
@@ -74,7 +77,7 @@ func ReadTranscript(ctx context.Context, path string, agent Agent) (*Transcript,
 		src = dec
 	}
 	out := &Transcript{}
-	tr := transcriptReader{out: out, f: formatOf(agent), tools: map[string]int{}, seen: map[string]bool{}}
+	tr := newTranscriptReader(out, formatOf(agent))
 	reader := bufio.NewReaderSize(io.LimitReader(src, maxTranscriptRead), 64<<10)
 	var buf []byte
 	large := false
@@ -128,6 +131,10 @@ type transcriptReader struct {
 	pending []int
 	timing  map[string][2]time.Time
 	system  bool // the base system prompt was shown; resumed logs repeat it
+}
+
+func newTranscriptReader(out *Transcript, f format) transcriptReader {
+	return transcriptReader{out: out, f: f, tools: map[string]int{}, seen: map[string]bool{}}
 }
 
 func (tr *transcriptReader) add(e Entry) int {

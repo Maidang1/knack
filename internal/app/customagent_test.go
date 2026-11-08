@@ -13,6 +13,61 @@ import (
 	"knack/internal/session"
 )
 
+// A plugin's worker is a copy of the running program, here the test binary.
+func TestMain(m *testing.M) {
+	session.ServePluginWorker()
+	os.Exit(m.Run())
+}
+
+func TestPluginAgentLoads(t *testing.T) {
+	home := t.TempDir()
+	t.Cleanup(func() { session.LoadPlugins(filepath.Join(home, "missing"), home) })
+	dir := filepath.Join(home, ".config/skill-manager/plugins")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().UnixMilli()
+	src := map[string]string{
+		"good.js": `knack.registerAgent({id: "js-agent", name: "JS Agent",
+			list() { return [{path: "~/.js-agent/state.db", id: "chat-1", version: 1}] },
+			read() { return [{time: ` + strconv.FormatInt(at, 10) + `, role: "user", text: "来自插件"}] }})`,
+		"broken.js": "function (",
+	}
+	for name, s := range src {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(s), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	file := filepath.Join(home, ".js-agent/state.db")
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a := New(home)
+	a.startScan()
+	tt := ui.NewTester(a.View, 1180, 760)
+	if !slices.Contains(agentOptions(), "JS Agent") {
+		t.Fatalf("filter options %q", agentOptions())
+	}
+	if !tt.HasText("自定义 Agent 配置有 1 个问题，相关 Agent 未加载，悬停查看") {
+		t.Fatalf("plugin problem not shown %q", tt.Texts())
+	}
+	s := a.sessions.snapshot.Sessions
+	if len(s) != 1 || s[0].ID != "chat-1" || session.LogPath(s[0].Path) != file {
+		t.Fatalf("sessions %+v", s)
+	}
+	// A session sharing its file with others still opens in the replay.
+	a.openSession(sessionID(s[0]))
+	a.sessions.replayOpen = true
+	a.sideCollapsed = true
+	tt.Frame()
+	if !tt.HasText("来自插件") || tt.HasText("无法读取日志，回放内容暂不可用") {
+		t.Fatalf("replay %q", tt.Texts())
+	}
+}
+
 func TestCustomAgentOverview(t *testing.T) {
 	home := t.TempDir()
 	t.Cleanup(func() { session.LoadAgentConfig(filepath.Join(home, "missing.json")) })

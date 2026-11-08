@@ -8,9 +8,11 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"knack/internal/app"
+	"knack/internal/session"
 )
 
 func main() {
+	session.ServePluginWorker()
 	home, err := os.UserHomeDir()
 	if err != nil {
 		log.Fatal(err)

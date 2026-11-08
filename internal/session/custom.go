@@ -157,7 +157,7 @@ func readConfig(file string) ([]byte, error) {
 func configWarnings() []string {
 	registry.RLock()
 	defer registry.RUnlock()
-	return append([]string(nil), registry.warnings...)
+	return slices.Concat(registry.warnings, registry.pluginWarnings)
 }
 
 type customFormat struct {
@@ -165,18 +165,27 @@ type customFormat struct {
 	hash string
 }
 
-func newCustomFormat(c AgentConfig, taken []AgentInfo, roots []string) (customFormat, error) {
-	if !agentID.MatchString(c.ID) {
-		return customFormat{}, fmt.Errorf("id 只能包含小写字母、数字、- 和 _，最长 32 个字符")
+// checkIdentity validates a new Agent's ID and name, returning the trimmed name.
+func checkIdentity(id, name string, taken []AgentInfo) (string, error) {
+	if !agentID.MatchString(id) {
+		return "", fmt.Errorf("id 只能包含小写字母、数字、- 和 _，最长 32 个字符")
 	}
-	c.Name = strings.TrimSpace(c.Name)
-	if c.Name == "" || len([]rune(c.Name)) > 40 {
-		return customFormat{}, fmt.Errorf("name 不能为空，最长 40 个字符")
+	name = strings.TrimSpace(name)
+	if name == "" || len([]rune(name)) > 40 {
+		return "", fmt.Errorf("name 不能为空，最长 40 个字符")
 	}
 	for _, t := range taken {
-		if string(t.ID) == c.ID || strings.EqualFold(t.Name, c.Name) {
-			return customFormat{}, fmt.Errorf("id 或 name 与已有 Agent 重复")
+		if string(t.ID) == id || strings.EqualFold(t.Name, name) {
+			return "", fmt.Errorf("id 或 name 与已有 Agent 重复")
 		}
+	}
+	return name, nil
+}
+
+func newCustomFormat(c AgentConfig, taken []AgentInfo, roots []string) (customFormat, error) {
+	var err error
+	if c.Name, err = checkIdentity(c.ID, c.Name, taken); err != nil {
+		return customFormat{}, err
 	}
 	if len(c.Roots) == 0 {
 		return customFormat{}, fmt.Errorf("缺少 roots")
