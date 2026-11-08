@@ -113,6 +113,8 @@ MyGo 使用纯 Go 构建，Windows 与 Linux 包由 Ubuntu runner 交叉编译�
 
 快捷键：`⌘R` 重新扫描，`⌘,` 打开设置。
 
+「维护 → 磁盘清理」可查看 Claude Code、Codex 的缓存、日志、Shell 快照与历史会话占用，按保留天数清理并压缩保留可恢复备份。历史会话与 Claude 文件回退快照需单独选择；清理备份可恢复或确认后永久清空。两种 Agent 都支持 SQLite 探测，发现有效数据库时可查看空闲页、整理碎片及合并 WAL；Claude Code 的 JSONL 会话通过文件清理处理。执行前会说明影响范围，详情见[磁盘清理说明](docs/storage-cleanup.md)。
+
 ## 数据与修改
 
 扫描不会改动技能文件，只读取有限的头部元数据；正文在查看详情时加载，副本完整内容对比按需执行。替换副本、修复、移除技能和更改 Claude 调用设置都经过确认，并记录可撤销的操作。替换或移除目录和链接时，会将原对象暂存到撤销记录中，保留 Windows 目录软链和 junction 的类型。同一磁盘使用相对软链；Windows 跨盘链接使用绝对目标。
@@ -140,6 +142,7 @@ internal/skill/    目录扫描、元数据、依赖图与生效视图
 internal/manage/   文件修改、软链操作与撤销
 internal/repair/   问题修复与移除计划
 internal/session/ 本地会话解析、增量缓存与用量聚合
+internal/storage/ Agent 存储扫描与 SQLite 空间检查
 internal/store/    配置与扫描缓存
 resources/         应用图标
 ```

@@ -288,9 +288,10 @@ func TestReplayOneScroll(t *testing.T) {
 	if !tt.HasText("第 1 轮") || a.sessions.selectedTurn != "tALPHA" {
 		t.Fatalf("replay does not open at the first turn: %q", tt.Texts())
 	}
-	// The anchor scrolls the one list to its turn: at the top, or in view
+	// The outline scrolls the one list to its turn: at the top, or in view
 	// where the list ends first.
-	click(t, tt, "PROMPT_CHARLIE")
+	d := a.sessions.detail
+	click(t, tt, turnLabel(d.turns[2]))
 	for range 5 {
 		tt.Frame()
 	}

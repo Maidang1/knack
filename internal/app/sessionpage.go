@@ -738,6 +738,9 @@ func (a *App) sessionBar(c *ui.Context) {
 		back("返回会话详情", "")
 		ui.Text(c, title).FontSize(15).FontWeight(600).MinWidth(0).Shrink(1).SingleLine().Tooltip(title)
 		ui.Box(c).Grow(1).MinWidth(8)
+		if n := a.replayMatches(d); n >= 0 {
+			ui.Textf(c, "%d 轮匹配", n).FontSize(12).TextColor(token(t, "ink-3")).Shrink(0)
+		}
 		ui.SearchField(c, &s.replayQuery).Label("在对话中查找").Placeholder("在对话中查找").Width(200).Height(28).Radius(7).
 			Background(t.Surface).Border(1, t.Border).PlaceholderColor(token(t, "ink-3")).Shrink(1).MinWidth(100)
 		segmented(c, "对话筛选", &s.replayFilter, "全部", "只看工具", "只看回复")

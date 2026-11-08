@@ -66,6 +66,9 @@ func (a *App) railSidebar(c *ui.Context) {
 						a.railAgent(c, "root:"+root.ID, root.Name, a.rootColor(c, root))
 					}
 				}
+				if !a.hidden[storagePage] {
+					a.railItem(c, storagePage, "disk", "磁盘清理", ui.Color{})
+				}
 				railDivider(c)
 				if !a.hidden["pool"] {
 					a.railItem(c, "pool", "package", "共享池", ui.Color{})

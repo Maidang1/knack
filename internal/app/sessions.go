@@ -50,6 +50,7 @@ type sessionState struct {
 	replayJumped    int             // frames left to see a scroll to replayAt through
 	replayAnchor    string          // the turn the side list last brought into view
 	anchorFocus     string          // the turn whose anchor has the focus
+	replayMapHover  int             // the outline dash the pointer is over, -1 for none
 	agentProblems   []string        // invalid definitions in agents.json
 }
 
@@ -238,7 +239,7 @@ func (a *App) sessionsPane(c *ui.Context) {
 			ui.Text(c, "调整时间范围、Agent 或搜索条件").FontSize(13).TextColor(c.Theme().TextMuted)
 		})
 	case s.replayOpen:
-		ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() { a.sessionConversation(c, d, content) })
+		ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Label("replayrow").Children(func() { a.sessionConversation(c, d) })
 	default:
 		ui.Column(c).Grow(1).MinHeight(0).Children(func() { a.sessionPage(c, d, content) })
 	}

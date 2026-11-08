@@ -39,6 +39,7 @@ type App struct {
 	invocations   map[string]manage.Invocation
 	invocationErr string
 	sessions      sessionState
+	storage       storageState
 	activity      *sessionActivity
 	insights      insightsState
 	skillPeriod   int
@@ -138,6 +139,7 @@ func New(home string) *App {
 		listW:        440,
 		graphW:       720,
 		agentsOpen:   true,
+		storage:      storageState{retention: 1},
 	}
 	repos, err := store.Load(a.configPath)
 	if err != nil {
@@ -184,6 +186,12 @@ func (a *App) frosted(c *ui.Context) bool {
 }
 
 func (a *App) startScan() {
+	if a.page == storagePage {
+		if !a.mutating {
+			a.startStorageScan()
+		}
+		return
+	}
 	if a.scanning || a.mutating {
 		a.rescanPending = true
 		return
@@ -399,6 +407,11 @@ func (a *App) undo(recs []manage.Record) {
 // Invocation preferences do not change the skill tree or its dependencies.
 func (a *App) refreshAfter(recs []manage.Record) {
 	if len(recs) == 0 {
+		return
+	}
+	if recs[0].Cleanup != nil {
+		a.startStorageScan()
+		a.startSessionScan()
 		return
 	}
 	for _, rec := range recs {

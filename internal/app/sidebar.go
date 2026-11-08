@@ -79,6 +79,10 @@ func (a *App) sidebar(c *ui.Context) {
 				a.navItem(c, "pool", "package", "共享池", count)
 			}
 			a.repoItems(c)
+			if !a.hidden[storagePage] {
+				sideHeading(c, "维护")
+				a.navItem(c, storagePage, "disk", "磁盘清理", "")
+			}
 		}).Grow(1).Padding(10, 10, 12, 10).Background(ui.Transparent).Label("位置")
 		a.sidebarFooter(c)
 	})

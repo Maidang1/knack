@@ -305,6 +305,11 @@ func (a *App) content(c *ui.Context) {
 			a.statusBar(c)
 			return
 		}
+		if a.page == storagePage {
+			a.storagePane(c)
+			a.statusBar(c)
+			return
+		}
 		if a.page == "sessions" {
 			a.sessionsPane(c)
 			a.statusBar(c)
@@ -925,6 +930,8 @@ func (a *App) entrySubtitle(e skill.Entry) string {
 
 func (a *App) pageTitle() string {
 	switch a.page {
+	case storagePage:
+		return "磁盘清理"
 	case "overview":
 		return "首页"
 	case "sessions":

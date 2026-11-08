@@ -17,6 +17,7 @@ const svgHead = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fil
 // glyphs are 24×24 outlines drawn in the color of the text. The first group
 // marks places and actions of the window; the second marks agents.
 var glyphs = map[string]string{
+	"disk": `<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="12" cy="11" r="5"/><circle cx="12" cy="11" r="1"/><path d="m15 14 3 3M6 18h2"/>`,
 	// window
 	"home":          `<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .7-1.5l7-6a2 2 0 0 1 2.6 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>`,
 	"inbox":         `<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/>`,

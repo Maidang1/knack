@@ -63,7 +63,7 @@ func (a *App) pageHidden() bool {
 	if id, ok := strings.CutPrefix(a.page, "root:"); ok {
 		return a.hidden[id]
 	}
-	return a.hidden[a.page] && slices.Contains(browsePages, a.page)
+	return a.hidden[a.page] && (a.page == storagePage || slices.Contains(browsePages, a.page))
 }
 
 // homePage is the first page still switched on.
@@ -107,6 +107,7 @@ func (a *App) settingsDialog(c *ui.Context) {
 		{usagePage, "用量与耗时", look{"chart", ui.Hex("#8E8E93")}},
 		{insightsPage, "诊断", look{"wave", ui.Hex("#8E8E93")}},
 		{"pool", "共享池", look{"package", ui.Hex("#2563eb")}},
+		{storagePage, "磁盘清理", look{"disk", ui.Hex("#8E8E93")}},
 	}
 	var agents, builtins []settingsRow
 	if a.snap != nil {

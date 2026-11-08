@@ -11,8 +11,8 @@ import (
 
 // The conversation replay is the design's 对话回放: every turn in one
 // scroll, its messages, thinking and tool calls in the order the log
-// recorded them, with the turns down the side as anchors into it. Content
-// is read on demand and only held in memory.
+// recorded them. A slim outline down the side marks where each turn sits
+// in it. Content is read on demand and only held in memory.
 
 const (
 	replayAll = iota
@@ -20,40 +20,34 @@ const (
 	replayRepliesOnly
 )
 
+// The outline down the side of the replay: one dash per turn. They are all
+// the same length until the pointer comes near one; then that dash grows and
+// its neighbours fall away from it.
+const (
+	replayMapWidth   = 56
+	replayMapIndent  = 18
+	replayMapStep    = 16
+	replayMapDash    = 3
+	replayMapDashMin = 16
+	replayMapDashMax = 40
+	// How many dashes the growth reaches down.
+	replayMapFalloff = 4
+)
+
 // Diffs longer than this show their start; the rest is in the input.
 const diffPreviewLines = 40
 
-func (a *App) sessionConversation(c *ui.Context, d *sessionDetailData, width float32) {
+func (a *App) sessionConversation(c *ui.Context, d *sessionDetailData) {
 	t := c.Theme()
 	s := &a.sessions
 	replay := a.sessionReplay(d)
 	content := replay.ready()
 	index := a.sessionTurnIndex(d)
 	query := strings.ToLower(strings.TrimSpace(s.replayQuery))
-	listWidth := float32(232)
-	if width < 760 {
-		listWidth = 180
-	}
-	ui.Column(c).Width(listWidth).Shrink(0).BorderWidth(0, 1, 0, 0).BorderColor(t.Border).Children(func() {
-		ui.Row(c).Height(40).Padding(0, 16).Gap(8).AlignItems(ui.Center).Shrink(0).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
-			ui.Textf(c, "%d 轮", len(d.turns)).FontSize(13).FontWeight(600).Grow(1)
-			if query != "" && content != nil {
-				n := 0
-				for i := range d.turns {
-					if turnMatches(content, i, query) {
-						n++
-					}
-				}
-				ui.Textf(c, "%d 轮匹配", n).FontSize(12).TextColor(token(t, "ink-3"))
-			}
-		})
-		ui.Scroll(c.Key("replay-turns")).Grow(1).MinHeight(0).Children(func() {
-			ui.Column(c).Padding(8).Gap(2).FocusGroup(ui.Vertical).Label("轮次列表").Children(func() {
-				a.replayTurnList(c, d, content, index, query)
-			})
-		})
+	ui.Column(c).Width(replayMapWidth).Shrink(0).Justify(ui.Center).Label("railbox").Children(func() {
+		a.replayMap(c, d, content, index, query)
 	})
-	ui.Column(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
+	ui.Column(c).Grow(1).MinWidth(0).MinHeight(0).Label("mainbox").Children(func() {
 		ui.Row(c).Justify(ui.Center).Padding(16, 32, 8, 32).Shrink(0).Children(func() {
 			ui.Row(c).Grow(1).MaxWidth(760).Gap(8).Padding(8, 12).Radius(7).Background(t.SurfaceHover).AlignItems(ui.Center).Children(func() {
 				ui.Icon(c, glyph("lock")).FontSize(13).TextColor(t.TextMuted)
@@ -145,66 +139,126 @@ func (a *App) replayTurns(c *ui.Context, d *sessionDetailData, content *replayIn
 	}).Grow(1).MinHeight(0).Background(ui.Transparent).Label("对话回放")
 }
 
-func (a *App) replayTurnList(c *ui.Context, d *sessionDetailData, content *replayIndex, index int, query string) {
+// replayMap is the transcript's outline: one dash per turn, the block of
+// them centred down the side. Hovering a dash grows it and fades its
+// neighbours away, and shows what the turn asked; choosing it scrolls the
+// transcript there.
+func (a *App) replayMap(c *ui.Context, d *sessionDetailData, content *replayIndex, index int, query string) {
 	t := c.Theme()
 	muted := token(t, "ink-3")
-	concerns := turnConcerns(d)
-	for i, turn := range d.turns {
-		if query != "" && content != nil && !turnMatches(content, i, query) {
-			continue
-		}
-		on := i == index
-		prompt, quiet := turnPrompt(turn, content)
-		b := ui.ButtonBase(c.Key("replay-turn:"+turn.turn.ID)).Padding(8, 10).Gap(8).Radius(7).AlignItems(ui.Start).Border(1, ui.Transparent).
-			Label(turnLabel(turn)).Tooltip(prompt)
-		switch {
-		case on:
-			b.Background(token(t, "selected"))
-			if a.sessions.focusTurn {
-				b.Focus()
-				a.sessions.focusTurn = false
-			}
-			// The anchor follows the replay as it scrolls.
-			if a.sessions.replayAnchor != turn.turn.ID {
-				a.sessions.replayAnchor = turn.turn.ID
-				b.ScrollIntoView()
-			}
-		case b.Hovered():
-			b.Background(t.SurfaceHover)
-		}
-		b.Children(func() {
-			number(c, fmt.Sprint(i+1)).FontSize(11.5).TextColor(muted).Width(18).Shrink(0).TextAlign(ui.End).Margin(2, 0, 0, 0)
-			ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
-				p := ui.Text(c, prompt).FontSize(13).SingleLine()
-				if on {
-					p.FontWeight(600)
+	accent := token(t, "accent")
+	hover := a.sessions.replayMapHover
+	ui.Scroll(c.Key("replay-map")).MaxHeightPercent(100).MinHeight(0).Children(func() {
+		ui.Column(c).Padding(14, 0).Gap(0).FocusGroup(ui.Vertical).Label("对话大纲").Children(func() {
+			for i, turn := range d.turns {
+				if query != "" && content != nil && !turnMatches(content, i, query) {
+					continue
 				}
-				if quiet {
-					p.TextColor(t.TextMuted)
+				on := i == index
+				prompt, _ := turnPrompt(turn, content)
+				length := replayMapDashMin
+				if hover >= 0 {
+					length = replayMapLength(i - hover)
 				}
-				ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
-					if concerns[i] != nil {
-						ui.Icon(c, glyph("issues")).FontSize(11.5).TextColor(t.Warning).Label("本轮有耗时异常")
-						number(c, activeText(turn)).FontSize(11.5).TextColor(t.Warning)
-					} else {
-						number(c, activeText(turn)).FontSize(11.5).TextColor(muted)
-					}
+				color := fade(muted, 150)
+				switch {
+				case on:
+					color = accent
+				case turn.warning:
+					color = t.Warning
+				}
+				b := ui.ButtonBase(c.Key("replay-turn:"+turn.turn.ID)).Width(replayMapWidth).Height(replayMapStep).
+					Padding(0, 0, 0, replayMapIndent).Radius(4).Justify(ui.Start).
+					Label(turnLabel(turn)).Tooltip(replayPreview(turn, prompt))
+				switch {
+				case b.Hovered():
+					// The dash under the pointer leads, in the brightest ink.
+					hover, a.sessions.replayMapHover = i, i
+					color = t.Text
+				case hover == i:
+					// The pointer left this dash.
+					hover, a.sessions.replayMapHover = -1, -1
+				}
+				b.Children(func() {
+					ui.Box(c).Width(float32(length)).Height(replayMapDash).Radius(replayMapDash / 2).Shrink(0).Background(color)
 				})
-			})
+				if on {
+					if a.sessions.focusTurn {
+						b.Focus()
+						a.sessions.focusTurn = false
+					}
+					// The dash follows the replay as it scrolls.
+					if a.sessions.replayAnchor != turn.turn.ID {
+						a.sessions.replayAnchor = turn.turn.ID
+						b.ScrollIntoView()
+					}
+				}
+				// Moving the focus onto a dash chooses its turn; a dash that
+				// keeps the focus does not take the choice back from scrolling.
+				focused := b.Focused() && a.sessions.anchorFocus != turn.turn.ID
+				if b.Focused() {
+					a.sessions.anchorFocus = turn.turn.ID
+				} else if a.sessions.anchorFocus == turn.turn.ID {
+					a.sessions.anchorFocus = ""
+				}
+				if b.Clicked() || focused && !on {
+					a.chooseSessionTurn(d, i)
+					c.Invalidate()
+				}
+			}
 		})
-		// Moving the focus onto an anchor chooses its turn; an anchor that
-		// keeps the focus does not take the choice back from scrolling.
-		focused := b.Focused() && a.sessions.anchorFocus != turn.turn.ID
-		if b.Focused() {
-			a.sessions.anchorFocus = turn.turn.ID
-		} else if a.sessions.anchorFocus == turn.turn.ID {
-			a.sessions.anchorFocus = ""
-		}
-		if b.Clicked() || focused && !on {
-			a.chooseSessionTurn(d, i)
-			c.Invalidate()
+	})
+}
+
+// replayMapLength is how long a dash is, distance dashes from the one under
+// the pointer: the one under it is the longest, and the ones around it fall
+// away until they are all the same again.
+func replayMapLength(distance int) int {
+	if distance < 0 {
+		distance = -distance
+	}
+	if distance <= 0 {
+		return replayMapDashMax
+	}
+	if distance >= replayMapFalloff {
+		return replayMapDashMin
+	}
+	fall := 1 - float32(distance)/float32(replayMapFalloff)
+	length := float32(replayMapDashMin) + float32(replayMapDashMax-replayMapDashMin)*fall*fall
+	return int(length)
+}
+
+// replayMatches is how many turns the conversation's search holds, or -1
+// when it holds nothing to search.
+func (a *App) replayMatches(d *sessionDetailData) int {
+	if d == nil {
+		return -1
+	}
+	query := strings.ToLower(strings.TrimSpace(a.sessions.replayQuery))
+	if query == "" {
+		return -1
+	}
+	content := a.sessionReplay(d).ready()
+	if content == nil {
+		return -1
+	}
+	n := 0
+	for i := range d.turns {
+		if turnMatches(content, i, query) {
+			n++
 		}
 	}
+	return n
+}
+
+// replayPreview is what a dash shows on hover: which turn it is, how long
+// it ran, and what was asked.
+func replayPreview(turn sessionTurnView, prompt string) string {
+	preview := fmt.Sprintf("第 %d 轮 · %s", turn.index+1, activeText(turn))
+	if prompt != "" {
+		preview += "\n" + clipLines(prompt, 3, 240)
+	}
+	return preview
 }
 
 // turnMatches reports whether any entry of turn i holds query.
