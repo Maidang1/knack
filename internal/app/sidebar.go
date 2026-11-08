@@ -35,6 +35,9 @@ func (a *App) sidebar(c *ui.Context) {
 					}
 					a.navItem(c, "issues", "inbox", "待处理", "").Children(func() { alertBadge(c, count) })
 				}
+				if agents := a.sidebarAgents(); len(agents) > 0 {
+					a.navItem(c, agentsPage, "bot", "Agents", fmt.Sprint(len(agents)))
+				}
 			})
 			sideHeading(c, "技能")
 			if !a.hidden[libraryPage] {
@@ -48,7 +51,7 @@ func (a *App) sidebar(c *ui.Context) {
 			if !a.hidden[graphPage] {
 				a.navItem(c, graphPage, "graph", "依赖图", "")
 			}
-			if !a.hidden["sessions"] || !a.hidden[usagePage] || !a.hidden[insightsPage] {
+			if !a.hidden["sessions"] || !a.hidden[insightsPage] {
 				sideHeading(c, "会话")
 			}
 			if !a.hidden["sessions"] {
@@ -58,17 +61,8 @@ func (a *App) sidebar(c *ui.Context) {
 				}
 				a.navItem(c, "sessions", "messages", "全部会话", count)
 			}
-			if !a.hidden[usagePage] {
-				a.navItem(c, usagePage, "chart", "用量与耗时", "")
-			}
 			if !a.hidden[insightsPage] {
 				a.navItem(c, insightsPage, "wave", "诊断", "")
-			}
-			if agents := a.sidebarAgents(); len(agents) > 0 {
-				sideHeading(c, "AGENTS")
-				for _, root := range agents {
-					a.agentItem(c, root)
-				}
 			}
 			sideHeading(c, "来源")
 			if !a.hidden["pool"] {
@@ -137,7 +131,7 @@ func sideHeading(c *ui.Context, title string) {
 func (a *App) sideRow(c *ui.Context, id, label string) ui.Element {
 	t := c.Theme()
 	item := ui.SidebarItem(c.Key(id), id, nil, "").Label(label).Height(28).Padding(0, 8).Gap(9).TextColor(t.Text)
-	if a.page == id {
+	if a.activeNav(id) {
 		item.Background(token(t, "selected"))
 	}
 	return item
@@ -149,7 +143,7 @@ func (a *App) navItem(c *ui.Context, id, icon, label, count string) ui.Element {
 	item.Children(func() {
 		ui.Row(c).Grow(1000).Margin(0, 0, 0, -9).Gap(9).AlignItems(ui.Center).Children(func() {
 			glyphColor := token(t, "ink-2")
-			if a.page == id {
+			if a.activeNav(id) {
 				glyphColor = token(t, "accent-ink")
 			}
 			ui.Icon(c, glyph(icon)).FontSize(16).TextColor(glyphColor)
@@ -162,7 +156,7 @@ func (a *App) navItem(c *ui.Context, id, icon, label, count string) ui.Element {
 
 func (a *App) sideLabel(c *ui.Context, id, label string) {
 	weight := 400
-	if a.page == id {
+	if a.activeNav(id) {
 		weight = 600
 	}
 	ui.Text(c, label).Grow(1).MinWidth(0).FontSize(13).FontWeight(weight).SingleLine()
@@ -185,8 +179,8 @@ func alertBadge(c *ui.Context, count string) {
 	})
 }
 
-// agentItem marks an Agent with a dot in its data color, so the sidebar
-// matches the charts; a logo would add a second color system.
+// agentItem marks an Agent with its own logo; one without a logo gets a dot
+// in its color.
 func (a *App) agentItem(c *ui.Context, r skill.Root) {
 	id := "root:" + r.ID
 	count := ""
@@ -196,9 +190,19 @@ func (a *App) agentItem(c *ui.Context, r skill.Root) {
 		}
 	}
 	color := a.rootColor(c, r)
-	a.sideRow(c, id, r.Name).Children(func() {
+	logo := sideLogo(a.home, r)
+	item := a.sideRow(c, id, r.Name)
+	if a.page == id {
+		// The sidebar's Agents entry already wears the selected wash.
+		item.Background(c.Theme().SurfaceHover)
+	}
+	item.Children(func() {
 		ui.Row(c).Grow(1000).Margin(0, 0, 0, -9).Gap(9).AlignItems(ui.Center).Children(func() {
 			ui.Box(c).Size(16, 16).Shrink(0).Center().Children(func() {
+				if logo != nil {
+					ui.Image(c, logo).Size(16, 16)
+					return
+				}
 				ui.Box(c).Size(8, 8).Radius(4).Background(color)
 			})
 			a.sideLabel(c, id, r.Name)

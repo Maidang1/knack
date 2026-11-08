@@ -18,7 +18,15 @@ func (a *App) updateRail(c *ui.Context) {
 		a.railPage, a.railPeek = a.page, false
 	}
 	width, _ := c.Size()
-	a.rail = !a.sideCollapsed && !a.railPeek && width < railBelow
+	below := float32(railBelow)
+	if _, ok := a.agentPageRoot(); ok {
+		below = agentRailBelow
+	}
+	a.rail = !a.sideCollapsed && !a.railPeek && width < below
+	a.agentListW = agentListWide
+	if width < railBelow {
+		a.agentListW = agentListNarrow
+	}
 }
 
 func (a *App) railSidebar(c *ui.Context) {
@@ -43,6 +51,9 @@ func (a *App) railSidebar(c *ui.Context) {
 					}
 					a.railItem(c, "issues", "inbox", "待处理", dot)
 				}
+				if len(a.sidebarAgents()) > 0 {
+					a.railItem(c, agentsPage, "bot", "Agents", ui.Color{})
+				}
 				railDivider(c)
 				if !a.hidden[libraryPage] {
 					a.railItem(c, libraryPage, "pool", "技能库", ui.Color{})
@@ -54,17 +65,8 @@ func (a *App) railSidebar(c *ui.Context) {
 				if !a.hidden["sessions"] {
 					a.railItem(c, "sessions", "messages", "全部会话", ui.Color{})
 				}
-				if !a.hidden[usagePage] {
-					a.railItem(c, usagePage, "chart", "用量与耗时", ui.Color{})
-				}
 				if !a.hidden[insightsPage] {
 					a.railItem(c, insightsPage, "wave", "诊断", ui.Color{})
-				}
-				if agents := a.sidebarAgents(); len(agents) > 0 {
-					railDivider(c)
-					for _, root := range agents {
-						a.railAgent(c, "root:"+root.ID, root.Name, a.rootColor(c, root))
-					}
 				}
 				if !a.hidden[storagePage] {
 					a.railItem(c, storagePage, "disk", "磁盘清理", ui.Color{})
@@ -119,7 +121,7 @@ func (a *App) railItem(c *ui.Context, id, icon, label string, dot ui.Color) ui.E
 	item := a.railRow(c, id, label)
 	railContent(c, item, func() {
 		color := token(t, "ink-2")
-		if a.page == id {
+		if a.activeNav(id) {
 			color = token(t, "accent-ink")
 		}
 		ui.Icon(c, glyph(icon)).FontSize(17).TextColor(color)
@@ -132,17 +134,11 @@ func (a *App) railItem(c *ui.Context, id, icon, label string, dot ui.Color) ui.E
 	return item
 }
 
-func (a *App) railAgent(c *ui.Context, id, label string, color ui.Color) {
-	railContent(c, a.railRow(c, id, label), func() {
-		ui.Box(c).Size(9, 9).Radius(4.5).Background(color)
-	})
-}
-
 func (a *App) railRow(c *ui.Context, id, label string) ui.Element {
 	t := c.Theme()
 	item := ui.SidebarItem(c.Key("rail:"+id), id, nil, "").Label(label).Tooltip(label).Size(36, 32).Padding(0).Gap(0).
 		Radius(7).AlignItems(ui.Center).Justify(ui.Center)
-	if a.page == id {
+	if a.activeNav(id) {
 		item.Background(token(t, "selected"))
 	}
 	return item

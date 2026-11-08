@@ -14,14 +14,27 @@ import (
 var agentColumns = []struct {
 	title string
 	width float32
-}{{"技能", 64}, {"会话", 70}, {"Token", 74}, {"输出速率", 100}, {"缓存命中", 80}, {"最近活跃", 84}}
+}{{"技能", 64}, {"会话", 64}, {"Token", 92}, {"缓存命中", 84}, {"最近活跃", 92}}
 
 func (a *App) agentUsage(c *ui.Context, d *overviewData) {
 	t := c.Theme()
 	muted := token(t, "ink-3")
-	sectionHead(c, "Agents", "", nil)
+	link := ""
+	if n := len(a.sidebarAgents()); n > 0 {
+		link = fmt.Sprintf("全部 %d 个 →", n)
+	}
+	sectionHead(c, "Agents", link, func() { a.page = agentsPage })
 	row := func(key string, height float32, fn func()) {
 		ui.Row(c.Key(key)).Height(height).Gap(8).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(fn)
+	}
+	// open is a row that goes to its Agent's page, when it has one.
+	open := func(id session.Agent, fn func()) {
+		root, ok := a.agentRoot(id)
+		b := listRow(c, string(id), sessionAgentName(id)).Height(34).Padding(0).Gap(8).Disabled(!ok)
+		b.Children(fn)
+		if b.Clicked() {
+			a.page = "root:" + root.ID
+		}
 	}
 	cell := func(i int, value string, supported bool, tip string) {
 		e := number(c, value).Width(agentColumns[i].width).Shrink(0).TextAlign(ui.End).FontSize(13).TextColor(t.TextMuted)
@@ -55,8 +68,7 @@ func (a *App) agentUsage(c *ui.Context, d *overviewData) {
 	now := time.Now()
 	for _, agent := range d.agents {
 		sum := agent.summary
-		empty := sum.Sessions == 0 && sum.Requests == 0
-		row(string(agent.id), 34, func() {
+		open(agent.id, func() {
 			name(agent.id, false)
 			skills := a.agentSkillCount(agent.id)
 			cell(0, skills, skills != "—", "")
@@ -70,30 +82,23 @@ func (a *App) agentUsage(c *ui.Context, d *overviewData) {
 				model = "主力模型 " + sum.ByModel[0].Name
 			}
 			cell(2, tokens, tokensOK, model)
-			rate, rateOK := "暂不支持", sum.OutputRate.Samples > 0
-			if rateOK {
-				rate = fmt.Sprintf("%.0f tok/s", sum.OutputRate.Median)
-			} else if empty {
-				rate, rateOK = "—", true
-			}
-			cell(3, rate, rateOK, "输出 Token / 估算生成时间，中位数")
 			cache, cacheOK := "—", true
 			if sum.CacheHitKnown {
 				cache = fmt.Sprintf("%.0f%%", 100*sum.CacheHit)
 			}
-			cell(4, cache, cacheOK, "缓存读取 / 全部输入 Token")
+			cell(3, cache, cacheOK, "缓存读取 / 全部输入 Token")
 			active := "—"
 			if !agent.last.IsZero() {
 				active = ago(now, agent.last)
 			}
-			cell(5, active, true, "")
+			cell(4, active, true, "")
 		})
 	}
 	for _, info := range session.Agents() {
 		if info.Unsupported == "" {
 			continue
 		}
-		row(string(info.ID), 34, func() {
+		open(info.ID, func() {
 			name(info.ID, true)
 			skills := a.agentSkillCount(info.ID)
 			cell(0, skills, skills != "—", "")
@@ -111,12 +116,20 @@ func (a *App) agentUsage(c *ui.Context, d *overviewData) {
 
 // agentSkillCount is how many skills the Agent's directories hold.
 func (a *App) agentSkillCount(id session.Agent) string {
-	for _, r := range a.sidebarAgents() {
-		if agentKey(a.home, r.Path) == string(id) {
-			return fmt.Sprint(len(a.agentEntries(r)))
-		}
+	if r, ok := a.agentRoot(id); ok {
+		return fmt.Sprint(len(a.agentEntries(r)))
 	}
 	return "—"
+}
+
+// agentRoot is the Agent's skills directory, which its page belongs to.
+func (a *App) agentRoot(id session.Agent) (skill.Root, bool) {
+	for _, r := range a.sidebarAgents() {
+		if agentKey(a.home, r.Path) == string(id) {
+			return r, true
+		}
+	}
+	return skill.Root{}, false
 }
 
 func (a *App) hasUntrackedSessionAgents() bool {

@@ -87,7 +87,7 @@ func TestSessionOverview(t *testing.T) {
 				tt := ui.NewTester(a.View, width, height)
 				tt.SetTitleBar(ui.TitleBar{Height: 52, Left: 70})
 				tt.SetDark(dark)
-				if a.page != "overview" || !tt.HasText("每日 Token") || !tt.HasText("个会话有耗时异常") || !tt.HasText("最近会话") {
+				if a.page != "overview" || !tt.HasText("活跃足迹") || !tt.HasText("个会话有耗时异常") || !tt.HasText("最近会话") {
 					t.Fatalf("missing overview sections %q", tt.Texts())
 				}
 				d := a.overviewData()
@@ -97,8 +97,8 @@ func TestSessionOverview(t *testing.T) {
 				if !tt.HasText("无本地日志") || !tt.HasText("暂不支持") {
 					t.Fatal("unsupported sources look like measured values")
 				}
-				chart, ok := tt.Find("每日 Token 图表")
-				if !ok || chart.W < 100 || chart.H < 100 || chart.X < a.sidebarWidth() || chart.X+chart.W > float32(width) {
+				chart, ok := tt.Find("活跃足迹图表")
+				if !ok || chart.W < 100 || chart.H < 60 || chart.X < a.sidebarWidth() || chart.X+chart.W > float32(width) {
 					t.Fatalf("chart collapsed/overflow: %+v", chart)
 				}
 				im := tt.Image()
@@ -106,14 +106,14 @@ func TestSessionOverview(t *testing.T) {
 				for y := int(chart.Y); y < int(chart.Y+chart.H); y++ {
 					for x := int(chart.X); x < int(chart.X+chart.W); x++ {
 						pixel := im.RGBAAt(x, y)
-						want := chartColor(d.series, 0, dark)
+						want := heatColor(4, dark)
 						if pixel.R == want.R && pixel.G == want.G && pixel.B == want.B {
 							bars++
 						}
 					}
 				}
-				if bars < 100 {
-					t.Fatalf("daily chart has no visible Agent bars (%d pixels)", bars)
+				if bars < 6 {
+					t.Fatalf("heatmap shows no active day (%d pixels)", bars)
 				}
 				click(t, tt, "统计时间范围")
 				tt.Key(0, ui.KeyHome)
@@ -164,7 +164,7 @@ func TestAgentBuiltinGrouping(t *testing.T) {
 	if tt.HasText("Cursor 自带") || tt.HasText("自带") {
 		t.Fatal("standalone builtin navigation remains")
 	}
-	click(t, tt, "Cursor")
+	openAgent(t, tt, "Cursor")
 	if !tt.HasText("ordinary") || !tt.HasText("shipped") || !tt.HasText("自带 · 只读") {
 		t.Fatalf("missing grouped skills %q", tt.Texts())
 	}

@@ -163,6 +163,13 @@ func (tr *transcriptReader) result(id string, at time.Time, text string, failed 
 }
 
 func (tr *transcriptReader) line(b []byte) bool {
+	if f, ok := tr.f.(*streamingFormat); ok {
+		var err error
+		b, err = f.normalize(b, "replay")
+		if err != nil {
+			return false
+		}
+	}
 	var o object
 	if json.Unmarshal(b, &o) != nil || o == nil {
 		return false
@@ -176,47 +183,6 @@ func (tr *transcriptReader) line(b []byte) bool {
 	at, _ := tr.f.record(o)
 	tr.f.replay(tr, o, at)
 	return true
-}
-
-func (claudeFormat) replay(tr *transcriptReader, o object, at time.Time) {
-	switch str(o, "type") {
-	case "user":
-		m := obj(o, "message")
-		bs := blocks(m)
-		if isToolResult(bs) {
-			for _, b := range bs {
-				if str(b, "type") == "tool_result" {
-					tr.result(str(b, "tool_use_id"), at, contentText(b["content"]), flag(b, "is_error"))
-				}
-			}
-			return
-		}
-		if !hasUserContent(m, bs) {
-			return
-		}
-		text := contentText(m["content"])
-		kind := userKind(text)
-		if flag(o, "isMeta") || flag(o, "isCompactSummary") {
-			kind = EntryContext
-		}
-		tr.userEntry(kind, at, text)
-	case "assistant":
-		m := obj(o, "message")
-		rid := first(str(m, "id"), str(o, "requestRef"), str(o, "requestId"), str(o, "uuid"))
-		tr.assistant(blocks(m), rid, str(m, "model"), at)
-		if flag(o, "isApiErrorMessage") {
-			tr.add(Entry{Kind: EntryEvent, Start: at, End: at, RequestID: rid, Name: "API 请求失败", Text: contentText(m["content"]), Error: true})
-		}
-	case "system":
-		switch str(o, "subtype") {
-		case "compact_boundary":
-			tr.add(Entry{Kind: EntryEvent, Start: at, End: at, Name: "上下文压缩"})
-		case "api_error":
-			tr.add(Entry{Kind: EntryEvent, Start: at, End: at, Name: "API 请求失败", Text: str(o, "content"), Error: true})
-		case "away_summary":
-			tr.add(Entry{Kind: EntryEvent, Start: at, End: at, Name: "离开摘要", Text: str(o, "content")})
-		}
-	}
 }
 
 func (tr *transcriptReader) assistant(bs []object, rid, model string, at time.Time) {
@@ -271,105 +237,6 @@ func (factoryFormat) replay(tr *transcriptReader, o object, at time.Time) {
 	}
 }
 
-func (codexFormat) replay(tr *transcriptReader, o object, at time.Time) {
-	pl := obj(o, "payload")
-	switch str(o, "type") {
-	case "session_meta":
-		// The base system prompt Codex sent with every request. Older logs
-		// store it as a string, newer ones as {"text": ...}.
-		text := str(obj(pl, "base_instructions"), "text")
-		if text == "" {
-			text = str(pl, "base_instructions")
-		}
-		if strings.TrimSpace(text) != "" && !tr.system {
-			tr.system = true
-			tr.add(Entry{Kind: EntryContext, Start: at, End: at, Name: "系统提示词", Text: text})
-		}
-	case "turn_context":
-		tr.model = str(pl, "model")
-	case "token_usage_record":
-		rid := str(pl, "response_id")
-		for _, i := range tr.pending {
-			tr.out.Entries[i].RequestID = rid
-		}
-		tr.pending = tr.pending[:0]
-	case "compacted":
-		tr.add(Entry{Kind: EntryEvent, Start: at, End: at, Name: "上下文压缩"})
-	case "event_msg":
-		switch str(pl, "type") {
-		case "item_completed":
-			// Completion events precede the matching response item and carry
-			// its measured start and end.
-			item := obj(pl, "item")
-			from, to := num(pl, "started_at_ms"), num(pl, "completed_at_ms")
-			if from > 0 && to >= from {
-				if tr.timing == nil {
-					tr.timing = map[string][2]time.Time{}
-				}
-				tr.timing[str(item, "type")] = [2]time.Time{time.UnixMilli(from), time.UnixMilli(to)}
-			}
-		case "turn_aborted":
-			tr.add(Entry{Kind: EntryEvent, Start: at, End: at, Name: "已中断", Error: true})
-		case "error":
-			tr.add(Entry{Kind: EntryEvent, Start: at, End: at, Name: "错误", Text: str(pl, "message"), Error: true})
-		}
-	case "response_item":
-		measured := func(kind string) (time.Time, time.Time) {
-			if span, ok := tr.timing[kind]; ok {
-				delete(tr.timing, kind)
-				return span[0], span[1]
-			}
-			return at, at
-		}
-		switch str(pl, "type") {
-		case "message":
-			text := contentText(pl["content"])
-			switch str(pl, "role") {
-			case "user":
-				kind := EntryUser
-				if codexInjected(text) {
-					kind = EntryContext
-				}
-				tr.add(Entry{Kind: kind, Start: at, End: at, Text: text})
-			case "developer", "system":
-				tr.add(Entry{Kind: EntryContext, Start: at, End: at, Text: text})
-			case "assistant":
-				start, end := measured("AgentMessage")
-				tr.pending = append(tr.pending, tr.add(Entry{Kind: EntryAssistant, Start: start, End: end, Name: tr.model, Text: text}))
-			}
-		case "reasoning":
-			var parts []string
-			for _, s := range objects(pl["summary"]) {
-				parts = append(parts, str(s, "text"))
-			}
-			start, end := measured("Reasoning")
-			tr.pending = append(tr.pending, tr.add(Entry{Kind: EntryThinking, Start: start, End: end, Name: tr.model, Text: strings.Join(parts, "\n\n")}))
-		case "function_call", "custom_tool_call", "local_shell_call", "web_search_call", "tool_search_call":
-			id := first(str(pl, "call_id"), str(pl, "id"))
-			if _, ok := tr.tools[id]; ok || id == "" {
-				return
-			}
-			input := str(pl, "arguments")
-			if input == "" {
-				input = str(pl, "input")
-			}
-			if input == "" {
-				input = jsonText(first2(pl["action"], pl["arguments"], pl["input"]))
-			}
-			name := first(codexToolName(pl), strings.TrimSuffix(str(pl, "type"), "_call"))
-			i := tr.add(Entry{Kind: EntryTool, Start: at, ToolID: id, Name: name, Input: prettyJSON(input)})
-			tr.tools[id] = i
-			tr.pending = append(tr.pending, i)
-		case "function_call_output", "custom_tool_call_output", "local_shell_call_output", "tool_search_output":
-			output := str(pl, "output")
-			if output == "" {
-				output = contentText(pl["output"])
-			}
-			tr.result(str(pl, "call_id"), at, output, false)
-		}
-	}
-}
-
 func (tr *transcriptReader) userEntry(kind EntryKind, at time.Time, text string) {
 	if strings.HasPrefix(strings.TrimSpace(text), "[Request interrupted by user") {
 		tr.add(Entry{Kind: EntryEvent, Start: at, End: at, Name: "已中断", Text: "用户中断了请求", Error: true})
@@ -389,30 +256,10 @@ func userKind(text string) EntryKind {
 	return EntryUser
 }
 
-// Codex sends environment and AGENTS.md instructions as user-role messages.
-func codexInjected(text string) bool {
-	t := strings.TrimSpace(text)
-	for _, prefix := range []string{"<environment_context>", "<user_instructions>", "# AGENTS.md", "<permissions", "<turn_aborted>", "<skill>", "<subagent_notification>"} {
-		if strings.HasPrefix(t, prefix) {
-			return true
-		}
-	}
-	return false
-}
-
 func objects(raw json.RawMessage) []object {
 	var out []object
 	_ = json.Unmarshal(raw, &out)
 	return out
-}
-
-func first2(values ...json.RawMessage) json.RawMessage {
-	for _, v := range values {
-		if len(v) > 0 && string(v) != "null" {
-			return v
-		}
-	}
-	return nil
 }
 
 // contentText flattens a string or a list of content blocks to display text.

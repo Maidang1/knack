@@ -33,40 +33,17 @@ const (
 // refreshes again while Snapshot.More is set. A variable so tests can lower it.
 var maxRefreshRead int64 = 64 << 20
 
-// Codex compaction records embed the whole replacement history and can exceed
-// maxLineBytes. Their statistics only need the leading timestamp and type, so
-// an oversized record of a known metadata-only type is replayed as its header.
-var largeHeaderTypes = map[string]bool{"compacted": true}
-
+// Oversized records may retain a metadata-only header selected by a bundled
+// plugin. Only this bounded header is checkpointed while discarding the body.
 func largeRecordHeader(head []byte) []byte {
-	field := func(name string) string {
-		key := []byte(`"` + name + `":"`)
-		i := bytes.Index(head, key)
-		if i < 0 {
-			return ""
-		}
-		rest := head[i+len(key):]
-		j := bytes.IndexByte(rest, '"')
-		if j < 0 || bytes.IndexByte(rest[:j], '\\') >= 0 {
-			return ""
-		}
-		return string(rest[:j])
-	}
-	kind, at := field("type"), field("timestamp")
-	if at == "" {
-		return nil
-	}
-	// Messages carrying large attachments (images) keep their role, which is
-	// all the statistics read from a message; the replay shows them as skipped.
-	if kind == "response_item" && bytes.Contains(head, []byte(`"payload":{"type":"message"`)) {
-		if role := field("role"); role != "" {
-			return []byte(`{"timestamp":"` + at + `","type":"response_item","payload":{"type":"message","role":"` + role + `"}}`)
+	for _, f := range builtinFormats {
+		if f, ok := f.(*streamingFormat); ok {
+			if header := f.header(head); header != nil {
+				return header
+			}
 		}
 	}
-	if !largeHeaderTypes[kind] {
-		return nil
-	}
-	return []byte(`{"timestamp":"` + at + `","type":"` + kind + `"}`)
+	return nil
 }
 
 type fileState struct {

@@ -97,15 +97,60 @@ func TestStorageDatabases(t *testing.T) {
 	}
 }
 
+// Use real files and a real SQLite database so previews exercise every panel.
+func storageDashboardFixture(t *testing.T, a *App) {
+	t.Helper()
+	for _, f := range []struct {
+		path       string
+		size, days int
+	}{
+		{".claude/cache/recent.bin", 8000, 3},
+		{".claude/shell-snapshots/recent.sh", 4000, 3},
+		{".claude/file-history/recent/backup", 6000, 3},
+		{".claude/transcripts/old.jsonl", 77000, 120},
+		{".codex/log/old.log", 46000, 120},
+		{".codex/log/recent.log", 4000, 3},
+		{".codex/cache/old.bin", 5000, 60},
+		{".codex/cache/recent.bin", 3000, 3},
+		{".codex/shell_snapshots/old.sh", 1000, 60},
+		{".codex/sessions/old.jsonl", 324000, 200},
+		{".codex/archived_sessions/old.jsonl", 3000, 120},
+	} {
+		path := filepath.Join(a.home, f.path)
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(strings.Repeat("x", f.size)), 0600); err != nil {
+			t.Fatal(err)
+		}
+		at := time.Now().Add(-time.Duration(f.days) * 24 * time.Hour)
+		if err := os.Chtimes(path, at, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db, err := sql.Open("sqlite", filepath.Join(a.home, ".codex", "state.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("CREATE TABLE data(value BLOB); INSERT INTO data VALUES(zeroblob(100000)); INSERT INTO data VALUES(zeroblob(100000)); DELETE FROM data WHERE rowid=1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestStoragePane(t *testing.T) {
-	for _, width := range []int{1180, 880} {
+	for _, size := range [][2]int{{1730, 1000}, {1180, 760}, {880, 760}, {700, 760}} {
+		width, height := size[0], size[1]
 		for _, dark := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%d/dark=%t", width, dark), func(t *testing.T) {
 				a, _ := storageFixture(t)
-				tt := ui.NewTester(a.View, width, 760)
+				storageDashboardFixture(t, a)
+				tt := ui.NewTester(a.View, width, height)
 				tt.SetDark(dark)
 				tt.Frame()
-				for _, text := range []string{"已超过保留期，可以清理", "保留最近", "30 天", "Claude Code", "文件年龄", "Agent 占用", "清理项", "调试日志"} {
+				for _, text := range []string{"可回收空间", "建议操作", "保留线", "数据库维护", "清理备份", "保留最近", "30 天", "Claude Code", "文件年龄", "清理项", "调试日志"} {
 					if !tt.HasText(text) {
 						t.Fatalf("missing %s: %v", text, tt.Texts())
 					}
@@ -113,28 +158,67 @@ func TestStoragePane(t *testing.T) {
 				if !a.storage.selected["claude-debug"] || a.storage.selected["claude-projects"] || a.storage.selected["claude-history"] {
 					t.Fatal("unsafe defaults")
 				}
-				if output := os.Getenv("KNACK_STORAGE_PREVIEW"); output != "" {
+				title, _ := tt.Find("可回收空间")
+				ring, _ := tt.Find("可回收空间圆环")
+				after, _ := tt.Find("全部清理后的文件占用")
+				if ring.Y < title.Y+title.H || after.Y < ring.Y+ring.H {
+					t.Fatalf("overlapping summary: title=%+v ring=%+v after=%+v", title, ring, after)
+				}
+				savePreview := func(suffix string) {
+					t.Helper()
+					output := os.Getenv("KNACK_STORAGE_PREVIEW")
+					if output == "" {
+						return
+					}
 					if err := os.MkdirAll(output, 0700); err != nil {
 						t.Fatal(err)
 					}
-					f, err := os.Create(filepath.Join(output, fmt.Sprintf("storage-%d-dark-%t.png", width, dark)))
+					f, err := os.Create(filepath.Join(output, fmt.Sprintf("storage-%d-dark-%t%s.png", width, dark, suffix)))
 					if err != nil {
 						t.Fatal(err)
 					}
 					if err := png.Encode(f, tt.Image()); err != nil {
 						t.Fatal(err)
 					}
-					f.Close()
+					if err := f.Close(); err != nil {
+						t.Fatal(err)
+					}
+				}
+				savePreview("")
+				if width == 1730 {
+					backup, _ := tt.Find("恢复全部…")
+					if backup.Y+backup.H > float32(height)-60 {
+						t.Fatalf("wide dashboard does not fit: %+v", backup)
+					}
+				} else {
+					for i, label := range []string{"文件年龄", "清理项", "数据库维护", "清理备份"} {
+						limit := float32(500)
+						if label == "清理备份" {
+							limit = 650
+						}
+						for attempts := 0; attempts < 20; attempts++ {
+							r, ok := tt.Find(label)
+							if ok && r.Y >= 44 && r.Y < limit {
+								break
+							}
+							tt.Scroll(float32(width-100), 600, 0, 200)
+						}
+						r, ok := tt.Find(label)
+						if !ok || r.X < 0 || r.X+r.W > float32(width) || r.Y < 44 || r.Y >= limit {
+							t.Fatalf("unreachable %s: %+v", label, r)
+						}
+						savePreview(fmt.Sprintf("-section-%d", i))
+					}
 				}
 				// The action remains reachable by scrolling, including the narrow rail.
 				for i := 0; i < 12; i++ {
-					if r, ok := tt.Find("清理所选…"); ok && r.Y > 45 && r.Y+r.H < 760 {
+					if r, ok := tt.Find("清理所选…"); ok && r.Y > 45 && r.Y+r.H < float32(height) {
 						break
 					}
 					tt.Scroll(float32(width-100), 600, 0, 400)
 				}
 				r, ok := tt.Find("清理所选…")
-				if !ok || r.Y < 45 || r.Y+r.H > 760 {
+				if !ok || r.Y < 45 || r.Y+r.H > float32(height) {
 					t.Fatalf("unreachable cleanup: %+v", r)
 				}
 				click(t, tt, "清理所选…")
@@ -144,7 +228,7 @@ func TestStoragePane(t *testing.T) {
 				// All confirmation text and both actions must fit on the screen.
 				for _, label := range []string{"清理", "取消"} {
 					r, ok := tt.Find(label)
-					if !ok || r.Y < 0 || r.Y+r.H > 760 {
+					if !ok || r.Y < 0 || r.Y+r.H > float32(height) {
 						t.Fatalf("unreachable %s: %+v", label, r)
 					}
 				}
@@ -326,13 +410,67 @@ func TestStorageTableHidesEmptyCategories(t *testing.T) {
 		t.Fatal("empty category shown by default")
 	}
 	for i := 0; i < 8 && !tt.HasText("隐藏空类别"); i++ {
-		if _, ok := tt.Find(storageEmptyLink(a)); ok {
+		if r, ok := tt.Find(storageEmptyLink(a)); ok && r.Y > 44 && r.Y+r.H < 700 {
 			click(t, tt, storageEmptyLink(a))
+		} else {
+			tt.Scroll(1050, 600, 0, 300)
 		}
 		tt.Frame()
 	}
 	if !tt.HasText("Hook 调试日志") {
 		t.Fatal("empty categories not revealed", tt.Texts())
+	}
+}
+
+func TestStorageTableEmptyCategoriesByAgent(t *testing.T) {
+	for _, codexEmpty := range []bool{false, true} {
+		t.Run(fmt.Sprintf("codexEmpty=%t", codexEmpty), func(t *testing.T) {
+			groups := []storage.Group{
+				{Category: storage.Category{ID: "claude-used", Agent: "Claude Code"}, Files: 1, Bytes: 10},
+				{Category: storage.Category{ID: "claude-empty-1", Agent: "Claude Code"}},
+				{Category: storage.Category{ID: "claude-empty-2", Agent: "Claude Code"}},
+				{Category: storage.Category{ID: "codex-used", Agent: "Codex"}, Files: 1, Bytes: 20},
+			}
+			if codexEmpty {
+				groups = append(groups, storage.Group{Category: storage.Category{ID: "codex-empty", Agent: "Codex"}})
+			}
+			a := &App{storage: storageState{snapshot: &storage.Snapshot{Groups: groups}}}
+			tt := ui.NewTester(func(c *ui.Context) { ui.Column(c).Gap(12).Children(func() { a.storageTable(c, false, false) }) }, 1180, 760)
+			for _, agent := range []string{"Claude Code", "Codex", ""} {
+				count := 0
+				var bytes int64
+				for _, g := range groups {
+					if agent == "" || g.Agent == agent {
+						bytes += g.Bytes
+						if g.Files == 0 {
+							count++
+						}
+					}
+				}
+				name := agent
+				if name == "" {
+					name = "全部"
+				}
+				click(t, tt, name+" 文件占用 "+storageSize(bytes))
+				if count > 0 {
+					label := fmt.Sprintf("显示 %d 个空类别", count)
+					if _, ok := tt.Find(label); !ok {
+						t.Fatalf("agent=%q: missing %q: %v", agent, label, tt.Texts())
+					}
+					click(t, tt, label)
+					if !tt.HasText("隐藏空类别") {
+						t.Fatalf("agent=%q: missing hide link", agent)
+					}
+					click(t, tt, "隐藏空类别")
+				} else {
+					for _, text := range tt.Texts() {
+						if strings.HasPrefix(text, "显示 ") && strings.HasSuffix(text, " 个空类别") || text == "隐藏空类别" {
+							t.Fatalf("agent=%q: unexpected link %q", agent, text)
+						}
+					}
+				}
+			}
+		})
 	}
 }
 
@@ -427,5 +565,125 @@ func TestExpiredBackups(t *testing.T) {
 	got := expiredBackups([]manage.Record{old, fresh}, now)
 	if len(got) != 1 || got[0].ID != "old" {
 		t.Fatalf("%+v", got)
+	}
+}
+
+func TestStorageReleasable(t *testing.T) {
+	groups := []storage.Group{
+		{Ages: [storage.AgeBands]int64{10, 20, 30, 40, 50}, ProtectedAges: [storage.AgeBands]int64{0, 0, 12, 5, 3}, EligibleBytes: 100},
+		{Ages: [storage.AgeBands]int64{0, 0, 10, 0, 20}, ProtectedAges: [storage.AgeBands]int64{0, 0, 4, 0, 2}, EligibleBytes: 24},
+	}
+	for _, tc := range []struct {
+		retention int
+		want      int64
+	}{{0, 144}, {1, 124}, {2, 100}, {3, 65}} {
+		if got := storageReleasable(groups, tc.retention, 1); got != tc.want {
+			t.Errorf("retention=%d: got %d, want %d", tc.retention, got, tc.want)
+		}
+	}
+	if got := storageReleasable(nil, 0, 0); got != 0 {
+		t.Fatal(got)
+	}
+}
+
+func TestStorageSuggestions(t *testing.T) {
+	groups := []storage.Group{
+		{Category: storage.Category{ID: "cache", Name: "缓存", Agent: "Codex"}, Eligible: 2, EligibleBytes: 40},
+		{Category: storage.Category{ID: "log", Name: "日志", Agent: "Claude Code"}, Eligible: 3, EligibleBytes: 60},
+		{Category: storage.Category{ID: "protected", History: true}, Bytes: 9999, Files: 9},
+		{Category: storage.Category{ID: "small", History: true}, Eligible: 1, EligibleBytes: 10},
+		{Category: storage.Category{ID: "large", History: true}, Eligible: 5, EligibleBytes: 300},
+		{Category: storage.Category{ID: "middle", History: true}, Eligible: 2, EligibleBytes: 100},
+	}
+	snap := &storage.Snapshot{Groups: groups}
+	got := storageSuggestions(snap)
+	if len(got) != 3 || got[0].bytes != 100 || got[0].files != 5 || strings.Join(got[0].groups, ",") != "cache,log" || got[1].groups[0] != "large" || got[2].groups[0] != "middle" {
+		t.Fatalf("suggestions=%+v", got)
+	}
+	for _, item := range got {
+		if item.database != nil {
+			t.Fatal("unexpected database")
+		}
+	}
+	snap.Databases = []storage.Database{
+		{Path: "empty", Bytes: 1000},
+		{Path: "broken", WALBytes: 9999, Error: "busy"},
+		{Path: "wal", WALBytes: 200},
+		{Path: "free", WALBytes: 50, FreeBytes: 300},
+	}
+	got = storageSuggestions(snap)
+	if len(got) != 4 || got[3].database == nil || got[3].database.Path != "free" {
+		t.Fatalf("database suggestion=%+v", got)
+	}
+	if got := storageSuggestions(&storage.Snapshot{}); len(got) != 0 {
+		t.Fatal(got)
+	}
+}
+
+func TestStorageRowsAllAgents(t *testing.T) {
+	groups := []storage.Group{
+		{Category: storage.Category{ID: "a", Agent: "Claude Code"}, Files: 1, EligibleBytes: 10, Bytes: 20},
+		{Category: storage.Category{ID: "b", Agent: "Codex"}, Files: 1, EligibleBytes: 30, Bytes: 30},
+		{Category: storage.Category{ID: "c", Agent: "Codex"}, Files: 1, EligibleBytes: 10, Bytes: 40},
+		{Category: storage.Category{ID: "empty", Agent: "Claude Code"}},
+	}
+	rows := storageRows(groups, "", false)
+	if len(rows) != 3 || rows[0].ID != "b" || rows[1].ID != "c" || rows[2].ID != "a" {
+		t.Fatal(rows)
+	}
+	if len(storageRows(groups, "", true)) != 4 || groups[0].ID != "a" {
+		t.Fatal("empty filtering or input order changed")
+	}
+}
+
+func TestStorageDashboardControls(t *testing.T) {
+	a, _ := storageFixture(t)
+	storageDashboardFixture(t, a)
+	tt := ui.NewTester(a.View, 1730, 1000)
+	click(t, tt, "缓存与日志：✓ 已选")
+	if a.storage.selected["claude-debug"] || a.storage.selected["codex-log"] {
+		t.Fatal("safe suggestion did not deselect all")
+	}
+	click(t, tt, "缓存与日志：加入清理")
+	if !a.storage.selected["claude-debug"] || !a.storage.selected["codex-log"] || a.storage.selected["codex-sessions"] {
+		t.Fatal("safe suggestion selected history or missed safe files")
+	}
+	click(t, tt, "Codex 历史会话：加入清理")
+	if !a.storage.selected["codex-sessions"] {
+		t.Fatal("history suggestion did not select")
+	}
+	click(t, tt, "Codex 数据库：维护…")
+	if !a.ask.open || !strings.Contains(a.ask.message, "Codex") {
+		t.Fatal("missing database maintenance confirmation")
+	}
+	click(t, tt, "取消")
+	a.mutating = true
+	tt.Frame()
+	click(t, tt, "Codex 历史会话：✓ 已选")
+	if !a.storage.selected["codex-sessions"] {
+		t.Fatal("busy suggestion changed selection")
+	}
+	a.mutating = false
+	tt.Frame()
+	// The retention tab must rescan with the selected choice.
+	var current string
+	for _, text := range tt.Texts() {
+		if strings.HasPrefix(text, "保留 180 天，可释放") {
+			current = text
+			break
+		}
+	}
+	click(t, tt, current)
+	if a.storage.retention != 3 || a.storage.scanned != 3 {
+		t.Fatalf("retention did not rescan: %+v", a.storage)
+	}
+	for _, text := range tt.Texts() {
+		if strings.HasPrefix(text, "Codex 文件占用 ") {
+			click(t, tt, text)
+			break
+		}
+	}
+	if a.storage.agentFilter != 2 || tt.HasText("调试日志") {
+		t.Fatal("Agent filter did not filter rows")
 	}
 }

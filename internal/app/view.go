@@ -118,6 +118,9 @@ func (a *App) contentBar(c *ui.Context) {
 	if a.rail {
 		padStart = max(20, bar.Left-railWidth+8)
 	}
+	if _, ok := a.agentPageRoot(); ok {
+		padStart = 32 // the Agent list stands between this bar and the window's edge
+	}
 	// The whole band is draggable, including its padding and gaps. Child
 	// controls take their own presses before this background drag handle.
 	ui.Row(c).Height(controlsBandHeight(bar)).Shrink(0).Padding(0, max(padEnd, 32), 0, padStart).Gap(8).AlignItems(ui.Center).DragWindow().
@@ -147,13 +150,16 @@ func (a *App) contentBar(c *ui.Context) {
 			a.graphPicker(c)
 		}
 		ui.Box(c).Grow(1).MinWidth(8)
+		if a.page == storagePage {
+			a.storageHeadline(c, a.storage.scanning || a.mutating || a.sessions.loading)
+		}
 		if a.page == effectivePage {
 			ui.Toolbar(c, func() { a.effectiveToolbar(c) }).Label("生效范围").Padding(0).Gap(8).MinWidth(0)
 		}
 		if a.page == graphPage {
 			a.graphLegend(c)
 		}
-		if a.page == "overview" || a.page == "sessions" || a.page == usagePage || a.page == insightsPage {
+		if a.page == "overview" || a.page == "sessions" || a.page == insightsPage {
 			a.overviewToolbar(c)
 		} else if root, ok := a.agentPageRoot(); ok && a.state(a.page).agentTab != 0 && logSupport(session.Agent(agentKey(a.home, root.Path))) == "" {
 			segmented(c, "统计时间范围", &a.sessions.period, periodLabels...)
@@ -223,13 +229,17 @@ func (a *App) sidebarToggle(c *ui.Context) {
 
 // sidebarWidth is the room the sidebar takes: none while it is collapsed.
 func (a *App) sidebarWidth() float32 {
+	var inner float32
+	if _, ok := a.agentPageRoot(); ok {
+		inner = a.agentListW
+	}
 	if a.sideCollapsed {
-		return 0
+		return inner
 	}
 	if a.rail {
-		return railWidth
+		return railWidth + inner
 	}
-	return a.sideW
+	return a.sideW + inner
 }
 
 // barStatus explains in the status bar why the page may not be live:
@@ -290,6 +300,18 @@ func (a *App) roots(role skill.Role) []skill.Root {
 }
 
 func (a *App) content(c *ui.Context) {
+	a.settleAgentsPage()
+	if _, ok := a.agentPageRoot(); ok {
+		ui.Row(c).Fill().Background(c.Theme().Background).AlignItems(ui.Stretch).Children(func() {
+			a.agentList(c)
+			ui.Column(c).Grow(1).MinWidth(0).Children(func() { a.contentPane(c) })
+		})
+		return
+	}
+	a.contentPane(c)
+}
+
+func (a *App) contentPane(c *ui.Context) {
 	t := c.Theme()
 	ui.Column(c).Fill().Background(t.Background).Children(func() {
 		a.contentBar(c)
@@ -315,8 +337,8 @@ func (a *App) content(c *ui.Context) {
 			a.statusBar(c)
 			return
 		}
-		if a.page == usagePage {
-			a.usagePane(c)
+		if a.page == agentsPage {
+			emptyState(c, "还没有 Agent", "bot", t.TextMuted, "还没有发现 Agent", "扫描到 Agent 的技能目录后，它们会出现在这里。", nil)
 			a.statusBar(c)
 			return
 		}
@@ -946,8 +968,8 @@ func (a *App) pageTitle() string {
 		return "技能库"
 	case graphPage:
 		return "依赖图"
-	case usagePage:
-		return "用量与耗时"
+	case agentsPage:
+		return "Agents"
 	case insightsPage:
 		return "诊断"
 	default:

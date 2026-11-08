@@ -21,6 +21,12 @@ type sessionState struct {
 	agent           string
 	day             int
 	overview        *overviewData
+	profile         *profileData
+	profileDay      string  // the heatmap's chosen date; "" follows the latest active day
+	profileTab      int     // the home page ranks Skills or tools
+	profileOpen     [2]bool // that ranking shows every row
+	agentCounts     map[session.Agent]int
+	agentCountsOf   *session.Snapshot
 	browser         *sessionBrowserData
 	query           string
 	hits            sessionHits // sessions the sidebar's query matches

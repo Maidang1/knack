@@ -63,7 +63,7 @@ type flatLayout struct{}
 func (flatLayout) visit([]string, bool) (string, string, bool) { return "", "", true }
 func (flatLayout) parentLog(logFile) string                    { return "" }
 
-var builtinFormats = []format{claudeFormat{}, codexFormat{}, factoryFormat{}}
+var builtinFormats = []format{embeddedFormat("claude"), embeddedFormat("codex"), factoryFormat{}}
 
 // registry adds the user-defined Agents of agents.json and of the plugins
 // directory after the built-in ones. It is set once at startup, before any

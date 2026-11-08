@@ -229,50 +229,59 @@ func (a *App) tokenMix(c *ui.Context, sum session.Summary, known bool, reason st
 				}
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Padding(0, 0, 4, 0).Children(func() {
 					number(c, text).FontSize(13).TextColor(t.TextMuted).Tooltip("按 Anthropic 官方 API 价格估算，未定价的模型不计入")
-					overviewLink(c, "费用明细 →", func() {
-						a.sessions.agent = cmp.Or(a.sessionAgentFilter(), allAgents)
-						a.page = insightsPage
-						a.insights.tab = tabCost
-					})
+					overviewLink(c, "费用明细 →", a.openCostDetail)
 				})
 			}
 		})
-		deep := blend(color, ui.Hex("#000000"), 0.72)
-		if t.Dark {
-			deep = blend(color, ui.Hex("#FFFFFF"), 0.55)
-		}
-		parts := []struct {
-			name  string
-			value int64
-			color ui.Color
-		}{
-			{"缓存读取", sum.Tokens.CacheRead, blend(color, t.Surface, 0.5)},
-			{"输出", sum.Tokens.Output, color},
-			{"缓存写入", sum.Tokens.CacheWrite, blend(color, t.Surface, 0.3)},
-			{"输入", sum.Tokens.Input, deep},
-		}
-		total := float32(max(1, sum.Tokens.Total()))
-		ui.Box(c).Height(18).Label("Token 构成条").Draw(func(p *ui.Painter, r ui.Rect) {
-			x := r.X
-			for _, part := range parts {
-				if part.value == 0 {
-					continue
-				}
-				w := max(2, float32(part.value)/total*r.W-2)
-				p.Fill(ui.Rect{X: x, Y: r.Y, W: w, H: r.H}, part.color, 3)
-				x += w + 2
-			}
-		})
-		ui.Row(c).Gap(18).Wrap().Children(func() {
-			for _, part := range parts {
-				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-					ui.Box(c).Size(8, 8).Radius(2).Background(part.color)
-					ui.Text(c, part.name).FontSize(13).TextColor(t.TextMuted)
-					number(c, tokenNumber(part.value)).FontSize(13)
-				})
-			}
-		})
+		tokenBar(c, sum, color, 18)
 	})
+}
+
+// tokenBar is the four kinds of token as one stacked bar and its legend.
+func tokenBar(c *ui.Context, sum session.Summary, color ui.Color, height float32) {
+	t := c.Theme()
+	deep := blend(color, ui.Hex("#000000"), 0.72)
+	if t.Dark {
+		deep = blend(color, ui.Hex("#FFFFFF"), 0.55)
+	}
+	parts := []struct {
+		name  string
+		value int64
+		color ui.Color
+	}{
+		{"缓存读取", sum.Tokens.CacheRead, blend(color, t.Surface, 0.5)},
+		{"输出", sum.Tokens.Output, color},
+		{"缓存写入", sum.Tokens.CacheWrite, blend(color, t.Surface, 0.3)},
+		{"输入", sum.Tokens.Input, deep},
+	}
+	total := float32(max(1, sum.Tokens.Total()))
+	ui.Box(c).Height(height).Label("Token 构成条").Draw(func(p *ui.Painter, r ui.Rect) {
+		x := r.X
+		for _, part := range parts {
+			if part.value == 0 {
+				continue
+			}
+			w := max(2, float32(part.value)/total*r.W-2)
+			p.Fill(ui.Rect{X: x, Y: r.Y, W: w, H: r.H}, part.color, 3)
+			x += w + 2
+		}
+	})
+	ui.Row(c).Gap(18).Wrap().Children(func() {
+		for _, part := range parts {
+			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+				ui.Box(c).Size(8, 8).Radius(2).Background(part.color)
+				ui.Text(c, part.name).FontSize(13).TextColor(t.TextMuted)
+				number(c, tokenNumber(part.value)).FontSize(13)
+			})
+		}
+	})
+}
+
+// openCostDetail opens the cost tab of 诊断 on the current Agent scope.
+func (a *App) openCostDetail() {
+	a.sessions.agent = cmp.Or(a.sessionAgentFilter(), allAgents)
+	a.page = insightsPage
+	a.insights.tab = tabCost
 }
 
 func periodText(period int) string {

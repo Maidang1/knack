@@ -54,7 +54,8 @@ var pluginRoles = Roles{User: []string{"user"}, Assistant: []string{"assistant"}
 type plugin struct {
 	mu         sync.Mutex
 	file, home string
-	source     string // kept, so a new worker runs the script the statistics are versioned by
+	info       *AgentInfo // optional capability declarations from registerAgent
+	source     string     // kept, so a new worker runs the script the statistics are versioned by
 	worker     *pluginProcess
 	// Consecutive timeouts or crashes by request kind. Kept apart because one
 	// kind succeeding says nothing of the other: a quick list would otherwise
@@ -96,6 +97,32 @@ func (w *pluginProcess) stop() int {
 type pluginFormat struct {
 	customFormat
 	p *plugin
+}
+
+// Rich standard records may supply statistics/replay operations in addition to
+// the original role-based fields. Both plugin transports use the same reducer.
+func (f pluginFormat) version() string { return "plugin/3/" + f.hash }
+func (f pluginFormat) Info() AgentInfo {
+	if f.p.info == nil {
+		return f.customFormat.Info()
+	}
+	info := *f.p.info
+	info.ID, info.Name = Agent(f.cfg.ID), f.cfg.Name
+	return info
+}
+func (f pluginFormat) parse(p *parser, o object, at time.Time) {
+	if o["stats"] != nil {
+		applyStats(p, o, at)
+	} else {
+		f.customFormat.parse(p, o, at)
+	}
+}
+func (f pluginFormat) replay(tr *transcriptReader, o object, at time.Time) {
+	if o["replay"] != nil {
+		applyReplay(tr, o, at)
+	} else {
+		f.customFormat.replay(tr, o, at)
+	}
 }
 
 // LoadPlugins registers the Agents defined by the .js files of dir, replacing
@@ -169,6 +196,7 @@ func loadPlugin(file, home string) (*plugin, string, string, string, error) {
 	if err != nil {
 		return nil, "", "", "", err
 	}
+	p.info = resp.Info
 	// The version follows the script, so editing it rebuilds this Agent's statistics.
 	sum := sha256.Sum256(src)
 	return p, hex.EncodeToString(sum[:6]), resp.ID, resp.Name, nil
@@ -344,7 +372,7 @@ func discoverPlugin(ctx context.Context, f pluginFormat, files *[]logFile) ([]st
 	own := make(map[string]bool, len(listed))
 	partial, shared := err != nil, 0
 	for _, file := range listed {
-		if others[LogPath(file.path)] || own[file.path] {
+		if others[LogPath(file.path)] || own[file.path] || reservedLogPath(LogPath(file.path), f.p.home, agent) {
 			shared++
 			continue
 		}
@@ -363,6 +391,37 @@ func discoverPlugin(ctx context.Context, f pluginFormat, files *[]logFile) ([]st
 		warnings = append(warnings, fmt.Sprintf("%s：%d 个会话已属于其他 Agent 或重复列出", agent, shared))
 	}
 	return warnings, partial
+}
+
+// Reserve declared roots even when discovery skipped a file (depth, suffix,
+// permissions or file budget). Resolve aliases too, so a user plugin cannot
+// claim a built-in log through a symlink outside the reserved tree.
+func reservedLogPath(file, home string, agent Agent) bool {
+	paths := []string{filepath.Clean(file)}
+	if resolved, err := filepath.EvalSymlinks(file); err == nil {
+		paths = append(paths, resolved)
+	}
+	for _, f := range formats() {
+		if f.Info().ID == agent {
+			continue
+		}
+		for _, root := range f.layout().roots {
+			root = filepath.Join(home, filepath.FromSlash(root))
+			roots := []string{root}
+			if resolved, err := filepath.EvalSymlinks(root); err == nil {
+				roots = append(roots, resolved)
+			}
+			for _, base := range roots {
+				for _, path := range paths {
+					rel, err := filepath.Rel(base, path)
+					if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
 }
 
 // readPlugin rebuilds a session whenever its version changes: only the script

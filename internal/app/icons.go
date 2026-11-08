@@ -2,7 +2,6 @@ package app
 
 import (
 	"embed"
-	"fmt"
 	"hash/fnv"
 	"path/filepath"
 	"strings"
@@ -267,38 +266,16 @@ func issueGlyph(k skill.IssueKind) string {
 	return "alert"
 }
 
-// brandedGlyphs caches single-color logos redrawn in their agent's color.
-var brandedGlyphs = map[string]*ui.SVG{}
-
-// sideLogo is the icon a root has in the sidebar, drawn in its own colors:
-// an agent's full-color logo, or its single-color logo redrawn in the
-// agent's brand color. It returns nil when the root has no logo, and the
-// plain mono logo with plain=true when the brand color is too dark to read
-// on the sidebar, so the caller can draw it in the text color.
-func sideLogo(home string, r skill.Root) (svg *ui.SVG, plain bool) {
-	l := lookOf(home, r)
-	key, ok := strings.CutPrefix(l.glyph, "logo:")
+// sideLogo is the mark an Agent has in a list: its full-color logo, else its
+// single-color one, which an Image draws in the text color. It is nil when
+// the Agent has no logo.
+func sideLogo(home string, r skill.Root) *ui.SVG {
+	key, ok := strings.CutPrefix(lookOf(home, r).glyph, "logo:")
 	if !ok {
-		return nil, false
+		return nil
 	}
 	if svg := svgs["color:"+key]; svg != nil {
-		return svg, false
+		return svg
 	}
-	if int(l.color.R)*299+int(l.color.G)*587+int(l.color.B)*114 < 90*1000 {
-		return svgs[l.glyph], true
-	}
-	if svg := brandedGlyphs[key]; svg != nil {
-		return svg, false
-	}
-	data, err := logoFS.ReadFile("logos/" + key + ".svg")
-	if err != nil {
-		return nil, false
-	}
-	hex := fmt.Sprintf("#%02x%02x%02x", l.color.R, l.color.G, l.color.B)
-	svg, err = ui.ParseSVG([]byte(strings.Replace(string(data), `fill="currentColor"`, `fill="`+hex+`"`, 1)))
-	if err != nil {
-		return nil, false
-	}
-	brandedGlyphs[key] = svg
-	return svg, false
+	return svgs["logo:"+key]
 }

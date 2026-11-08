@@ -117,6 +117,7 @@ func (r *Reader) save() error {
 
 func (r *Reader) snapshot(out *Snapshot, logs []logFile) error {
 	byPath := map[string]int{}
+	owners := r.fallbackOwners(logs)
 	for _, f := range logs {
 		if r.files[f.path].State.Session.ParentID != "" {
 			continue
@@ -125,7 +126,7 @@ func (r *Reader) snapshot(out *Snapshot, logs []logFile) error {
 		if st == nil {
 			continue
 		}
-		s, err := copySession(st)
+		s, err := copySession(st, f.path, owners)
 		if err != nil {
 			return err
 		}
@@ -136,7 +137,7 @@ func (r *Reader) snapshot(out *Snapshot, logs []logFile) error {
 		if r.files[f.path].State.Session.ParentID == "" {
 			continue
 		}
-		child, err := copySession(r.files[f.path])
+		child, err := copySession(r.files[f.path], f.path, owners)
 		if err != nil {
 			return err
 		}
@@ -175,7 +176,7 @@ func (r *Reader) snapshot(out *Snapshot, logs []logFile) error {
 	return nil
 }
 
-func copySession(st *fileState) (Session, error) {
+func copySession(st *fileState, path string, owners map[string]string) (Session, error) {
 	// Detach slices from the mutable reader checkpoint; callers can hold older
 	// snapshots while the next refresh runs without observing mutation or races.
 	b, err := json.Marshal(st.State.Session)
@@ -186,6 +187,7 @@ func copySession(st *fileState) (Session, error) {
 	if err := json.Unmarshal(b, &s); err != nil {
 		return Session{}, err
 	}
+	appendFallbacks(&s, st.State.Usage, path, owners)
 	s.Incomplete = st.Pending || st.BadLines > 0 || st.LargeLines > 0
 	if !st.State.FormatKnown {
 		s.UnsupportedReason = "无法识别本地日志格式，暂不支持"

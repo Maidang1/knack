@@ -165,9 +165,9 @@ func reaches(raw []byte, needles [][]byte) bool {
 	return false
 }
 
-// codexSkills records the skills a Codex tool call loads by printing their
+// readSkills records the skills a Codex tool call loads by printing their
 // SKILL.md.
-func (p *parser) codexSkills(id string, at time.Time, raw json.RawMessage) {
+func (p *parser) readSkills(id string, at time.Time, raw json.RawMessage) {
 	for _, r := range skillReads(raw) {
 		name, dir := r[0], r[1]
 		if name == "." || name == ".." {

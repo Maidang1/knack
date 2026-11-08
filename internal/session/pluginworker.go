@@ -60,6 +60,7 @@ type pluginSession struct {
 type pluginResponse struct {
 	Error   string          `json:"error,omitempty"`
 	ID      string          `json:"id,omitempty"`
+	Info    *AgentInfo      `json:"info,omitempty"`
 	Name    string          `json:"name,omitempty"`
 	Files   []pluginSession `json:"files,omitempty"`
 	Skipped int             `json:"skipped,omitempty"`
@@ -208,7 +209,18 @@ func (w *pluginWorker) load(r pluginRequest) (pluginResponse, error) {
 	if !ok || !okRead {
 		return pluginResponse{}, fmt.Errorf("registerAgent 需要 list 和 read 函数")
 	}
-	return pluginResponse{ID: field(def, "id"), Name: field(def, "name")}, nil
+	resp := pluginResponse{ID: field(def, "id"), Name: field(def, "name")}
+	if v := def.Get("info"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
+		raw, err := w.jsonFn(goja.Undefined(), v)
+		if err != nil {
+			return pluginResponse{}, err
+		}
+		resp.Info = &AgentInfo{}
+		if err := json.Unmarshal([]byte(raw.String()), resp.Info); err != nil {
+			return pluginResponse{}, err
+		}
+	}
+	return resp, nil
 }
 
 // install defines the only ways a script can reach the machine.

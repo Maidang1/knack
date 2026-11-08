@@ -11,51 +11,75 @@ import (
 	"knack/internal/skill"
 )
 
-// The home page is flat on the window background, as in the design: a
-// headline sentence, a row of figures between hairlines, then two rows of
-// a wide block beside a 356-wide column. Narrow panes stack the blocks.
+// The home page is flat on the window background: who and what the period
+// amounted to, a row of figures between hairlines, then a wide column of how
+// the Agents were used beside a narrow one of what waits and what was recent.
+// The two columns stack independently, so neither leaves a gap; narrow panes
+// merge them into one.
 const (
-	homeSide = 356
-	homeGap  = 36
+	homeSide = 342
+	homeGap  = 40
 )
 
 func (a *App) overviewPane(c *ui.Context) {
 	t := c.Theme()
 	d := a.overviewData()
+	p := a.profileData()
 	width, _ := c.Size()
 	contentW := width - a.sidebarWidth() - 2*32
+	wide := contentW >= 860
+	heatWidth := contentW
+	if wide {
+		heatWidth -= homeSide + homeGap
+	}
+	color := token(t, "ink-2")
+	if agent := overviewFilter(d.period, d.agent, time.Now()).Agent; agent != "" {
+		color = agentColor(agent, t.Dark)
+	}
+	block := func(body func()) func() {
+		return func() { ui.Column(c).Children(body) }
+	}
+	heat := func() { a.profileHeatmap(c, p, heatWidth) }
+	mix := func() { ui.Column(c).Gap(22).Children(func() { a.profileMix(c, d) }) }
+	agents := block(func() { a.agentUsage(c, d) })
+	models := block(func() { a.sessionModelSpeeds(c, &sessionDetailData{models: p.models}, color) })
+	inbox := block(func() { a.overviewIssues(c, d) })
+	recent := block(func() { a.recentSessions(c, d) })
+	rhythm := func() { a.profileRhythm(c, p) }
+	ranking := func() { a.profileRanking(c, p) }
 	ui.Scroll(c.Key("overview-scroll")).Grow(1).MinHeight(0).Label("总览内容").Children(func() {
-		ui.Column(c).Padding(24, 32, 28, 32).Gap(22).Children(func() {
+		ui.Column(c).Padding(26, 32, 24, 32).Gap(24).Children(func() {
 			if a.sessions.err != "" {
 				ui.Text(c, a.sessions.err).FontSize(13).TextColor(t.Warning)
 			}
 			a.partialBanner(c)
-			a.homeHeadline(c, d)
+			a.homeHero(c, d, p)
 			a.metricStrip(c, d, contentW < 640)
-			if contentW < 860 {
-				a.dailyChart(c, d)
-				ui.Column(c).Children(func() { a.overviewIssues(c, d) })
-				a.agentUsage(c, d)
-				ui.Column(c).Children(func() { a.recentSessions(c, d) })
+			stack := func(e ui.Element, sections ...func()) {
+				e.Gap(30).Children(func() {
+					for _, section := range sections {
+						section()
+					}
+				})
+			}
+			if wide {
+				ui.Row(c).Gap(homeGap).AlignItems(ui.Start).Children(func() {
+					stack(ui.Column(c).Grow(1).MinWidth(0), heat, mix, agents, models)
+					stack(ui.Column(c).Width(homeSide).Shrink(0), inbox, recent, rhythm, ranking)
+				})
 			} else {
-				for _, pair := range [][2]func(){
-					{func() { a.dailyChart(c, d) }, func() { a.overviewIssues(c, d) }},
-					{func() { a.agentUsage(c, d) }, func() { a.recentSessions(c, d) }},
-				} {
-					ui.Row(c).Gap(homeGap).AlignItems(ui.Start).Children(func() {
-						ui.Column(c).Grow(1).MinWidth(0).Children(pair[0])
-						ui.Column(c).Width(homeSide).Shrink(0).Children(pair[1])
-					})
-				}
+				stack(ui.Column(c), heat, inbox, mix, agents, recent, models, rhythm, ranking)
 			}
 			a.overviewNotes(c, d)
 		})
 	})
 }
 
-// homeHeadline says what the period amounted to, then what needs the person.
-func (a *App) homeHeadline(c *ui.Context, d *overviewData) {
+// homeHero greets the person with what the period amounted to, then what
+// needs them, then what is true of all their history.
+func (a *App) homeHero(c *ui.Context, d *overviewData, p *profileData) {
 	t := c.Theme()
+	muted := token(t, "ink-3")
 	span := []string{"今天", "过去 7 天", "过去 30 天", "全部记录中"}[max(0, min(d.period, 3))]
 	active := 0
 	for _, ag := range d.agents {
@@ -63,15 +87,16 @@ func (a *App) homeHeadline(c *ui.Context, d *overviewData) {
 			active++
 		}
 	}
-	title := fmt.Sprintf("%s，%d 个 Agent 跑了 %d 个会话", span, active, d.summary.Sessions)
+	title := fmt.Sprintf("%s，%s %d 个 Agent 跑了 %d 个会话", p.name, span, active, d.summary.Sessions)
 	if d.summary.Sessions == 0 {
-		title = span + "没有本地会话"
+		title = p.name + "，" + span + "没有本地会话"
 	}
-	var parts []string
+	var habits []string
 	if total := d.summary.Tokens.Total(); total > 0 && len(d.agents) > 1 && d.agents[0].summary.Tokens.Total() > 0 {
 		top := d.agents[0]
-		parts = append(parts, fmt.Sprintf("%s 占用 %.0f%% Token", sessionAgentName(top.id), 100*float64(top.summary.Tokens.Total())/float64(total)))
+		habits = append(habits, fmt.Sprintf("%s 占用 %.0f%% Token", sessionAgentName(top.id), 100*float64(top.summary.Tokens.Total())/float64(total)))
 	}
+	habits = append(habits, homeHabits(d.summary, p.tools)...)
 	var waiting []string
 	if n := a.countKind(skill.IssueBroken); n > 0 {
 		waiting = append(waiting, fmt.Sprintf("%d 个技能断链", n))
@@ -79,14 +104,34 @@ func (a *App) homeHeadline(c *ui.Context, d *overviewData) {
 	if n := len(d.anomalies); n > 0 {
 		waiting = append(waiting, fmt.Sprintf("%d 个会话有耗时异常", n))
 	}
+	settled := "没有需要处理的事"
 	if len(waiting) > 0 {
-		parts = append(parts, "有 "+strings.Join(waiting, "、")+"等你处理")
-	} else {
-		parts = append(parts, "没有需要处理的事")
+		settled = "有 " + strings.Join(waiting, "、") + "等你处理"
 	}
-	ui.Column(c).Gap(6).Children(func() {
-		ui.Text(c, title).FontSize(20).FontWeight(600).MaxLines(2)
-		ui.Text(c, strings.Join(parts, "；")+"。").FontSize(14).TextColor(t.TextMuted).MaxLines(2)
+	line := settled + "。"
+	if len(habits) > 0 {
+		line = strings.Join(habits, "，") + "；" + line
+	}
+	lifetime := []string{fmt.Sprintf("累计 %s 个会话", groupDigits(p.sessions)), fmt.Sprintf("%s 个技能", groupDigits(len(a.libraryEntries())))}
+	if !p.first.IsZero() {
+		lifetime = append(lifetime, "首次记录 "+p.first.Local().Format("2006/01/02"))
+	}
+	ui.Row(c).Gap(18).AlignItems(ui.Center).Label("个人资料").Children(func() {
+		ui.Box(c).Size(68, 68).Shrink(0).Radius(34).Background(t.Accent).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+			ui.Text(c, strings.ToUpper(string([]rune(p.name)[:1]))).FontSize(28).FontWeight(600).TextColor(t.AccentText)
+		})
+		ui.Column(c).Grow(1).MinWidth(0).Gap(5).Children(func() {
+			ui.Text(c, title).FontSize(22).FontWeight(600).MaxLines(2)
+			ui.Text(c, line).FontSize(13.5).TextColor(t.TextMuted).MaxLines(2)
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Row(c).Shrink(0).Gap(4).Padding(2, 7).Radius(5).Background(t.SurfaceHover).AlignItems(ui.Center).
+					Tooltip("统计只读取本机日志，不联网").Children(func() {
+					ui.Icon(c, glyph("lock")).FontSize(11).TextColor(muted)
+					ui.Text(c, "仅存于本机").FontSize(11).TextColor(t.TextMuted).SingleLine()
+				})
+				ui.Text(c, strings.Join(lifetime, " · ")).FontSize(12).TextColor(muted).SingleLine().Shrink(1).MinWidth(0)
+			})
+		})
 	})
 }
 
@@ -97,6 +142,7 @@ func (a *App) overviewNotes(c *ui.Context, d *overviewData) {
 	if d.summary.Incomplete {
 		notes = append(notes, "部分日志或用量暂不支持，Token 为已识别部分")
 	}
+	notes = append([]string{"全部数据只来自本机日志，不会上传"}, notes...)
 	notes = append(notes, "速率与时长均为估算", "缓存命中 = 缓存读取 / 全部输入 Token")
 	ui.Column(c).Gap(4).Children(func() {
 		ui.Text(c, strings.Join(notes, " · ")).FontSize(11.5).TextColor(muted).MaxLines(2)
@@ -136,8 +182,8 @@ func (a *App) metrics(c *ui.Context, d *overviewData) []metric {
 	m := []metric{
 		{label: "会话", value: groupDigits(s.Sessions), note: "全部本地会话", noteColor: muted},
 		{label: "Token", value: tokenNumber(s.Tokens.Total()), note: fmt.Sprintf("输入 %s · 输出 %s", tokenNumber(s.Tokens.InputTotal()), tokenNumber(s.Tokens.Output)), noteColor: muted},
-		{label: "输出速率 · 中位", value: "暂不支持", note: "没有可计算的输出速率", noteColor: muted},
-		{label: "技能调用", value: "0", note: "日志里没有 Skill 调用", noteColor: muted},
+		{label: "活跃时长", value: "—", note: "没有可识别的轮次", noteColor: muted},
+		{label: "估算费用", value: "—", note: "没有记录", noteColor: muted},
 		{label: "耗时异常", value: fmt.Sprint(len(d.anomalies)), note: fmt.Sprintf("共 %d 处 · 慢步骤 / 重试 / 中断", len(s.Anomalies)), noteColor: muted, warn: len(d.anomalies) > 0},
 	}
 	if d.period < 3 {
@@ -161,26 +207,20 @@ func (a *App) metrics(c *ui.Context, d *overviewData) []metric {
 	if s.Requests > 0 && s.UnmeteredRequests == s.Requests && s.Tokens.Total() == 0 {
 		m[1].value, m[1].note = "暂不支持", "日志没有受支持的用量字段"
 	}
-	if s.OutputRate.Samples > 0 {
-		m[2].value = fmt.Sprintf("%.0f tok/s", s.OutputRate.Median)
-		m[2].note = fmt.Sprintf("P90 %.0f · %d 次请求 · 估算", s.OutputRate.P90, s.OutputRate.Samples)
+	if timing := a.usageTimingFor("", d); timing.turns > 0 {
+		m[2].value = "≈ " + session.FormatDuration(timing.phases.total)
+		m[2].note = fmt.Sprintf("%d 轮 · 平均每轮 ≈ %s", timing.turns, session.FormatDuration(timing.phases.total/time.Duration(timing.turns)))
 	}
-	if calls := skillCalls(s); calls > 0 {
-		m[3].value = groupDigits(calls)
-		m[3].note = fmt.Sprintf("来自 %d 个技能", len(s.Skills))
+	if cost := a.insightData().Cost; cost.Total > 0 || cost.UnpricedTokens.Total() > 0 {
+		m[3].value, m[3].note = dollars(cost.Total), "按官方 API 价格估算"
+		if n := cost.UnpricedTokens.Total(); n > 0 {
+			m[3].note = tokenNumber(n) + " Token 未定价"
+		}
 	}
 	if m[4].warn {
 		m[4].noteColor = t.Warning
 	}
 	return m
-}
-
-func skillCalls(s session.Summary) int {
-	n := 0
-	for _, k := range s.Skills {
-		n += k.Calls
-	}
-	return n
 }
 
 // metricStrip is a row of figures between hairlines; narrow panes wrap it
@@ -316,7 +356,7 @@ func (a *App) recentSessions(c *ui.Context, d *overviewData) {
 		ui.Text(c, "当前范围没有本地会话").FontSize(13).TextColor(t.TextMuted).Padding(8, 0)
 		return
 	}
-	for _, s := range d.recent[:min(6, len(d.recent))] {
+	for _, s := range d.recent[:min(5, len(d.recent))] {
 		row := listRow(c, s.Path, recentRowLabel(s))
 		row.Children(func() {
 			ui.Box(c).Size(3, 30).Radius(2).Shrink(0).Background(agentColor(s.Agent, t.Dark))

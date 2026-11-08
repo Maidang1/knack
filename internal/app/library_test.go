@@ -125,8 +125,7 @@ func TestSidebarSearchFindsSessions(t *testing.T) {
 func TestUsagePage(t *testing.T) {
 	a := agentPageFixture(t)
 	tt := ui.NewTester(a.View, 1280, 1000)
-	click(t, tt, "用量与耗时")
-	if a.page != usagePage {
+	if a.page != "overview" {
 		t.Fatalf("page %s", a.page)
 	}
 	d := a.overviewData()
@@ -137,7 +136,7 @@ func TestUsagePage(t *testing.T) {
 	if _, ok := tt.Find("耗时构成"); !ok {
 		t.Fatalf("usage page misses timing: %q", tt.Texts())
 	}
-	if !tt.HasText(fmt.Sprintf("%d 轮", timing.turns)) && !containsPrefix(tt.Texts(), fmt.Sprintf("%d 轮 · ", timing.turns)) {
+	if !containsPrefix(tt.Texts(), fmt.Sprintf("%d 轮 · ", timing.turns)) {
 		t.Fatalf("timing summary missing: %q", tt.Texts())
 	}
 }
@@ -155,9 +154,11 @@ func containsPrefix(texts []string, prefix string) bool {
 func TestUsagePageSplitScroll(t *testing.T) {
 	for _, dark := range []bool{false, true} {
 		a := agentPageFixture(t)
-		tt := ui.NewTester(a.View, 1280, usageSplitHeight)
+		tt := ui.NewTester(a.View, 1440, usageSplitHeight)
 		tt.SetDark(dark)
-		click(t, tt, "用量与耗时")
+		click(t, tt, "Agents")
+		openAgent(t, tt, "Claude")
+		click(t, tt, "Agent 用量")
 		left, okLeft := tt.Find("用量左栏")
 		right, okRight := tt.Find("用量右栏")
 		if !okLeft || !okRight || right.X <= left.X {
