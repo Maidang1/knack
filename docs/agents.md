@@ -89,7 +89,7 @@ Anthropic 消息格式的日志把工具调用和结果放在 `content` 块里�
 
 ## JS 插件
 
-用户插件把脚本放到 `~/.config/skill-manager/plugins/` 下，一个 `.js` 文件定义一个 Agent，不需要其他配置。脚本调用 `knack.registerAgent` 注册自己，提供两个函数：`list` 列出会话，`read` 把一个会话转成[标准记录](#标准记录)。
+用户插件放在 `~/.config/skill-manager/plugins/` 下。一个 `.js` 文件定义一个 Agent，也可以是一个带 `plugin.json` 的目录。在设置的「插件」里可以从 GitHub 仓库、本机目录、`.js` 文件或 ZIP 安装；GitHub 取最新 release 里适合本机的 zip，没有带平台名的 zip 时用通用 zip，再没有就用源码，没有 release 时用默认分支最新提交。脚本调用 `knack.registerAgent` 注册自己，或在模块里 `export function list` 和 `export function read`（这时 `id` 和 `name` 写在 `plugin.json`）。`list` 列出会话，`read` 把一个会话转成[标准记录](#标准记录)。
 
 读取 `时间戳|角色|正文` 格式的纯文本日志：
 
@@ -171,9 +171,17 @@ knack.registerAgent({
 
 路径必须是绝对路径或以 `~/` 开头，可以指向主目录以外。
 
+目录插件在 `plugin.json` 里写身份，模块导出 `list` 和 `read`：
+
+```json
+{ "id": "my-agent", "name": "My Agent", "version": "1.0.0", "main": "index.js" }
+```
+
+`main` 默认 `index.js`，也可以是同目录下的 `.ts`。`export function list` 和 `export function read` 的参数、返回值与 `registerAgent` 里的两个函数相同。没有这两个导出时，脚本仍要调用 `knack.registerAgent`，且 `id` 必须和 `plugin.json` 一致。
+
 ### 用户插件运行规则
 
-- 每个插件运行在自己的 worker 进程里（Knack 程序的另一份实例），脚本崩溃或卡死都不会让 Knack 退出，worker 也随 Knack 退出而结束。
+- 每个插件运行在自己的 worker 进程里（Knack 程序的另一份实例）。引擎是 [moejs](https://github.com/MoeForge/moejs)。脚本崩溃或卡死都不会让 Knack 退出，worker 也随 Knack 退出而结束。
 - 脚本可以运行任意 JavaScript，但只有上面这些方法能接触本机：没有 `require`、`fetch`、定时器，也没有写文件、联网或启动进程的方法。安装第三方插件前仍应读一遍：它能读取你有权读取的所有文件，并显示在 Knack 里。
 - 代码同步执行，`list` 和 `read` 不能返回 Promise。
 - 每个插件单线程执行，全局变量在多次调用间保留，可以用来做缓存；worker 被重启后清空，统计不能依赖它。

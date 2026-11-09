@@ -72,6 +72,7 @@ var registry struct {
 	sync.RWMutex
 	custom, plugins          []format
 	warnings, pluginWarnings []string
+	pluginStatus             []PluginStatus
 }
 
 func formats() []format {

@@ -18,12 +18,13 @@ import (
 	"time"
 )
 
-// A plugin is a JavaScript file that defines one Agent: list names its
-// sessions and read turns one into normalized records, which the rules of a
-// custom Agent then count. A script may run any JavaScript, but it runs in a
-// worker process (see pluginworker.go) and reaches the machine only through the
-// knack methods, none of which writes, opens the network or starts a process.
-// See docs/agents.md.
+// A plugin is a JavaScript or TypeScript module that defines one Agent: list
+// names its sessions and read turns one into normalized records, which the
+// rules of a custom Agent then count. It is either a .js file or a directory
+// with plugin.json and a main module. A script may run any JavaScript, but it
+// runs on moejs in a worker process (see pluginworker.go) and reaches the
+// machine only through the knack methods, none of which writes, opens the
+// network or starts a process. See docs/agents.md.
 
 // Variables so tests can lower them.
 var (
@@ -52,11 +53,12 @@ var pluginRoles = Roles{User: []string{"user"}, Assistant: []string{"assistant"}
 // plugin is the app's handle on one script. Its worker starts when needed and
 // is replaced after a timeout or crash; scans and replays take turns using it.
 type plugin struct {
-	mu         sync.Mutex
-	file, home string
-	info       *AgentInfo // optional capability declarations from registerAgent
-	source     string     // kept, so a new worker runs the script the statistics are versioned by
-	worker     *pluginProcess
+	mu                 sync.Mutex
+	file, home         string
+	agentID, agentName string     // from plugin.json, empty for a loose script
+	info               *AgentInfo // optional capability declarations from registerAgent
+	source             string     // kept, so a new worker runs the script the statistics are versioned by
+	worker             *pluginProcess
 	// Consecutive timeouts or crashes by request kind. Kept apart because one
 	// kind succeeding says nothing of the other: a quick list would otherwise
 	// forgive a read that always hangs.
@@ -125,10 +127,20 @@ func (f pluginFormat) replay(tr *transcriptReader, o object, at time.Time) {
 	}
 }
 
-// LoadPlugins registers the Agents defined by the .js files of dir, replacing
-// any loaded before. Call it after LoadAgentConfig. A missing directory defines
-// none; a broken plugin is skipped and the returned problems are also listed in
-// every snapshot's warnings.
+// pluginEntry is one thing in the plugins directory: a loose script, or a
+// directory that holds plugin.json.
+type pluginEntry struct {
+	name string
+	path string
+	dir  bool
+}
+
+// LoadPlugins registers the Agents defined by the .js files and plugin
+// directories of dir, replacing any loaded before. Call it after
+// LoadAgentConfig. A missing directory defines none; a broken plugin is
+// skipped and the returned problems are also listed in every snapshot's
+// warnings. Names starting with "." are left out, including an install
+// still in progress.
 func LoadPlugins(dir, home string) []string {
 	var plugins []format
 	var problems []string
@@ -136,7 +148,24 @@ func LoadPlugins(dir, home string) []string {
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		problems = append(problems, "plugins：无法读取目录")
 	}
-	entries = slices.DeleteFunc(entries, func(e os.DirEntry) bool { return e.IsDir() || !strings.HasSuffix(e.Name(), ".js") })
+	var sources []pluginEntry
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+		path := filepath.Join(dir, name)
+		if e.IsDir() {
+			if _, err := os.Stat(filepath.Join(path, "plugin.json")); err != nil {
+				continue
+			}
+			sources = append(sources, pluginEntry{name: name, path: path, dir: true})
+			continue
+		}
+		if strings.HasSuffix(name, ".js") {
+			sources = append(sources, pluginEntry{name: name, path: path})
+		}
+	}
 	// This runs while the app starts, so slow scripts wait side by side.
 	type result struct {
 		p        *plugin
@@ -144,12 +173,12 @@ func LoadPlugins(dir, home string) []string {
 		id, name string
 		err      error
 	}
-	results := make([]result, len(entries))
+	results := make([]result, len(sources))
 	var wg sync.WaitGroup
-	for i, e := range entries {
+	for i, e := range sources {
 		wg.Go(func() {
 			r := &results[i]
-			r.p, r.hash, r.id, r.name, r.err = loadPlugin(filepath.Join(dir, e.Name()), home)
+			r.p, r.hash, r.id, r.name, r.err = loadPluginEntry(e, home)
 		})
 	}
 	wg.Wait()
@@ -159,7 +188,9 @@ func LoadPlugins(dir, home string) []string {
 			taken = append(taken, f.Info())
 		}
 	}
+	statuses := make([]PluginStatus, 0, len(results))
 	for i, r := range results {
+		status := pluginStatusOf(sources[i])
 		err := r.err
 		if err == nil {
 			r.name, err = checkIdentity(r.id, r.name, taken)
@@ -168,17 +199,21 @@ func LoadPlugins(dir, home string) []string {
 			if r.p != nil {
 				r.p.close()
 			}
-			problems = append(problems, fmt.Sprintf("plugins/%s：%s", entries[i].Name(), err))
+			status.Problem = err.Error()
+			problems = append(problems, fmt.Sprintf("plugins/%s：%s", sources[i].name, err))
+			statuses = append(statuses, status)
 			continue
 		}
+		status.ID, status.Title = r.id, r.name
 		cfg := AgentConfig{ID: r.id, Name: r.name, Fields: pluginFields, Roles: pluginRoles}
 		f := pluginFormat{customFormat{cfg: cfg, hash: r.hash}, r.p}
 		plugins = append(plugins, f)
 		taken = append(taken, f.Info())
+		statuses = append(statuses, status)
 	}
 	registry.Lock()
 	previous := registry.plugins
-	registry.plugins, registry.pluginWarnings = plugins, problems
+	registry.plugins, registry.pluginWarnings, registry.pluginStatus = plugins, problems, statuses
 	registry.Unlock()
 	for _, f := range previous {
 		f.(pluginFormat).p.close()
@@ -186,12 +221,32 @@ func LoadPlugins(dir, home string) []string {
 	return problems
 }
 
-func loadPlugin(file, home string) (*plugin, string, string, string, error) {
+func loadPluginEntry(e pluginEntry, home string) (*plugin, string, string, string, error) {
+	file := e.path
+	var id, name string
+	if e.dir {
+		manifest, err := readPluginManifest(e.path)
+		if err != nil {
+			return nil, "", "", "", err
+		}
+		id, name = manifest.ID, manifest.Name
+		if manifest.Main == "" {
+			manifest.Main = "index.js"
+		}
+		if !filepath.IsLocal(manifest.Main) {
+			return nil, "", "", "", fmt.Errorf("main 必须是插件目录里的文件")
+		}
+		file = filepath.Join(e.path, manifest.Main)
+	}
 	src, err := readConfig(file)
 	if err != nil {
 		return nil, "", "", "", err
 	}
-	p := &plugin{file: filepath.Base(file), home: home, source: string(src), failures: map[string]int{}}
+	label := e.name
+	if e.dir {
+		label = e.name + "/" + filepath.Base(file)
+	}
+	p := &plugin{file: label, home: home, agentID: id, agentName: name, source: string(src), failures: map[string]int{}}
 	resp, err := p.start(context.Background())
 	if err != nil {
 		return nil, "", "", "", err
@@ -222,7 +277,10 @@ func (p *plugin) start(ctx context.Context) (pluginResponse, error) {
 	if p.worker, err = startPluginProcess(cmd); err != nil {
 		return pluginResponse{}, fmt.Errorf("无法启动插件进程")
 	}
-	resp, err := p.exchange(ctx, pluginLoadLimit, pluginRequest{Op: "load", File: p.file, Home: p.home, Source: p.source, Memory: pluginMemoryLimit})
+	resp, err := p.exchange(ctx, pluginLoadLimit, pluginRequest{
+		Op: "load", File: p.file, Home: p.home, Source: p.source, Memory: pluginMemoryLimit,
+		AgentID: p.agentID, AgentName: p.agentName,
+	})
 	if err != nil && p.worker != nil {
 		p.worker.stop()
 		p.worker = nil

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -19,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dop251/goja"
+	"github.com/MoeForge/moejs"
 	"github.com/klauspost/compress/zstd"
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
@@ -27,14 +28,13 @@ import (
 
 // A plugin's JavaScript runs in a worker: a copy of this program started with
 // pluginWorkerFlag, one request and one response at a time as JSON over
-// stdin and stdout. The app ends a worker by killing it, so nothing here needs
-// a timeout, and whatever a script does to the Go runtime stays in the worker.
+// stdin and stdout. The engine is moejs. The app ends a worker by killing it,
+// so a host call that never returns (a SQL query, for example) still cannot
+// hang Knack, and whatever a script does to the Go runtime stays in the worker.
 
 const (
 	pluginWorkerFlag    = "--knack-plugin-worker"
-	pluginOutOfMemory   = 3         // the worker's exit code when over its memory limit
-	pluginStackSize     = 10000     // ordinary runaway recursion fails in the script
-	pluginGoStack       = 256 << 20 // the memory limit does not see stacks
+	pluginOutOfMemory   = 3 // the worker's exit code when over its memory limit
 	maxPluginText       = 64 << 20
 	maxPluginRows       = 1 << 20
 	maxPluginMessage    = 128 << 20 // decoding one costs the app about three times this
@@ -48,6 +48,10 @@ type pluginRequest struct {
 	Source  string `json:"source,omitempty"`
 	Memory  int64  `json:"memory,omitempty"`
 	Session string `json:"session,omitempty"`
+	// AgentID and AgentName come from plugin.json. A module that exports list
+	// and read uses them; a script that calls registerAgent must agree with them.
+	AgentID   string `json:"agentId,omitempty"`
+	AgentName string `json:"agentName,omitempty"`
 }
 
 type pluginSession struct {
@@ -85,7 +89,7 @@ func ServePluginWorker() {
 			requests <- r
 		}
 	}()
-	w := &pluginWorker{items: map[string]goja.Value{}}
+	w := &pluginWorker{items: map[string]map[string]any{}}
 	for r := range requests {
 		b, err := encodeMessage(w.handle(r))
 		if err == nil && len(b)-4 > maxPluginMessage {
@@ -151,13 +155,33 @@ func watchMemory(limit int64) {
 	}
 }
 
+// propScript reads one property. typeofScript reports a value's typeof.
+// Run once in a runtime, each returns a function.
+var (
+	propScript   = mustCompileFunction("prop", "obj, key", "return obj == null ? undefined : obj[key];")
+	typeofScript = mustCompileFunction("kind", "value", "return typeof value;")
+)
+
+func mustCompileFunction(name, params, body string) *moejs.Script {
+	s, err := moejs.CompileFunction(name, params, body, moejs.FunctionOptions{})
+	if err != nil {
+		panic(err)
+	}
+	return s
+}
+
 // pluginWorker owns one JavaScript runtime. A runtime is single-threaded, and a
 // script can keep state between its calls.
 type pluginWorker struct {
-	vm                     *goja.Runtime
-	home, file             string
-	listFn, readFn, jsonFn goja.Callable
-	items                  map[string]goja.Value // what list returned, by log key
+	vm            *moejs.Runtime
+	propFn        moejs.Value
+	home, file    string
+	loaded        pluginRequest
+	listFn        moejs.Value
+	readFn        moejs.Value
+	items         map[string]map[string]any // what list returned, by log key
+	registered    moejs.Value
+	hasRegistered bool
 }
 
 func (w *pluginWorker) handle(r pluginRequest) (resp pluginResponse) {
@@ -172,9 +196,13 @@ func (w *pluginWorker) handle(r pluginRequest) (resp pluginResponse) {
 	case "load":
 		resp, err = w.load(r)
 	case "list":
-		resp.Files, resp.Skipped, err = w.listItems()
+		if err = w.ensure(); err == nil {
+			resp.Files, resp.Skipped, err = w.listItems()
+		}
 	case "read":
-		resp.Records, err = w.read(r.Session)
+		if err = w.ensure(); err == nil {
+			resp.Records, err = w.read(r.Session)
+		}
 	default:
 		err = fmt.Errorf("未知请求：%s", r.Op)
 	}
@@ -184,87 +212,304 @@ func (w *pluginWorker) handle(r pluginRequest) (resp pluginResponse) {
 	return resp
 }
 
+// ensure reloads the script after a memory limit dropped the runtime. The
+// caller holds no extra lock: the worker handles one request at a time.
+func (w *pluginWorker) ensure() error {
+	if w.vm != nil {
+		return nil
+	}
+	if w.loaded.Source == "" {
+		return fmt.Errorf("插件还没有加载")
+	}
+	_, err := w.load(w.loaded)
+	return err
+}
+
+func (w *pluginWorker) drop() {
+	w.vm = nil
+	w.propFn = moejs.Undefined()
+	w.listFn = moejs.Undefined()
+	w.readFn = moejs.Undefined()
+	w.registered = moejs.Undefined()
+	w.hasRegistered = false
+	w.items = map[string]map[string]any{}
+}
+
 func (w *pluginWorker) load(r pluginRequest) (pluginResponse, error) {
 	go watchMemory(r.Memory)
-	debug.SetMaxStack(pluginGoStack)
-	w.vm, w.home, w.file = goja.New(), r.Home, r.File
-	w.vm.SetMaxCallStackSize(pluginStackSize)
-	// Taken before the script runs, which may replace the global JSON.
-	w.jsonFn, _ = goja.AssertFunction(w.vm.Get("JSON").ToObject(w.vm).Get("stringify"))
-	var def *goja.Object
-	w.install(&def)
-	program, err := goja.Compile(r.File, r.Source, false)
+	w.drop()
+	w.loaded = r
+	w.home, w.file = r.Home, r.File
+	limit := r.Memory
+	if limit <= 0 {
+		limit = pluginMemoryLimit
+	}
+	w.vm = moejs.NewRuntime(moejs.Options{MemoryLimit: limit})
+	var err error
+	if w.propFn, err = w.vm.RunScript(propScript); err != nil {
+		w.drop()
+		return pluginResponse{}, err
+	}
+	if err := w.install(); err != nil {
+		w.drop()
+		return pluginResponse{}, err
+	}
+	compile := moejs.CompileWith
+	if strings.HasSuffix(r.File, ".ts") {
+		compile = func(name, source string, opts moejs.CompileOptions) (*moejs.Module, error) {
+			opts.TypeScript = true
+			return moejs.CompileWith(name, source, opts)
+		}
+	}
+	mod, err := compile(r.File, r.Source, moejs.CompileOptions{})
 	if err != nil {
+		w.drop()
 		return pluginResponse{}, err
 	}
-	if _, err := w.vm.RunProgram(program); err != nil {
+	if err := w.vm.Load(mod); err != nil {
+		w.drop()
 		return pluginResponse{}, err
 	}
-	if def == nil {
+	resp := pluginResponse{}
+	if listFn, readFn, ok, err := w.exportedFuncs(); err != nil {
+		w.drop()
+		return pluginResponse{}, err
+	} else if ok {
+		w.listFn, w.readFn = listFn, readFn
+		if r.AgentID == "" || r.AgentName == "" {
+			w.drop()
+			return pluginResponse{}, fmt.Errorf("plugin.json 需要 id 和 name")
+		}
+		resp.ID, resp.Name = r.AgentID, r.AgentName
+		if info, ok := w.vm.Export("info"); ok && !info.IsUndefined() && !info.IsNull() {
+			parsed, err := w.infoValue(info)
+			if err != nil {
+				w.drop()
+				return pluginResponse{}, err
+			}
+			resp.Info = parsed
+		}
+		return resp, nil
+	}
+	if !w.hasRegistered {
+		w.drop()
 		return pluginResponse{}, fmt.Errorf("没有调用 knack.registerAgent")
 	}
-	var ok, okRead bool
-	w.listFn, ok = goja.AssertFunction(def.Get("list"))
-	w.readFn, okRead = goja.AssertFunction(def.Get("read"))
-	if !ok || !okRead {
-		return pluginResponse{}, fmt.Errorf("registerAgent 需要 list 和 read 函数")
+	if err := w.funcsOf(w.registered); err != nil {
+		w.drop()
+		return pluginResponse{}, err
 	}
-	resp := pluginResponse{ID: field(def, "id"), Name: field(def, "name")}
-	if v := def.Get("info"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
-		raw, err := w.jsonFn(goja.Undefined(), v)
+	resp.ID, err = w.stringProp(w.registered, "id")
+	if err != nil {
+		w.drop()
+		return pluginResponse{}, err
+	}
+	resp.Name, err = w.stringProp(w.registered, "name")
+	if err != nil {
+		w.drop()
+		return pluginResponse{}, err
+	}
+	if r.AgentID != "" && resp.ID != r.AgentID {
+		w.drop()
+		return pluginResponse{}, fmt.Errorf("脚本注册的 id 与 plugin.json 不一致")
+	}
+	info, err := w.prop(w.registered, "info")
+	if err != nil {
+		w.drop()
+		return pluginResponse{}, err
+	}
+	if !info.IsUndefined() && !info.IsNull() {
+		resp.Info, err = w.infoValue(info)
 		if err != nil {
-			return pluginResponse{}, err
-		}
-		resp.Info = &AgentInfo{}
-		if err := json.Unmarshal([]byte(raw.String()), resp.Info); err != nil {
+			w.drop()
 			return pluginResponse{}, err
 		}
 	}
 	return resp, nil
 }
 
-// install defines the only ways a script can reach the machine.
-func (w *pluginWorker) install(def **goja.Object) {
-	k := w.vm.NewObject()
-	set := func(o *goja.Object, name string, v any) {
-		if err := o.Set(name, v); err != nil {
-			panic(err) // a fresh object accepts any property
+func (w *pluginWorker) exportedFuncs() (list, read moejs.Value, ok bool, err error) {
+	names := map[string]bool{}
+	if m := w.vm.Module(); m != nil {
+		for _, name := range m.Exports() {
+			names[name] = true
 		}
 	}
-	set(k, "home", w.home)
-	set(k, "readText", w.readText)
-	set(k, "stat", w.stat)
-	set(k, "walk", w.walk)
-	set(k, "query", w.query)
-	set(k, "registerAgent", func(call goja.FunctionCall) goja.Value {
-		o, ok := call.Argument(0).(*goja.Object)
-		if !ok || *def != nil {
-			panic(w.vm.NewTypeError("一个插件需要且只能注册一个 Agent"))
-		}
-		*def = o
-		return goja.Undefined()
-	})
-	set(w.vm.GlobalObject(), "knack", k)
-	console := w.vm.NewObject()
-	for _, name := range []string{"log", "info", "warn", "error"} {
-		set(console, name, func(call goja.FunctionCall) goja.Value {
-			parts := make([]string, len(call.Arguments))
-			for i, a := range call.Arguments {
-				parts[i] = a.String()
-			}
-			fmt.Fprintf(os.Stderr, "[%s] %s\n", w.file, strings.Join(parts, " "))
-			return goja.Undefined()
-		})
+	if !names["list"] || !names["read"] {
+		return moejs.Undefined(), moejs.Undefined(), false, nil
 	}
-	set(w.vm.GlobalObject(), "console", console)
+	list, ok = w.vm.Export("list")
+	if !ok {
+		return moejs.Undefined(), moejs.Undefined(), false, nil
+	}
+	read, ok = w.vm.Export("read")
+	if !ok {
+		return moejs.Undefined(), moejs.Undefined(), false, nil
+	}
+	if err = w.requireFn(list, "list"); err != nil {
+		return moejs.Undefined(), moejs.Undefined(), false, err
+	}
+	if err = w.requireFn(read, "read"); err != nil {
+		return moejs.Undefined(), moejs.Undefined(), false, err
+	}
+	return list, read, true, nil
 }
 
-func field(o *goja.Object, name string) string {
-	v := o.Get(name)
-	if v == nil || goja.IsUndefined(v) || goja.IsNull(v) {
-		return ""
+func (w *pluginWorker) funcsOf(def moejs.Value) error {
+	var err error
+	if w.listFn, err = w.prop(def, "list"); err != nil {
+		return err
 	}
-	return v.String()
+	if w.readFn, err = w.prop(def, "read"); err != nil {
+		return err
+	}
+	if err := w.requireFn(w.listFn, "list"); err != nil {
+		return fmt.Errorf("registerAgent 需要 list 和 read 函数")
+	}
+	if err := w.requireFn(w.readFn, "read"); err != nil {
+		return fmt.Errorf("registerAgent 需要 list 和 read 函数")
+	}
+	return nil
+}
+
+func (w *pluginWorker) requireFn(fn moejs.Value, name string) error {
+	kindFn, err := w.vm.RunScript(typeofScript)
+	if err != nil {
+		return err
+	}
+	kind, err := w.vm.CallFunction(kindFn, moejs.Undefined(), fn)
+	if err != nil {
+		return err
+	}
+	if kind.String() != "function" {
+		return fmt.Errorf("%s 必须是函数", name)
+	}
+	return nil
+}
+
+// install defines the only ways a script can reach the machine.
+func (w *pluginWorker) install() error {
+	rt := w.vm
+	logFn := func(_ *moejs.Realm, _ moejs.Value, args []moejs.Value) (moejs.Value, error) {
+		parts := make([]string, len(args))
+		for i, a := range args {
+			parts[i] = a.String()
+		}
+		fmt.Fprintf(os.Stderr, "[%s] %s\n", w.file, strings.Join(parts, " "))
+		return moejs.Undefined(), nil
+	}
+	native := func(fn func(args []moejs.Value) (any, error)) moejs.NativeFunc {
+		return func(_ *moejs.Realm, _ moejs.Value, args []moejs.Value) (moejs.Value, error) {
+			out, err := fn(args)
+			if err != nil {
+				return moejs.Undefined(), err
+			}
+			return rt.FromGo(out)
+		}
+	}
+	if err := rt.SetGlobal("console", map[string]any{
+		"log": moejs.NativeFunc(logFn), "info": moejs.NativeFunc(logFn),
+		"warn": moejs.NativeFunc(logFn), "error": moejs.NativeFunc(logFn),
+	}); err != nil {
+		return err
+	}
+	return rt.SetGlobal("knack", map[string]any{
+		"home": w.home,
+		"readText": native(func(args []moejs.Value) (any, error) {
+			text, err := w.readText(moejs.Arg(args, 0).String())
+			return text, err
+		}),
+		"stat": native(func(args []moejs.Value) (any, error) {
+			return w.stat(moejs.Arg(args, 0).String())
+		}),
+		"walk": native(func(args []moejs.Value) (any, error) {
+			files, err := w.walk(moejs.Arg(args, 0).String())
+			return files, err
+		}),
+		"query": native(func(args []moejs.Value) (any, error) {
+			params := make([]any, 0, len(args))
+			for i := 2; i < len(args); i++ {
+				v, err := rt.ToGo(args[i])
+				if err != nil {
+					return nil, err
+				}
+				params = append(params, v)
+			}
+			rows, err := w.query(moejs.Arg(args, 0).String(), moejs.Arg(args, 1).String(), params...)
+			return rows, err
+		}),
+		"registerAgent": moejs.NativeFunc(func(_ *moejs.Realm, _ moejs.Value, args []moejs.Value) (moejs.Value, error) {
+			v := moejs.Arg(args, 0)
+			if !v.IsObject() || w.hasRegistered {
+				return moejs.Undefined(), errors.New("一个插件需要且只能注册一个 Agent")
+			}
+			w.registered = v
+			w.hasRegistered = true
+			return moejs.Undefined(), nil
+		}),
+	})
+}
+
+func (w *pluginWorker) prop(obj moejs.Value, name string) (moejs.Value, error) {
+	return w.vm.CallFunction(w.propFn, moejs.Undefined(), obj, moejs.String(name))
+}
+
+func (w *pluginWorker) stringProp(obj moejs.Value, name string) (string, error) {
+	v, err := w.prop(obj, name)
+	if err != nil || v.IsUndefined() || v.IsNull() {
+		return "", err
+	}
+	return v.String(), nil
+}
+
+func (w *pluginWorker) infoValue(v moejs.Value) (*AgentInfo, error) {
+	raw, err := w.vm.AppendJSON(nil, v)
+	if err != nil {
+		return nil, err
+	}
+	info := &AgentInfo{}
+	if err := json.Unmarshal(raw, info); err != nil {
+		return nil, err
+	}
+	return info, nil
+}
+
+func (w *pluginWorker) callFn(fn moejs.Value, arg *moejs.Value) (moejs.Value, error) {
+	if arg == nil {
+		return w.vm.CallFunction(fn, moejs.Undefined())
+	}
+	return w.vm.CallFunction(fn, moejs.Undefined(), *arg)
+}
+
+func jsField(m map[string]any, name string) string {
+	return jsString(m[name])
+}
+
+func jsString(v any) string {
+	switch x := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return x
+	case float64:
+		if !math.IsInf(x, 0) && !math.IsNaN(x) && x == math.Trunc(x) && x >= math.MinInt64 && x <= math.MaxInt64 {
+			return strconv.FormatInt(int64(x), 10)
+		}
+		return strconv.FormatFloat(x, 'f', -1, 64)
+	case int:
+		return strconv.Itoa(x)
+	case int64:
+		return strconv.FormatInt(x, 10)
+	case json.Number:
+		return x.String()
+	case bool:
+		if x {
+			return "true"
+		}
+		return "false"
+	default:
+		return fmt.Sprint(x)
+	}
 }
 
 // resolve expands "~/" and refuses relative paths, whose meaning would depend
@@ -458,25 +703,28 @@ func logKey(path, id string) string {
 
 // listItems calls the script's list.
 func (w *pluginWorker) listItems() ([]pluginSession, int, error) {
-	v, err := w.listFn(goja.Undefined())
+	v, err := w.callFn(w.listFn, nil)
+	if err != nil {
+		return nil, 0, w.forget(err)
+	}
+	got, err := w.vm.ToGo(v)
 	if err != nil {
 		return nil, 0, err
 	}
-	list, ok := v.(*goja.Object)
-	if !ok || list.Get("length") == nil {
+	list, ok := got.([]any)
+	if !ok {
 		return nil, 0, fmt.Errorf("list 必须返回数组")
 	}
 	var files []pluginSession
 	skipped := 0
-	items := map[string]goja.Value{}
-	for i := range min(list.Get("length").ToInteger(), maxFiles) {
-		item := list.Get(strconv.FormatInt(i, 10))
-		o, ok := item.(*goja.Object)
+	items := map[string]map[string]any{}
+	for _, item := range list[:min(len(list), maxFiles)] {
+		o, ok := item.(map[string]any)
 		if !ok {
 			skipped++
 			continue
 		}
-		path, err := w.resolve(field(o, "path"))
+		path, err := w.resolve(jsField(o, "path"))
 		if err != nil {
 			skipped++
 			continue
@@ -487,14 +735,14 @@ func (w *pluginWorker) listItems() ([]pluginSession, int, error) {
 			skipped++
 			continue
 		}
-		f := pluginSession{ID: field(o, "id"), Version: field(o, "version"), ModTime: info.ModTime().UnixNano()}
+		f := pluginSession{ID: jsField(o, "id"), Version: jsField(o, "version"), ModTime: info.ModTime().UnixNano()}
 		f.Key = logKey(path, f.ID)
 		// A session that declares no version changes with its file.
 		if f.Version == "" {
 			f.Version = fmt.Sprintf("%d:%d", f.ModTime, info.Size())
 		}
 		files = append(files, f)
-		items[f.Key] = item
+		items[f.Key] = o
 	}
 	w.items = items
 	return files, skipped, nil
@@ -511,20 +759,47 @@ func (w *pluginWorker) read(key string) (json.RawMessage, error) {
 			return nil, fmt.Errorf("插件没有列出这个会话")
 		}
 	}
-	v, err := w.readFn(goja.Undefined(), item)
+	arg, err := w.vm.FromGo(item)
 	if err != nil {
 		return nil, err
 	}
-	if goja.IsUndefined(v) || goja.IsNull(v) {
+	v, err := w.callFn(w.readFn, &arg)
+	if err != nil {
+		return nil, w.forget(err)
+	}
+	if v.IsUndefined() || v.IsNull() {
 		return nil, nil
 	}
-	text, err := w.jsonFn(goja.Undefined(), v)
+	b, err := w.vm.AppendJSON(nil, v)
 	if err != nil {
-		return nil, err
+		return nil, w.forget(err)
 	}
-	b := []byte(text.String())
-	if !json.Valid(b) || b[0] != '[' {
+	if !json.Valid(b) || len(b) == 0 || b[0] != '[' {
 		return nil, fmt.Errorf("read 必须返回记录数组")
 	}
 	return b, nil
+}
+
+// scriptError is the text a plugin threw, or a memory-limit failure that
+// drops the runtime so the next request starts a fresh one.
+func (w *pluginWorker) forget(err error) error {
+	if errors.Is(err, moejs.ErrMemoryLimit) {
+		limit := w.loaded.Memory
+		if limit <= 0 {
+			limit = pluginMemoryLimit
+		}
+		w.drop()
+		return fmt.Errorf("内存超过 %d MiB", limit>>20)
+	}
+	return scriptError(err)
+}
+
+func scriptError(err error) error {
+	var ex *moejs.Exception
+	if errors.As(err, &ex) {
+		if msg := ex.Message(); msg != "" {
+			return errors.New(msg)
+		}
+	}
+	return err
 }
