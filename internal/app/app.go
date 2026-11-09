@@ -32,6 +32,10 @@ type App struct {
 	hidden        map[string]bool // agent root IDs left out of the sidebar
 	settingsOpen  bool
 	settingsTab   int
+	pluginRepo    string
+	pluginBusy    bool
+	pluginErr     string
+	pluginPicking bool
 
 	repos      []store.Repo
 	snap       *skill.Snapshot
@@ -84,10 +88,11 @@ type App struct {
 	ask ask
 
 	// Replacements for the system, so tests never open a dialog.
-	pickDirFn func() (string, error)
-	revealFn  func(string)
-	copyFn    func(string)
-	openFn    func(string)
+	pickDirFn  func() (string, error)
+	pickFileFn func() (string, error)
+	revealFn   func(string)
+	copyFn     func(string)
+	openFn     func(string)
 }
 
 type pageState struct {

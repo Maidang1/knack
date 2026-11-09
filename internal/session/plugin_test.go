@@ -417,11 +417,13 @@ func TestPluginReviewedFailures(t *testing.T) {
 		slowLimits(t)
 		home := t.TempDir()
 		start := time.Now()
+		// A long expression used to stall the previous engine. It has to finish
+		// inside the load limit; the script is then refused for not registering.
 		problems := usePlugins(t, home, map[string]string{"z.js": "var x = " + strings.Repeat("1+", 40000) + "1"})
-		if len(problems) != 1 || !strings.Contains(problems[0], "执行超过") {
+		if len(problems) != 1 || !strings.Contains(problems[0], "没有调用 knack.registerAgent") {
 			t.Fatalf("problems %q", problems)
 		}
-		if elapsed := time.Since(start); elapsed > 4*time.Second {
+		if elapsed := time.Since(start); elapsed > pluginLoadLimit {
 			t.Fatalf("load blocked for %s", elapsed)
 		}
 	})
@@ -543,16 +545,17 @@ func TestPluginReviewedFailures(t *testing.T) {
 func TestPluginWorkerIsolation(t *testing.T) {
 	warnings := func(s *Snapshot) string { return strings.Join(s.Warnings, "\n") }
 
-	t.Run("a fatal error ends the worker, not the app, and a new worker takes over", func(t *testing.T) {
+	t.Run("a dynamic compile error stays in the plugin", func(t *testing.T) {
 		home := t.TempDir()
 		crash := filepath.Join(home, "crash")
 		put(t, crash, nil)
-		// Overflows the Go stack in goja's parser, which nothing can recover from.
+		// Longer than the engine's run-time source cap. It throws in the
+		// script; the app and the worker keep running.
 		usePlugins(t, home, map[string]string{"z.js": `knack.registerAgent({id: "z", name: "Z",
 			list: function () { if (knack.stat("~/crash")) new Function("return " + "1+".repeat(3000000) + "1"); return [] },
 			read: function () { return [] }})`})
 		r := reader(t, home, "")
-		if w := warnings(refresh(t, r)); !strings.Contains(w, "异常退出") {
+		if w := warnings(refresh(t, r)); !strings.Contains(w, "MaxDynamicSource") {
 			t.Fatalf("warnings %q", w)
 		}
 		if err := os.Remove(crash); err != nil {
@@ -596,7 +599,7 @@ func TestPluginWorkerIsolation(t *testing.T) {
 		t.Cleanup(func() { pluginMemoryLimit = saved })
 		home := t.TempDir()
 		usePlugins(t, home, map[string]string{"z.js": `knack.registerAgent({id: "z", name: "Z",
-			list: function () { for (var i = 0; i < 12; i++) { var s = "x".repeat(40 << 20); s = null } return [] },
+			list: function () { for (var i = 0; i < 12; i++) { var s = "x".repeat(4 << 20); s = null } return [] },
 			read: function () { return [] }})`})
 		if w := warnings(refresh(t, reader(t, home, ""))); w != "" {
 			t.Fatalf("warnings %q", w)

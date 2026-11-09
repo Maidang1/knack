@@ -124,6 +124,7 @@ func (a *App) settingsDialog(c *ui.Context) {
 		{"浏览", "sidebar", "侧边栏浏览入口", "选择侧边栏中的浏览入口。"},
 		{"Agent", "bot", "在侧边栏显示的 Agent", "选择在侧边栏显示的 Agent。"},
 		{"自带", "package", "Agent 自带的技能", "选择在对应 Agent 技能列表中显示的自带内容。"},
+		{"插件", "braces", "Agent 插件", "用 JavaScript 接入其他 Agent 的会话。可从 GitHub、本机目录、.js 文件或 ZIP 安装。"},
 	}
 	a.settingsTab = max(0, min(a.settingsTab, len(categories)-1))
 	width, height := c.Size()
@@ -172,12 +173,20 @@ func (a *App) settingsDialog(c *ui.Context) {
 					ui.Text(c, category.description).FontSize(13).TextColor(t.TextMuted)
 				})
 				ui.Scroll(c.Key("settings:" + category.name)).Grow(1).MinHeight(0).Label("设置列表").Children(func() {
+					if a.settingsTab == len(categories)-1 {
+						a.settingsPlugins(c)
+						return
+					}
 					rows := [][]settingsRow{browse, agents, builtins}[a.settingsTab]
 					a.settingsGroup(c, category.name, rows)
 				})
 				ui.Row(c).Gap(12).Shrink(0).AlignItems(ui.Center).Children(func() {
 					ui.Icon(c, glyph("info")).FontSize(13).TextColor(token(t, "ink-3")).Shrink(0)
-					ui.Text(c, "隐藏只影响侧边栏显示，不会修改磁盘上的文件。").FontSize(12).TextColor(token(t, "ink-3")).Grow(1).MinWidth(0)
+					note := "隐藏只影响侧边栏显示，不会修改磁盘上的文件。"
+					if a.settingsTab == len(categories)-1 {
+						note = "插件只通过只读方法读取本机文件，安装前请先看一遍它的代码。"
+					}
+					ui.Text(c, note).FontSize(12).TextColor(token(t, "ink-3")).Grow(1).MinWidth(0)
 					if primaryButton(c, "settings-done", "", "完成").AutoFocus().Clicked() {
 						a.settingsOpen = false
 					}

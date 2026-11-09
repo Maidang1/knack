@@ -10,6 +10,7 @@ require (
 )
 
 require (
+	github.com/MoeForge/moejs v0.1.0-alpha.11 // indirect
 	github.com/dlclark/regexp2/v2 v2.11.0 // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/ebitengine/purego v0.11.1 // indirect

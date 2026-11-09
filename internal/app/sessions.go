@@ -58,6 +58,7 @@ type sessionState struct {
 	anchorFocus     string          // the turn whose anchor has the focus
 	replayMapHover  int             // the outline dash the pointer is over, -1 for none
 	agentProblems   []string        // invalid definitions in agents.json
+	rescanPlugins   bool            // install finished while a refresh was running
 }
 
 func (a *App) loadSessions() {
@@ -101,6 +102,11 @@ func (a *App) startSessionScan() {
 			// Each refresh reads a bounded slice so the UI updates progressively;
 			// keep going until the backlog is consumed.
 			if err == nil && snap != nil && snap.More && snap.ReadBytes > 0 {
+				a.startSessionScan()
+				return
+			}
+			if a.sessions.rescanPlugins {
+				a.sessions.rescanPlugins = false
 				a.startSessionScan()
 			}
 		})
