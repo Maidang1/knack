@@ -186,7 +186,11 @@ func createDatabase(t *testing.T, path string) *sql.DB {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		t.Fatal(err)
 	}
-	u := url.URL{Scheme: "file", Path: filepath.ToSlash(path)}
+	uriPath := filepath.ToSlash(path)
+	if !strings.HasPrefix(uriPath, "/") {
+		uriPath = "/" + uriPath
+	}
+	u := url.URL{Scheme: "file", Path: uriPath}
 	db, err := sql.Open("sqlite", u.String())
 	if err != nil {
 		t.Fatal(err)

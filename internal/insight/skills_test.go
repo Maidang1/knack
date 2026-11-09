@@ -1,6 +1,7 @@
 package insight
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -99,8 +100,12 @@ func write(t *testing.T, path, body string) {
 func TestReadConfig(t *testing.T) {
 	home := t.TempDir()
 	dir := filepath.Join(home, "code", "app")
+	dirJSON, err := json.Marshal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	write(t, filepath.Join(home, ".claude", "settings.json"), `{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"\"/usr/local/bin/guard\" --token SECRET"}]}]},"permissions":{"allow":["Read","Bash(go test:*)"],"deny":["WebFetch"]},"env":{"API_KEY":"SECRET"}}`)
-	write(t, filepath.Join(home, ".claude.json"), `{"mcpServers":{"github":{"type":"stdio","command":"npx","args":["-y","SECRET"],"env":{"T":"SECRET"}},"docs.site":{"type":"http","url":"https://mcp.example.com/path?key=SECRET"}},"projects":{"`+dir+`":{"mcpServers":{"local-db":{"command":"db-mcp"}},"disabledMcpServers":["github"]}}}`)
+	write(t, filepath.Join(home, ".claude.json"), `{"mcpServers":{"github":{"type":"stdio","command":"npx","args":["-y","SECRET"],"env":{"T":"SECRET"}},"docs.site":{"type":"http","url":"https://mcp.example.com/path?key=SECRET"}},"projects":{`+string(dirJSON)+`:{"mcpServers":{"local-db":{"command":"db-mcp"}},"disabledMcpServers":["github"]}}}`)
 	write(t, filepath.Join(home, ".claude", "CLAUDE.md"), "@RTK.md and @~/shared/rules.md, not `@code.md` or user@example.com\n```\n@fenced.md\n```\n")
 	write(t, filepath.Join(home, ".claude", "RTK.md"), strings.Repeat("word ", 100)+"\n@CLAUDE.md loops back")
 	write(t, filepath.Join(home, "shared", "rules.md"), "rules")

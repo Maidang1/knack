@@ -62,7 +62,11 @@ func OpenDatabase(root, path string, write bool) (*sql.DB, error) {
 	if write {
 		mode = "rw"
 	}
-	u := url.URL{Scheme: "file", Path: filepath.ToSlash(path)}
+	uriPath := filepath.ToSlash(path)
+	if !strings.HasPrefix(uriPath, "/") {
+		uriPath = "/" + uriPath
+	}
+	u := url.URL{Scheme: "file", Path: uriPath}
 	q := url.Values{"mode": {mode}, "_pragma": {"busy_timeout(1000)"}}
 	u.RawQuery = q.Encode()
 	db, err := sql.Open("sqlite", u.String())

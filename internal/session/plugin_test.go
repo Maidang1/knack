@@ -517,11 +517,11 @@ func TestPluginReviewedFailures(t *testing.T) {
 
 	t.Run("slow reads spread over refreshes", func(t *testing.T) {
 		saved := pluginRefreshLimit
-		pluginRefreshLimit = time.Nanosecond
+		pluginRefreshLimit = 5 * time.Millisecond
 		t.Cleanup(func() { pluginRefreshLimit = saved })
 		home := t.TempDir()
 		put(t, filepath.Join(home, "log"), nil)
-		usePlugins(t, home, script(`return [{path: "~/log", id: "a"}, {path: "~/log", id: "b"}]`, `n++; `+record))
+		usePlugins(t, home, script(`return [{path: "~/log", id: "a"}, {path: "~/log", id: "b"}]`, `const until = Date.now() + 10; while (Date.now() < until) {} n++; `+record))
 		r := reader(t, home, "")
 		snap := refresh(t, r)
 		turns := func(s *Snapshot) int {
@@ -733,7 +733,7 @@ func TestPluginDocExamplesLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	blocks := regexp.MustCompile("(?s)```js\n(.*?)```").FindAllSubmatch(doc, -1)
+	blocks := regexp.MustCompile("(?s)```js\r?\n(.*?)```").FindAllSubmatch(doc, -1)
 	if len(blocks) != 2 {
 		t.Fatalf("found %d examples", len(blocks))
 	}
