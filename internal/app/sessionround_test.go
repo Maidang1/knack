@@ -46,7 +46,7 @@ func TestSessionRound(t *testing.T) {
 		for _, width := range []int{1180, 880} {
 			t.Run(fmt.Sprintf("dark=%t/width=%d", dark, width), func(t *testing.T) {
 				a := sessionRoundFixture(t)
-				tt := ui.NewTester(a.View, width, 1100)
+				tt := ui.NewTester(a.View, width, 1200)
 				tt.SetTitleBar(ui.TitleBar{Height: 52, Left: 70})
 				tt.SetDark(dark)
 				d := a.sessions.detail

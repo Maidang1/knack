@@ -9,14 +9,6 @@ import (
 	"knack/internal/session"
 )
 
-// usagePage is the sidebar's 用量与耗时: the usage tab of an Agent page,
-// over every Agent the period's filter keeps.
-const usagePage = "usage"
-
-func (a *App) usagePane(c *ui.Context) {
-	a.usageBody(c, "usage-scroll", "")
-}
-
 // usageTimingData is where the period's active time went, turn by turn,
 // across the main sessions.
 type usageTimingData struct {

@@ -34,7 +34,7 @@ func TestOverviewScanRelinkAndUndo(t *testing.T) {
 
 	a := New(home)
 	tt := ui.NewTester(a.View, 1200, 860)
-	if a.page != "overview" || !tt.HasText("每日 Token") {
+	if a.page != "overview" || !tt.HasText("活跃足迹") {
 		t.Fatalf("home before scan: %q", tt.Texts())
 	}
 	click(t, tt, "重新扫描")
@@ -46,7 +46,7 @@ func TestOverviewScanRelinkAndUndo(t *testing.T) {
 	if !tt.HasText("一键修复 3 项") || tt.HasText("替换 1 个不一致副本") {
 		t.Fatalf("issues: %q", tt.Texts())
 	}
-	click(t, tt, "Claude")
+	openAgent(t, tt, "Claude")
 	click(t, tt, "beta")
 	if tt.HasText("改为软链") {
 		t.Fatal("copy was compared during scan")
@@ -105,7 +105,7 @@ func TestStaleConfirmAndBrokenRetarget(t *testing.T) {
 	a := New(home)
 	tt := ui.NewTester(a.View, 1200, 860)
 	click(t, tt, "重新扫描")
-	click(t, tt, "Claude")
+	openAgent(t, tt, "Claude")
 	click(t, tt, "cloud")
 	click(t, tt, "比较共享池内容")
 	click(t, tt, "改为软链")
@@ -186,7 +186,7 @@ func TestEmptyDirAndBuiltinReadOnly(t *testing.T) {
 		}
 	}
 
-	click(t, tt, "Grok")
+	openAgent(t, tt, "Grok")
 	if !tt.HasText("只展示") || tt.HasText("改为软链") {
 		t.Fatalf("builtin: %q", tt.Texts())
 	}
@@ -425,7 +425,7 @@ func TestRepairAllAndUndo(t *testing.T) {
 		t.Fatalf("undo did not bring the empty directory back: %v", err)
 	}
 
-	click(t, tt, "Claude")
+	openAgent(t, tt, "Claude")
 	click(t, tt, "cloud")
 	click(t, tt, "比较共享池内容")
 	click(t, tt, "改为软链")
@@ -482,6 +482,13 @@ func TestDependencyGraphView(t *testing.T) {
 	if !strings.HasSuffix(a.graphPick, "helper") {
 		t.Fatal("following a skill did not open its graph")
 	}
+}
+
+// openAgent goes to an Agent through the sidebar's Agents entry.
+func openAgent(t *testing.T, tt *ui.Tester, name string) {
+	t.Helper()
+	click(t, tt, "Agents")
+	click(t, tt, name)
 }
 
 func click(t *testing.T, tt *ui.Tester, label string) {

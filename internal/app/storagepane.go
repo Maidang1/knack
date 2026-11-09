@@ -5,15 +5,12 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"knack/internal/session"
 	"knack/internal/storage"
 )
-
-// The page follows the home page: a headline sentence, a row of figures
-// between hairlines, then a wide block beside a 356-wide column. The cleanup
-// action stays below the scroll, in reach of every checkbox.
 
 var storageAgents = []string{"Claude Code", "Codex"}
 
@@ -21,10 +18,10 @@ var storageAgentIDs = map[string]session.Agent{"Claude Code": session.Claude, "C
 
 // One meaning, one color, on every chart of the page. What stays recedes in
 // gray; data-neutral sits too close to chart-2 to stack beside it.
-type storagePalette struct{ selected, idle, kept, database ui.Color }
+type storagePalette struct{ selected, idle, kept, database, wal ui.Color }
 
 func storageColors(dark bool) storagePalette {
-	return storagePalette{sessionColor("chart-1", dark), sessionColor("chart-2", dark), sessionColor("phase-wait", dark), sessionColor("phase-tool", dark)}
+	return storagePalette{sessionColor("chart-1", dark), sessionColor("chart-2", dark), sessionColor("phase-wait", dark), sessionColor("phase-tool", dark), sessionColor("phase-think", dark)}
 }
 
 type barPart struct {
@@ -55,6 +52,11 @@ func storageBar(c *ui.Context, height float32, scale int64, parts ...barPart) ui
 	return bar
 }
 
+func storagePanel(c *ui.Context) ui.Element {
+	t := c.Theme()
+	return ui.Column(c).Padding(16).Gap(12).Radius(10).Background(token(t, "surface")).Border(1, token(t, "line"))
+}
+
 func (a *App) storagePane(c *ui.Context) {
 	s := &a.storage
 	t := c.Theme()
@@ -63,37 +65,55 @@ func (a *App) storagePane(c *ui.Context) {
 	}
 	busy := s.scanning || a.mutating || a.sessions.loading
 	width, _ := c.Size()
-	contentW := width - a.sidebarWidth() - 2*32
+	contentW := width - a.sidebarWidth() - 64
 	ui.Scroll(c.Key("storage-scroll")).Grow(1).MinHeight(0).Label("磁盘清理内容").Children(func() {
-		ui.Column(c).Padding(24, 32, 28, 32).Gap(22).Children(func() {
-			a.storageHeadline(c, busy)
+		ui.Column(c).Padding(16, 32).Gap(12).Children(func() {
 			if s.result != "" {
 				ui.Text(c, s.result).FontSize(13).Label("清理结果").Padding(8, 12).Radius(8).Background(t.Surface).Border(1, t.Border)
 			}
 			if s.snapshot == nil {
+				ui.Text(c, "正在扫描磁盘占用…").FontSize(14).TextColor(t.TextMuted)
 				return
 			}
 			for _, w := range s.snapshot.Warnings {
 				ui.Text(c, w).FontSize(12).TextColor(t.Warning)
 			}
-			a.storageMetrics(c, contentW < 640)
-			blocks := func(wide, side func()) {
-				if contentW < 860 {
-					ui.Column(c).Gap(22).Children(func() {
-						ui.Column(c).Children(wide)
-						ui.Column(c).Children(side)
-					})
-					return
-				}
-				ui.Row(c).Gap(homeGap).AlignItems(ui.Start).Children(func() {
-					ui.Column(c).Grow(1).MinWidth(0).Children(wide)
-					ui.Column(c).Width(homeSide).Shrink(0).Children(side)
+			if contentW >= 1240 {
+				ui.Row(c).Gap(12).AlignItems(ui.Stretch).Children(func() {
+					storagePanel(c).Width(400).Shrink(0).Height(353).Children(func() { a.storageMetrics(c, false) })
+					storagePanel(c).Grow(1).MinWidth(0).Height(353).Children(func() { a.storageAges(c) })
+					storagePanel(c).Width(372).Shrink(0).Height(353).Children(func() { a.storageSuggestions(c, busy) })
 				})
+			} else {
+				row := ui.Row(c).Gap(12).AlignItems(ui.Stretch)
+				if contentW < 860 {
+					row.Column()
+				}
+				row.Children(func() {
+					storagePanel(c).Grow(1).MinWidth(0).MinHeight(353).Children(func() { a.storageMetrics(c, contentW < 400) })
+					suggestionHeight := float32(353)
+					if contentW < 860 {
+						suggestionHeight = float32(61 + 65*max(1, len(storageSuggestions(s.snapshot))))
+					}
+					storagePanel(c).Grow(1).MinWidth(0).MinHeight(suggestionHeight).Children(func() { a.storageSuggestions(c, busy) })
+				})
+				storagePanel(c).MinHeight(353).Children(func() { a.storageAges(c) })
 			}
-			blocks(func() { a.storageAges(c) }, func() { a.storageAgentUsage(c) })
-			ui.Column(c).Children(func() { a.storageTable(c, busy, contentW < 640) })
-			blocks(func() { a.storageDatabases(c, busy) }, func() { a.storageBackups(c, busy) })
-			ui.Text(c, "按文件最后修改时间筛选，大小为文件逻辑大小。建议先退出对应 Agent；执行时会再次检查文件是否变化。").FontSize(11.5).TextColor(token(t, "ink-3"))
+			bottom := ui.Row(c).Gap(12).AlignItems(ui.Stretch)
+			if contentW < 1240 {
+				bottom.Column()
+			}
+			bottom.Children(func() {
+				storagePanel(c).Grow(1).MinWidth(0).Children(func() { a.storageTable(c, busy, contentW < 640) })
+				side := ui.Column(c).Gap(12)
+				if contentW >= 1240 {
+					side.Width(372).Shrink(0)
+				}
+				side.Children(func() {
+					storagePanel(c).Grow(1).Children(func() { a.storageDatabases(c, busy) })
+					storagePanel(c).Children(func() { a.storageBackups(c, busy) })
+				})
+			})
 		})
 	})
 	if s.snapshot != nil {
@@ -101,7 +121,7 @@ func (a *App) storagePane(c *ui.Context) {
 	}
 }
 
-// storageSummary says how much is over retention and where most of it sits.
+// storageSummary keeps the explanation when nothing can be cleaned.
 func storageSummary(snap *storage.Snapshot) (string, string) {
 	var eligible, protected int64
 	largest := -1
@@ -128,85 +148,108 @@ func storageSummary(snap *storage.Snapshot) (string, string) {
 
 func (a *App) storageHeadline(c *ui.Context, busy bool) {
 	s := &a.storage
-	t := c.Theme()
-	title, note := "正在扫描磁盘占用…", "扫描 Claude Code 与 Codex 的缓存、历史记录和本地数据库。"
-	if s.snapshot != nil {
-		title, note = storageSummary(s.snapshot)
-	}
-	ui.Row(c).Wrap().Gap(12).AlignItems(ui.Center).Children(func() {
-		ui.Column(c).Grow(1).Basis(320).MinWidth(0).Gap(6).Children(func() {
-			ui.Text(c, title).FontSize(20).FontWeight(600).MaxLines(2)
-			ui.Text(c, note).FontSize(14).TextColor(t.TextMuted).MaxLines(2)
-		})
-		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-			if s.scanning && s.snapshot != nil {
-				ui.Text(c, "正在扫描…").FontSize(13).TextColor(t.TextMuted).SingleLine()
-			}
-			ui.Text(c, "保留最近").FontSize(13).TextColor(t.TextMuted).SingleLine()
-			ui.Box(c).Disabled(busy).Children(func() {
-				if segmented(c, "清理保留时间", &s.retention, "7 天", "30 天", "90 天", "180 天") {
-					a.startStorageScan()
-				}
-			})
-			if outlineButton(c, "storage-refresh", "扫描磁盘").Disabled(busy).Clicked() {
-				a.startStorageScan()
-			}
-		})
+	ui.Row(c).Gap(10).Justify(ui.End).AlignItems(ui.Center).Children(func() {
+		status := "正在扫描…"
+		if !s.scanning && s.snapshot != nil {
+			status = fmt.Sprintf("已扫描 · %d 分钟前", max(0, int(time.Since(s.snapshot.At).Minutes())))
+		}
+		ui.Text(c, status).FontSize(12).TextColor(token(c.Theme(), "ink-3"))
+		if outlineButton(c, "storage-refresh", "扫描磁盘").Disabled(busy).Clicked() {
+			a.startStorageScan()
+		}
 	})
 }
 
 func (a *App) storageMetrics(c *ui.Context, narrow bool) {
 	s := &a.storage
 	t := c.Theme()
-	var tracked, eligible, databases, wal, free int64
-	files, candidates := 0, 0
+	colors := storageColors(t.Dark)
+	var tracked, eligible, chosen int64
+	files, candidates, selected := 0, 0, 0
 	for _, g := range s.snapshot.Groups {
 		tracked += g.Bytes
 		eligible += g.EligibleBytes
 		files += g.Files
 		candidates += g.Eligible
-	}
-	for _, d := range s.snapshot.Databases {
-		databases += d.Bytes + d.WALBytes
-		wal += d.WALBytes
-		free += d.FreeBytes
-	}
-	share := 0
-	if tracked > 0 {
-		share = int(100 * eligible / tracked)
-	}
-	cells := []struct{ label, value, note string }{
-		{"文件占用", storageSize(tracked), fmt.Sprintf("%d 个文件", files)},
-		{"超过保留期", storageSize(eligible), fmt.Sprintf("%d 个文件 · 占 %d%%", candidates, share)},
-		{"数据库与 WAL", storageSize(databases), fmt.Sprintf("空闲页 %s · WAL %s", storageSize(free), storageSize(wal))},
-		{"清理备份", storageSize(s.backupBytes), fmt.Sprintf("%d 个文件 · 清空后释放", len(s.backups))},
-	}
-	rows := [][]int{{0, 1, 2, 3}}
-	if narrow {
-		rows = [][]int{{0, 1}, {2, 3}}
-	}
-	ui.Column(c).BorderWidth(1, 0, 1, 0).BorderColor(t.Border).Children(func() {
-		for r, row := range rows {
-			line := ui.Row(c).Padding(12, 0)
-			if r > 0 {
-				line.BorderWidth(1, 0, 0, 0).BorderColor(t.Border)
-			}
-			line.Children(func() {
-				for j, i := range row {
-					cell := ui.Column(c.Key(cells[i].label)).Grow(1).Basis(0).MinWidth(0).Gap(4).Padding(0, 20)
-					if j == 0 {
-						cell.Padding(0, 20, 0, 0)
-					} else {
-						cell.BorderWidth(0, 0, 0, 1).BorderColor(t.Border)
-					}
-					cell.Children(func() {
-						ui.Text(c, cells[i].label).FontSize(13).TextColor(t.TextMuted).SingleLine()
-						number(c, cells[i].value).FontSize(24).FontWeight(600)
-						ui.Text(c, cells[i].note).FontSize(12).TextColor(token(t, "ink-3")).SingleLine().Tooltip(cells[i].note)
-					})
-				}
-			})
+		if s.selected[g.ID] {
+			chosen += g.EligibleBytes
+			selected += g.Eligible
 		}
+	}
+	share := int64(0)
+	if tracked > 0 {
+		share = 100 * eligible / tracked
+	}
+	ui.Text(c, "可回收空间").FontSize(14).FontWeight(600)
+	row := ui.Row(c).Grow(1).MinHeight(220).Gap(22).AlignItems(ui.Center)
+	if narrow {
+		row.Wrap()
+	}
+	row.Children(func() {
+		ring := ui.Box(c).Size(188, 188).Shrink(0).Label("可回收空间圆环").Justify(ui.Center).AlignItems(ui.Center)
+		ring.Draw(func(p *ui.Painter, r ui.Rect) {
+			parts := []barPart{{chosen, colors.selected}, {eligible - chosen, colors.idle}, {tracked - eligible, colors.kept}}
+			var stops []ui.GradientStop
+			var weights [3]float32
+			sum := float32(0)
+			for i, part := range parts {
+				if part.value > 0 {
+					weights[i] = max(float32(float64(part.value)/float64(max(tracked, 1))), float32(4.0/360))
+					sum += weights[i]
+				}
+			}
+			at := float32(0)
+			for i, part := range parts {
+				if weights[i] == 0 {
+					continue
+				}
+				end := at + weights[i]/sum
+				gap := min(float32(2.0/360), (end-at)/2)
+				stops = append(stops, ui.GradientStop{Color: part.color, At: at}, ui.GradientStop{Color: part.color, At: end - gap}, ui.GradientStop{Color: token(t, "surface"), At: end - gap}, ui.GradientStop{Color: token(t, "surface"), At: end})
+				at = end
+			}
+			if len(stops) > 0 {
+				p.FillConicGradient(r, ui.ConicGradient{Stops: stops}, 94)
+			} else {
+				p.Fill(r, colors.kept, 94)
+			}
+			inset := r.W * .11
+			p.Fill(ui.Rect{X: r.X + inset, Y: r.Y + inset, W: r.W - 2*inset, H: r.H - 2*inset}, token(t, "surface"), 94)
+		})
+		ring.Children(func() {
+			ui.Column(c).Gap(4).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, "可清理").FontSize(12).TextColor(t.TextMuted)
+				number(c, storageSize(eligible)).FontSize(26).FontWeight(600)
+				ui.Text(c, fmt.Sprintf("占文件 %d%%", share)).FontSize(12).TextColor(t.TextMuted)
+			})
+		})
+		ui.Column(c).Grow(1).MinWidth(0).Gap(16).Children(func() {
+			if eligible == 0 {
+				title, note := storageSummary(s.snapshot)
+				ui.Text(c, title).FontSize(13).FontWeight(600)
+				ui.Text(c, note).FontSize(12).TextColor(t.TextMuted)
+				return
+			}
+			for _, v := range []struct {
+				label string
+				bytes int64
+				count int
+				color ui.Color
+			}{{"已选", chosen, selected, colors.selected}, {"待选", eligible - chosen, candidates - selected, colors.idle}, {"保留期内", tracked - eligible, files - candidates, colors.kept}} {
+				ui.Column(c).Gap(3).Children(func() {
+					legendItem(c, v.color, v.label)
+					number(c, storageSize(v.bytes)).FontSize(16).FontWeight(600)
+					ui.Text(c, fmt.Sprintf("%d 个文件", v.count)).FontSize(12).TextColor(t.TextMuted)
+				})
+			}
+		})
+	})
+	ui.Column(c).Gap(6).Padding(12, 0, 0, 0).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Children(func() {
+		ui.Row(c).Wrap().Gap(6).Children(func() {
+			ui.Text(c, "全部清理后的文件占用").Grow(1).FontSize(11.5).TextColor(t.TextMuted)
+			number(c, storageSize(tracked)+" → "+storageSize(tracked-eligible)).FontSize(12).FontWeight(600)
+		})
+		storageBar(c, 6, tracked, barPart{tracked - eligible, colors.kept})
 	})
 }
 
@@ -233,42 +276,67 @@ func storageAgeBands(groups []storage.Group, selected map[string]bool, retention
 	return bands
 }
 
+// storageReleasable is exact only for the current scanned retention choice;
+// other choices estimate release using the snapshot's protected age bands.
+func storageReleasable(groups []storage.Group, retention, scanned int) int64 {
+	var total int64
+	for _, g := range groups {
+		if retention == scanned {
+			total += g.EligibleBytes
+			continue
+		}
+		for i, bytes := range g.Ages {
+			if i > retention {
+				total += max(bytes-g.ProtectedAges[i], 0)
+			}
+		}
+	}
+	return total
+}
+
 // storageAges shows how much each retention choice would release: the bands
 // older than the current choice take the colors of what can be cleaned.
 func (a *App) storageAges(c *ui.Context) {
 	s := &a.storage
 	t := c.Theme()
 	colors := storageColors(t.Dark)
-	muted := token(t, "ink-3")
-	const plot = 132
+	const plot = 174
 	bands := storageAgeBands(s.snapshot.Groups, s.selected, s.scanned)
 	var peak int64
 	for _, band := range bands {
 		peak = max(peak, band[0]+band[1]+band[2])
 	}
-	ui.Column(c).Gap(10).Children(func() {
-		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "文件年龄").FontSize(15).FontWeight(600).Grow(1).MinWidth(0).SingleLine()
-			legendItem(c, colors.selected, "已选")
-			legendItem(c, colors.idle, "可清理")
-			legendItem(c, colors.kept, "保留期内")
-		})
-		ui.Row(c).Height(plot + 22).Gap(12).AlignItems(ui.End).Label("按文件年龄的占用图表").Children(func() {
+	ui.Row(c).Wrap().Gap(8).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, "文件年龄").FontSize(14).FontWeight(600).Grow(1)
+		for _, v := range []struct {
+			label string
+			color ui.Color
+		}{{"已选", colors.selected}, {"待选", colors.idle}, {"保留期内", colors.kept}} {
+			ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
+				ui.Box(c).Size(8, 8).Radius(2).Background(v.color)
+				ui.Text(c, v.label).FontSize(11).TextColor(t.TextMuted)
+			})
+		}
+		ui.Icon(c, glyph("info")).FontSize(13).TextColor(t.TextMuted).Tooltip("按文件最后修改时间筛选，大小为文件逻辑大小。建议先退出对应 Agent；执行时会再次检查文件是否变化。")
+	})
+	ui.Column(c).Gap(0).Grow(1).Children(func() {
+		ui.Row(c).Gap(6).Grow(1).MinHeight(plot + 22).AlignItems(ui.End).Label("按文件年龄的占用图表").Children(func() {
 			for i, band := range bands {
 				total := band[0] + band[1] + band[2]
-				description := storageAgeLabels[i] + " · " + storageSize(total)
-				ui.Column(c.Key(storageAgeLabels[i])).Grow(1).Basis(0).MinWidth(0).Gap(4).AlignItems(ui.Center).Label(description).Tooltip(description).Children(func() {
+				ui.Column(c.Key(storageAgeLabels[i])).Grow(1).Basis(0).MinWidth(0).Gap(4).AlignItems(ui.Center).Tooltip(storageAgeLabels[i] + " · " + storageSize(total)).Children(func() {
 					number(c, storageSize(total)).FontSize(11.5).TextColor(t.TextMuted)
-					h := float32(0)
+					h := float32(2)
 					if peak > 0 && total > 0 {
 						h = max(float32(float64(total)/float64(peak))*plot, 2)
 					}
-					bar := ui.Box(c).Height(h).AlignSelf(ui.Stretch)
-					values := []barPart{{band[2], colors.kept}, {band[1], colors.idle}, {band[0], colors.selected}}
-					bar.Draw(func(p *ui.Painter, r ui.Rect) {
-						w := min(r.W, float32(56))
+					ui.Box(c).Height(h).AlignSelf(ui.Stretch).Draw(func(p *ui.Painter, r ui.Rect) {
+						w := min(r.W, float32(60))
 						y := r.Y + r.H
-						for _, part := range values {
+						if total == 0 {
+							p.Fill(ui.Rect{X: r.X + (r.W-w)/2, Y: r.Y, W: w, H: 2}, t.Border, 1)
+							return
+						}
+						for _, part := range []barPart{{band[2], colors.kept}, {band[1], colors.idle}, {band[0], colors.selected}} {
 							if part.value <= 0 {
 								continue
 							}
@@ -278,72 +346,166 @@ func (a *App) storageAges(c *ui.Context) {
 						}
 					})
 				})
+				if i == s.scanned {
+					ui.Column(c).Width(84).Shrink(0).AlignSelf(ui.Stretch).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, "保留线").FontSize(11).FontWeight(600).Padding(3, 7).Radius(5).Background(token(t, "accent-bg")).Border(1, token(t, "accent")).TextColor(token(t, "accent-ink"))
+						ui.Box(c).Width(1.5).Grow(1).Background(token(t, "accent"))
+					})
+				}
 			}
 		})
-		ui.Column(c).Gap(5).Children(func() {
-			ui.Box(c).Height(1).Background(t.Border)
-			ui.Row(c).Gap(12).Children(func() {
-				for i, label := range storageAgeLabels {
-					text := ui.Text(c, label).FontSize(11).TextColor(muted).Grow(1).Basis(0).MinWidth(0).TextAlign(ui.Center).SingleLine()
-					if i == s.scanned {
-						text.TextColor(t.Text).FontWeight(600).Tooltip("保留期的边界")
-					}
+		ui.Row(c).Gap(6).Padding(7, 0, 0, 0).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Children(func() {
+			for i, label := range storageAgeLabels {
+				ui.Text(c, label).Grow(1).Basis(0).MinWidth(0).TextAlign(ui.Center).FontSize(11).TextColor(token(t, "ink-3")).SingleLine()
+				if i == s.scanned {
+					ui.Text(c, fmt.Sprintf("%d 天", retentionDays[s.scanned])).Width(84).Shrink(0).TextAlign(ui.Center).FontSize(11).FontWeight(600).TextColor(token(t, "accent-ink"))
 				}
-			})
+			}
 		})
 	})
-}
-
-func (a *App) storageAgentUsage(c *ui.Context) {
-	s := &a.storage
-	t := c.Theme()
-	colors := storageColors(t.Dark)
-	type usage struct{ selected, idle, kept, database int64 }
-	totals := map[string]*usage{}
-	for _, agent := range storageAgents {
-		totals[agent] = &usage{}
-	}
-	for _, g := range s.snapshot.Groups {
-		u := totals[g.Agent]
-		if u == nil {
-			continue
-		}
-		if s.selected[g.ID] {
-			u.selected += g.EligibleBytes
-		} else {
-			u.idle += g.EligibleBytes
-		}
-		u.kept += g.Bytes - g.EligibleBytes
-	}
-	for _, d := range s.snapshot.Databases {
-		if u := totals[d.Agent]; u != nil {
-			u.database += d.Bytes + d.WALBytes
-		}
-	}
-	var peak int64
-	for _, u := range totals {
-		peak = max(peak, u.selected+u.idle+u.kept+u.database)
-	}
-	ui.Column(c).Children(func() {
-		ui.Row(c).Gap(16).Padding(0, 0, 14, 0).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "Agent 占用").FontSize(15).FontWeight(600).Grow(1).MinWidth(0).SingleLine()
-			legendItem(c, colors.database, "数据库")
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		ui.Column(c).Width(84).Shrink(0).Children(func() {
+			ui.Text(c, "保留最近").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "可释放").FontSize(11).TextColor(t.TextMuted)
 		})
-		ui.Column(c).Gap(18).Children(func() {
-			for _, agent := range storageAgents {
-				u := totals[agent]
-				total := u.selected + u.idle + u.kept + u.database
-				ui.Column(c.Key(agent)).Gap(7).Children(func() {
-					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-						storageAgentDot(c, agent)
-						ui.Text(c, agent).FontSize(13).Grow(1).MinWidth(0).SingleLine()
-						number(c, storageSize(total)).FontSize(13).FontWeight(600)
-					})
-					storageBar(c, 8, peak, barPart{u.selected, colors.selected}, barPart{u.idle, colors.idle}, barPart{u.kept, colors.kept}, barPart{u.database, colors.database}).Label(agent + " 占用")
-					ui.Text(c, fmt.Sprintf("可清理 %s · 保留 %s · 数据库 %s", storageSize(u.selected+u.idle), storageSize(u.kept), storageSize(u.database))).FontSize(12).TextColor(token(t, "ink-3")).SingleLine()
+		tabs := ui.TabsBase(c.Key("storage-retention"), &s.retention, len(retentionDays))
+		tabs.List.Grow(1).MinWidth(0).Gap(8).Label("清理保留时间").Disabled(s.scanning || a.mutating || a.sessions.loading).Children(func() {
+			for i, days := range retentionDays {
+				value := storageSize(storageReleasable(s.snapshot.Groups, i, s.scanned))
+				if i != s.scanned {
+					value = "约 " + value
+				}
+				tab := tabs.Tab(i).Grow(1).Basis(0).MinWidth(0).Height(48).Column().Justify(ui.Center).Padding(5, 10).Radius(7).Background(t.SurfaceHover).Label(fmt.Sprintf("保留 %d 天，可释放 %s", days, value))
+				if i == s.retention {
+					tab.Background(token(t, "selected")).Border(1, token(t, "accent"))
+				}
+				tab.Children(func() {
+					ui.Text(c, fmt.Sprintf("%d 天", days)).FontSize(12).SingleLine()
+					number(c, value).FontSize(12).FontWeight(600).SingleLine()
 				})
 			}
 		})
+		if tabs.List.Changed() {
+			a.startStorageScan()
+		}
+	})
+}
+
+type storageSuggestion struct {
+	groups                  []string
+	title, note, icon, tone string
+	bytes                   int64
+	files                   int
+	database                *storage.Database
+}
+
+func storageSuggestions(snap *storage.Snapshot) []storageSuggestion {
+	var out []storageSuggestion
+	safe := storageSuggestion{title: "缓存与日志", icon: "shield", tone: "ok"}
+	var history []storage.Group
+	for _, g := range snap.Groups {
+		if g.Eligible <= 0 {
+			continue
+		}
+		if g.History {
+			history = append(history, g)
+		} else {
+			safe.groups = append(safe.groups, g.ID)
+			safe.bytes += g.EligibleBytes
+			safe.files += g.Eligible
+		}
+	}
+	if len(safe.groups) > 0 {
+		safe.note = fmt.Sprintf("可重新生成 · %d 个文件", safe.files)
+		out = append(out, safe)
+	}
+	slices.SortStableFunc(history, func(a, b storage.Group) int { return cmp.Compare(b.EligibleBytes, a.EligibleBytes) })
+	for _, g := range history[:min(2, len(history))] {
+		out = append(out, storageSuggestion{groups: []string{g.ID}, title: g.Agent + " " + g.Name, note: fmt.Sprintf("影响历史恢复 · %d 个文件", g.Eligible), icon: "alert", tone: "warn", bytes: g.EligibleBytes, files: g.Eligible})
+	}
+	var best *storage.Database
+	for i := range snap.Databases {
+		d := &snap.Databases[i]
+		if d.Error == "" && d.WALBytes+d.FreeBytes > 0 && (best == nil || d.WALBytes+d.FreeBytes > best.WALBytes+best.FreeBytes) {
+			best = d
+		}
+	}
+	if best != nil {
+		out = append(out, storageSuggestion{title: best.Agent + " 数据库", note: "合并 WAL 或回收空闲页 " + storageSize(best.FreeBytes), icon: "database", tone: "phase-tool", database: best})
+	}
+	return out
+}
+
+var storageGlyphs = map[string]*ui.SVG{
+	"shield":   ui.MustParseSVG([]byte(svgHead + `<path d="M12 3 4 6v6c0 4 4 7 8 9 4-2 8-5 8-9V6z"/><path d="m8 12 3 3 5-6"/></svg>`)),
+	"alert":    ui.MustParseSVG([]byte(svgHead + `<path d="m12 3 10 18H2z"/><path d="M12 9v5m0 3v.1"/></svg>`)),
+	"database": ui.MustParseSVG([]byte(svgHead + `<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 4 16 4 16 0V5M4 12c0 4 16 4 16 0"/></svg>`)),
+	"backup":   ui.MustParseSVG([]byte(svgHead + `<path d="M4 8h16v13H4zM3 3h18v5H3zM12 18V11m-3 3 3-3 3 3"/></svg>`)),
+}
+
+func (a *App) storageSuggestions(c *ui.Context, busy bool) {
+	s := &a.storage
+	t := c.Theme()
+	ui.Row(c).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, "建议操作").Grow(1).FontSize(14).FontWeight(600)
+		ui.Text(c, "先安全，后确认").FontSize(11).TextColor(token(t, "ink-3"))
+	})
+	suggestions := storageSuggestions(s.snapshot)
+	if len(suggestions) == 0 {
+		ui.Text(c, "暂无建议").FontSize(13).TextColor(t.TextMuted)
+		return
+	}
+	ui.Column(c).Grow(1).Children(func() {
+		for i, item := range suggestions {
+			row := ui.Row(c.Key(fmt.Sprintf("suggestion:%d", i))).Grow(1).MinHeight(65).Gap(10).AlignItems(ui.Center)
+			if i > 0 {
+				row.BorderWidth(1, 0, 0, 0).BorderColor(t.Border)
+			}
+			row.Children(func() {
+				var tone ui.Color
+				if item.database != nil {
+					tone = sessionColor(item.tone, t.Dark)
+				} else {
+					tone = token(t, item.tone)
+				}
+				ui.Icon(c, storageGlyphs[item.icon]).FontSize(16).TextColor(tone).Shrink(0)
+				ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
+					ui.Row(c).Gap(5).Children(func() {
+						ui.Text(c, item.title).Grow(1).MinWidth(0).FontSize(13).SingleLine().Tooltip(item.title)
+						value := storageSize(item.bytes)
+						if item.database != nil {
+							value = "WAL " + storageSize(item.database.WALBytes)
+						}
+						number(c, value).FontSize(12).FontWeight(600).SingleLine()
+					})
+					ui.Text(c, item.note).FontSize(11).TextColor(t.TextMuted).SingleLine().Tooltip(item.note)
+				})
+				selected := len(item.groups) > 0
+				for _, id := range item.groups {
+					selected = selected && s.selected[id]
+				}
+				label := "加入清理"
+				if selected {
+					label = "✓ 已选"
+				}
+				if item.database != nil {
+					label = "维护…"
+				}
+				button := outlineButton(c, fmt.Sprintf("suggestion-action:%d", i), label).Width(72).Padding(0).Disabled(busy).Label(item.title + "：" + label)
+				if selected {
+					button.Background(token(t, "selected")).TextColor(token(t, "accent-ink"))
+				}
+				if button.Clicked() {
+					if item.database != nil {
+						a.confirmDatabase(*item.database, false)
+					} else {
+						for _, id := range item.groups {
+							s.selected[id] = !selected
+						}
+					}
+				}
+			})
+		}
 	})
 }
 
@@ -355,7 +517,7 @@ func storageAgentDot(c *ui.Context, agent string) {
 func storageRows(groups []storage.Group, agent string, showEmpty bool) []storage.Group {
 	var rows []storage.Group
 	for _, g := range groups {
-		if g.Agent == agent && (showEmpty || g.Files > 0) {
+		if (agent == "" || g.Agent == agent) && (showEmpty || g.Files > 0) {
 			rows = append(rows, g)
 		}
 	}
@@ -370,56 +532,80 @@ func (a *App) storageTable(c *ui.Context, busy, compact bool) {
 	t := c.Theme()
 	muted := token(t, "ink-3")
 	var peak int64
-	empty := 0
+	agents := []string{"", "Claude Code", "Codex"}
+	emptyCounts := map[string]int{}
+	totals := map[string]int64{}
 	for _, g := range s.snapshot.Groups {
 		peak = max(peak, g.Bytes)
+		totals[""] += g.Bytes
+		totals[g.Agent] += g.Bytes
 		if g.Files == 0 {
-			empty++
+			emptyCounts[""]++
+			emptyCounts[g.Agent]++
 		}
 	}
-	link := ""
-	if empty > 0 {
-		link = fmt.Sprintf("显示 %d 个空类别", empty)
-		if s.showEmpty {
-			link = "隐藏空类别"
-		}
-	}
-	sectionHead(c, "清理项", link, func() { s.showEmpty = !s.showEmpty })
-	ui.Row(c).Height(26).Gap(12).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
-		ui.Text(c, "类别").Grow(1).MinWidth(0).FontSize(11.5).TextColor(muted).Margin(0, 0, 0, 30)
-		if !compact {
-			ui.Text(c, "占比").Width(storageBarWidth).Shrink(0).FontSize(11.5).TextColor(muted)
-		}
-		for _, title := range storageColumns(compact) {
-			ui.Text(c, title).Width(storageColumn).Shrink(0).TextAlign(ui.End).FontSize(11.5).TextColor(muted)
-		}
-		ui.Box(c).Width(storageOpenWidth).Shrink(0)
-	})
-	for _, agent := range storageAgents {
-		rows := storageRows(s.snapshot.Groups, agent, s.showEmpty)
-		if len(rows) == 0 {
-			continue
-		}
-		var bytes, eligible int64
-		for _, g := range rows {
-			bytes += g.Bytes
-			eligible += g.EligibleBytes
-		}
-		ui.Row(c.Key("agent:"+agent)).Height(34).Gap(8).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
-			storageAgentDot(c, agent)
-			ui.Text(c, agent).FontSize(13).FontWeight(600).Grow(1).MinWidth(0).SingleLine()
-			number(c, fmt.Sprintf("占用 %s · 可清理 %s", storageSize(bytes), storageSize(eligible))).FontSize(12).TextColor(muted)
+	ui.Row(c).Wrap().Gap(10).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, "清理项").FontSize(14).FontWeight(600)
+		tabs := ui.TabsBase(c.Key("storage-agent"), &s.agentFilter, len(agents))
+		tabs.List.Gap(2).Padding(2).Radius(7).Background(t.SurfaceHover).Label("清理项 Agent").Wrap().Children(func() {
+			for i, agent := range agents {
+				name := agent
+				if name == "" {
+					name = "全部"
+				}
+				tab := tabs.Tab(i).Padding(4, 8).Gap(6).Radius(5).AlignItems(ui.Center).Label(name + " 文件占用 " + storageSize(totals[agent]))
+				if s.agentFilter == i {
+					tab.Background(token(t, "selected"))
+				}
+				tab.Children(func() {
+					if agent != "" {
+						storageAgentDot(c, agent)
+					}
+					ui.Text(c, name).FontSize(11.5).SingleLine()
+					number(c, storageSize(totals[agent])).FontSize(11.5).TextColor(t.TextMuted).SingleLine()
+				})
+			}
 		})
-		for _, g := range rows {
+		ui.Box(c).Grow(1)
+		empty := emptyCounts[agents[s.agentFilter]]
+		if empty > 0 {
+			label := fmt.Sprintf("显示 %d 个空类别", empty)
+			if s.showEmpty {
+				label = "隐藏空类别"
+			}
+			b := ui.ButtonBase(c.Key("storage-empty")).Label(label).Padding(4, 0)
+			b.Children(func() { ui.Text(c, label).FontSize(11).TextColor(token(t, "accent-ink")) })
+			if b.Clicked() {
+				s.showEmpty = !s.showEmpty
+			}
+		}
+	})
+	ui.Column(c).Gap(0).Children(func() {
+		ui.Row(c).Height(26).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
+			ui.Text(c, "类别").Grow(1).MinWidth(0).FontSize(11.5).TextColor(muted).Margin(0, 0, 0, 28)
+			ui.Text(c, "Agent").Width(104).Shrink(0).FontSize(11.5).TextColor(muted)
+			if !compact {
+				ui.Text(c, "占比").Width(storageBarWidth).Shrink(0).FontSize(11.5).TextColor(muted)
+			}
+			for _, title := range storageColumns(compact) {
+				w := float32(storageColumn)
+				if title == "文件" {
+					w = 76
+				}
+				ui.Text(c, title).Width(w).Shrink(0).TextAlign(ui.End).FontSize(11.5).TextColor(muted)
+			}
+			ui.Box(c).Width(storageOpenWidth).Shrink(0)
+		})
+		for _, g := range storageRows(s.snapshot.Groups, agents[s.agentFilter], s.showEmpty) {
 			a.storageGroup(c, g, peak, busy, compact)
 		}
-	}
+	})
 }
 
 const (
-	storageBarWidth  = 120
-	storageColumn    = 72
-	storageOpenWidth = 44
+	storageBarWidth  = 150
+	storageColumn    = 84
+	storageOpenWidth = 26
 )
 
 func storageColumns(compact bool) []string {
@@ -434,15 +620,15 @@ func (a *App) storageGroup(c *ui.Context, g storage.Group, peak int64, busy, com
 	t := c.Theme()
 	colors := storageColors(t.Dark)
 	muted := token(t, "ink-3")
-	ui.Row(c.Key(g.ID)).Padding(8, 0).Gap(12).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
+	ui.Row(c.Key(g.ID)).MinHeight(38).Padding(6, 0).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
 		// Nothing to clean must not read as chosen, whatever is remembered.
 		selected := s.selected[g.ID] && g.Eligible > 0
 		if ui.Checkbox(c, &selected, "").Label("选择 " + g.Agent + " " + g.Name).Disabled(busy || g.Eligible == 0).Changed() {
 			s.selected[g.ID] = selected
 		}
 		ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, g.Name).FontSize(13).FontWeight(500).SingleLine()
+			ui.Row(c).Wrap().Gap(6).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, g.Name).FontSize(13).FontWeight(500).SingleLine().Tooltip(g.Description + "\n" + g.Root)
 				if g.History {
 					ui.Text(c, "影响历史恢复").FontSize(11).TextColor(token(t, "warn-ink")).SingleLine()
 				}
@@ -451,7 +637,10 @@ func (a *App) storageGroup(c *ui.Context, g storage.Group, peak int64, busy, com
 						Tooltip(fmt.Sprintf("%d 个文件（%s）属于保留期内仍活跃的会话，不会清理", g.Protected, storageSize(g.ProtectedBytes)))
 				}
 			})
-			ui.Text(c, g.Description).FontSize(12).TextColor(muted).SingleLine().Tooltip(g.Description + "\n" + g.Root)
+		})
+		ui.Row(c).Width(104).Shrink(0).Gap(6).AlignItems(ui.Center).Children(func() {
+			storageAgentDot(c, g.Agent)
+			ui.Text(c, g.Agent).FontSize(12).TextColor(t.TextMuted).SingleLine()
 		})
 		part := colors.idle
 		if s.selected[g.ID] {
@@ -463,11 +652,16 @@ func (a *App) storageGroup(c *ui.Context, g storage.Group, peak int64, busy, com
 			})
 			number(c, storageSize(g.Bytes)).Width(storageColumn).Shrink(0).TextAlign(ui.End).FontSize(13).TextColor(t.TextMuted)
 		}
-		number(c, storageSize(g.EligibleBytes)).Width(storageColumn).Shrink(0).TextAlign(ui.End).FontSize(13).FontWeight(600)
-		if !compact {
-			number(c, fmt.Sprintf("%d / %d", g.Eligible, g.Files)).Width(storageColumn).Shrink(0).TextAlign(ui.End).FontSize(13).TextColor(t.TextMuted).Tooltip("可清理 / 全部文件")
+		value := number(c, storageSize(g.EligibleBytes)).Width(storageColumn).Shrink(0).TextAlign(ui.End).FontSize(13).FontWeight(600)
+		if g.Eligible == 0 {
+			value.TextColor(t.TextMuted)
 		}
-		if outlineButton(c, "open:"+g.ID, "查看").Width(storageOpenWidth).Padding(0).Tooltip(g.Root).Disabled(g.Files == 0).Clicked() {
+		if !compact {
+			number(c, fmt.Sprintf("%d / %d", g.Eligible, g.Files)).Width(76).Shrink(0).TextAlign(ui.End).FontSize(13).TextColor(t.TextMuted).Tooltip("可清理 / 全部文件")
+		}
+		open := ui.ButtonBase(c.Key("open:"+g.ID)).Size(storageOpenWidth, 26).Justify(ui.Center).AlignItems(ui.Center).Label("查看 " + g.Agent + " " + g.Name).Tooltip(g.Root).Disabled(g.Files == 0)
+		open.Children(func() { ui.Icon(c, glyph("reveal")).FontSize(14).TextColor(t.TextMuted) })
+		if open.Clicked() {
 			a.reveal(g.Root)
 		}
 	})
@@ -513,78 +707,117 @@ func (a *App) storageActions(c *ui.Context, busy bool) {
 
 func (a *App) storageDatabases(c *ui.Context, busy bool) {
 	t := c.Theme()
-	muted := token(t, "ink-3")
-	sectionHead(c, "数据库维护", "", nil)
-	ui.Column(c).Gap(10).Children(func() {
-		ui.Text(c, "整理回收空闲页，合并 WAL 保留数据库记录。请先退出对应 Agent；整理可能需要约数据库大小两倍的临时空间。").FontSize(12).TextColor(t.TextMuted)
-		for _, agent := range storageAgents {
-			ui.Column(c).Children(func() {
-				ui.Row(c).Height(30).Gap(8).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
+	colors := storageColors(t.Dark)
+	var total int64
+	for _, d := range a.storage.snapshot.Databases {
+		total += d.Bytes + d.WALBytes
+	}
+	ui.Row(c).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, "数据库维护").Grow(1).FontSize(14).FontWeight(600)
+		number(c, storageSize(total)).FontSize(13).FontWeight(600)
+	})
+	for _, agent := range storageAgents {
+		found := false
+		for _, d := range a.storage.snapshot.Databases {
+			if d.Agent != agent {
+				continue
+			}
+			found = true
+			ui.Column(c.Key(d.Path)).Gap(10).Padding(4, 0, 10, 0).Children(func() {
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 					storageAgentDot(c, agent)
-					ui.Text(c, agent+" 数据库").FontSize(13).FontWeight(600).SingleLine()
+					ui.Text(c, agent+" 数据库").FontSize(13).SingleLine()
+					ui.Text(c, filepath.Base(d.Path)).Grow(1).MinWidth(0).FontSize(12).TextColor(t.TextMuted).SingleLine().Tooltip(d.Path)
 				})
-				found := false
-				for _, d := range a.storage.snapshot.Databases {
-					if d.Agent != agent {
-						continue
+				storageBar(c, 8, d.Bytes+d.WALBytes, barPart{max(d.Bytes-d.FreeBytes, 0), colors.database}, barPart{d.FreeBytes, colors.kept}, barPart{d.WALBytes, colors.wal})
+				ui.Row(c).Gap(8).Children(func() {
+					for _, v := range []struct {
+						label string
+						bytes int64
+						color ui.Color
+					}{{"有效数据", max(d.Bytes-d.FreeBytes, 0), colors.database}, {"空闲页", d.FreeBytes, colors.kept}, {"WAL", d.WALBytes, colors.wal}} {
+						ui.Column(c).Grow(1).Basis(0).MinWidth(0).Gap(4).Children(func() { legendItem(c, v.color, v.label); number(c, storageSize(v.bytes)).FontSize(15).FontWeight(600) })
 					}
-					found = true
-					ui.Row(c.Key(d.Path)).Wrap().Padding(8, 0).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
-						ui.Column(c).Grow(1).Basis(180).MinWidth(0).Gap(2).Children(func() {
-							ui.Text(c, filepath.Base(d.Path)).FontSize(13).FontWeight(500).SingleLine().Tooltip(d.Path)
-							number(c, fmt.Sprintf("%s · 空闲页 %s · WAL %s", storageSize(d.Bytes), storageSize(d.FreeBytes), storageSize(d.WALBytes))).FontSize(12).TextColor(muted)
-							if d.Error != "" {
-								ui.Text(c, d.Error).FontSize(12).TextColor(t.Danger)
-							}
-						})
-						ui.Row(c).Gap(6).Children(func() {
-							if outlineButton(c, "vacuum:"+d.Path, "整理碎片…").Disabled(busy || d.Error != "").Clicked() {
-								a.confirmDatabase(d, false)
-							}
-							if outlineButton(c, "checkpoint:"+d.Path, "合并 WAL…").Disabled(busy || d.Error != "").Clicked() {
-								a.confirmDatabase(d, true)
-							}
-							if outlineButton(c, "reveal:"+d.Path, "查看").Tooltip(d.Path).Clicked() {
-								a.reveal(d.Path)
-							}
-						})
-					})
+				})
+				if d.Error != "" {
+					ui.Text(c, d.Error).FontSize(12).TextColor(t.Danger)
 				}
-				if !found {
+				ui.Row(c).Wrap().Gap(6).Children(func() {
+					if outlineButton(c, "vacuum:"+d.Path, "整理碎片…").Grow(1).Disabled(busy || d.Error != "").Clicked() {
+						a.confirmDatabase(d, false)
+					}
+					if outlineButton(c, "checkpoint:"+d.Path, "合并 WAL…").Grow(1).Disabled(busy || d.Error != "").Clicked() {
+						a.confirmDatabase(d, true)
+					}
+					if outlineButton(c, "reveal:"+d.Path, "查看").Tooltip(d.Path).Clicked() {
+						a.reveal(d.Path)
+					}
+				})
+			})
+		}
+		if !found {
+			ui.Row(c).Gap(8).Padding(4, 0).AlignItems(ui.Start).Children(func() {
+				storageAgentDot(c, agent)
+				ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
+					ui.Text(c, agent+" 数据库").FontSize(13)
 					message := "没有发现本地 SQLite 数据库。"
 					if agent == "Claude Code" {
 						message = "未发现 SQLite 数据库。Claude Code 的会话通常以 JSONL 保存，可在上方清理历史文件。"
 					}
-					ui.Text(c, message).FontSize(12).TextColor(muted).Padding(8, 0)
-				}
+					ui.Text(c, message).FontSize(12).TextColor(token(t, "ink-3"))
+				})
 			})
 		}
+	}
+	ui.Box(c).Grow(1)
+	ui.Row(c).Gap(6).AlignItems(ui.Center).Tooltip("整理可能需要约数据库大小两倍的临时空间。").Children(func() {
+		ui.Icon(c, storageGlyphs["alert"]).FontSize(13).TextColor(token(t, "warn-ink"))
+		ui.Text(c, "先退出对应 Agent；维护没有撤销备份。").Grow(1).MinWidth(0).FontSize(11).TextColor(token(t, "warn-ink"))
 	})
 }
 
 func (a *App) storageBackups(c *ui.Context, busy bool) {
 	s := &a.storage
 	t := c.Theme()
-	if len(s.backups) == 0 {
-		sectionHead(c, "清理备份", "", nil)
-		ui.Text(c, "还没有清理备份").FontSize(13).TextColor(t.TextMuted).Padding(11, 0).BorderWidth(1, 0, 0, 0).BorderColor(t.Border)
-		return
-	}
-	sectionHead(c, "清理备份", "查看目录 →", func() { a.reveal(a.undoRoot) })
+	empty := len(s.backups) == 0
+	ui.Row(c).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, "清理备份").FontSize(14).FontWeight(600).Grow(1)
+		if !empty {
+			b := ui.ButtonBase(c.Key("backup-directory")).Label("查看目录 →")
+			b.Children(func() { ui.Text(c, "查看目录 →").FontSize(12).TextColor(token(t, "accent-ink")) })
+			if b.Clicked() {
+				a.reveal(a.undoRoot)
+			}
+		}
+	})
+	ui.Row(c).Gap(12).Padding(12, 0).AlignItems(ui.Center).Children(func() {
+		ui.Box(c).Size(36, 36).Radius(7).Background(token(t, "ok-bg")).AlignItems(ui.Center).Justify(ui.Center).Children(func() { ui.Icon(c, storageGlyphs["backup"]).FontSize(20).TextColor(token(t, "ok")) })
+		ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
+			ui.Row(c).Wrap().Gap(8).AlignItems(ui.Center).Children(func() {
+				number(c, storageSize(s.backupBytes)).FontSize(20).FontWeight(600)
+				ui.Text(c, fmt.Sprintf("%d 个文件", len(s.backups))).FontSize(12).TextColor(t.TextMuted)
+			})
+			note := "清理前自动压缩备份，可按类别恢复。"
+			if empty {
+				note = "还没有备份；每次清理前自动压缩备份"
+			}
+			ui.Text(c, note).FontSize(12).TextColor(t.TextMuted)
+		})
+	})
 	for _, g := range s.backupGroups {
 		a.storageBackupGroup(c, g, busy)
 	}
-	ui.Row(c).Wrap().Gap(6).Padding(10, 0, 0, 0).Children(func() {
-		if outlineButton(c, "storage-restore", "恢复全部…").Label("恢复全部清理备份").Disabled(busy).Clicked() {
+	ui.Row(c).Gap(6).Children(func() {
+		if outlineButton(c, "storage-restore", "恢复全部…").Grow(1).Basis(0).Label("恢复全部清理备份").Disabled(busy || empty).Clicked() {
 			a.confirmRestoreBackups(s.backups)
 		}
-		if outlineButton(c, "storage-purge", "清空全部…").Label("清空全部清理备份").TextColor(t.Danger).Disabled(busy).Clicked() {
+		if outlineButton(c, "storage-purge", "清空全部…").Grow(1).Basis(0).Label("清空全部清理备份").TextColor(t.Danger).Disabled(busy || empty).Clicked() {
 			a.confirmPurgeBackups(s.backups)
 		}
-		if outlineButton(c, "storage-expire", fmt.Sprintf("清除 %d 天前…", backupExpiryDays)).Label(fmt.Sprintf("清除 %d 天前的备份", backupExpiryDays)).TextColor(t.Danger).Disabled(busy || len(s.expired) == 0).Clicked() {
-			a.confirmPurgeBackups(s.expired)
-		}
 	})
+	if len(s.expired) > 0 && outlineButton(c, "storage-expire", fmt.Sprintf("清除 %d 天前…", backupExpiryDays)).Label(fmt.Sprintf("清除 %d 天前的备份", backupExpiryDays)).TextColor(t.Danger).Disabled(busy).Clicked() {
+		a.confirmPurgeBackups(s.expired)
+	}
 }
 
 func (a *App) storageBackupGroup(c *ui.Context, g backupGroup, busy bool) {

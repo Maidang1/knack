@@ -122,7 +122,7 @@ func TestTurnListCollapse(t *testing.T) {
 	a.openSession(sessionID(root))
 	d := sessionDetail(a.sessions.snapshot, root)
 	a.chooseSessionTurn(d, 17)
-	tt := ui.NewTester(a.View, 1180, 900)
+	tt := ui.NewTester(a.View, 1180, 1000)
 	d = a.sessions.detail
 	if _, ok := tt.Find(turnLabel(d.turns[12])); ok {
 		t.Fatal("long list not collapsed")

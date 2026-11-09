@@ -3,15 +3,19 @@ module knack
 go 1.27.3
 
 require (
+	github.com/dop251/goja v0.0.0-20261108153707-d8dfb4d8b999
 	github.com/egoist/mygo v0.7.4
 	github.com/klauspost/compress v1.18.0
 	modernc.org/sqlite v1.62.0
 )
 
 require (
+	github.com/dlclark/regexp2/v2 v2.11.0 // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/ebitengine/purego v0.11.1 // indirect
+	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/go-text/typesetting v0.3.5 // indirect
+	github.com/google/pprof v0.0.0-20261016150608-1facf8f91b50 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/ncruces/go-strftime v1.1.0 // indirect

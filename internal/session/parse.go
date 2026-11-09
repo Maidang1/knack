@@ -39,6 +39,7 @@ type parseState struct {
 	Sequence    int64
 	Seen        map[string]bool
 	FormatKnown bool
+	Usage       *usageState `json:",omitempty"`
 	// Codex: when the next response's input was complete (turn start, user
 	// message or tool output) and the reasoning time observed since then.
 	InputAt time.Time
@@ -74,6 +75,13 @@ func newParser(s *parseState) *parser {
 }
 
 func (p *parser) line(b []byte) error {
+	if f, ok := p.f.(*streamingFormat); ok {
+		var err error
+		b, err = f.normalize(b, "stats")
+		if err != nil {
+			return err
+		}
+	}
 	var o object
 	if err := json.Unmarshal(b, &o); err != nil {
 		return fmt.Errorf("无效 JSON 记录")
@@ -249,14 +257,6 @@ func (p *parser) result(id string, at time.Time, o, block object) {
 	}
 }
 
-func claudeTokens(o object) Tokens {
-	return Tokens{num(o, "input_tokens"), num(o, "output_tokens"), num(o, "cache_read_input_tokens"), num(o, "cache_creation_input_tokens")}
-}
-func codexTokens(o object) Tokens {
-	read, write := num(o, "cached_input_tokens"), num(o, "cache_write_input_tokens")
-	return Tokens{max(0, num(o, "input_tokens")-read-write), num(o, "output_tokens"), read, write}
-}
-
 // inputHash fingerprints a tool input. Inputs are compacted first, so
 // formatting differences between log writers do not split identical calls.
 func inputHash(raw json.RawMessage) string {
@@ -279,11 +279,6 @@ func first(values ...string) string {
 		}
 	}
 	return ""
-}
-func knownUsage(o object) bool {
-	_, in := o["input_tokens"]
-	_, out := o["output_tokens"]
-	return in && out
 }
 func isToolResult(bs []object) bool {
 	for _, b := range bs {

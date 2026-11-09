@@ -163,9 +163,9 @@ func (a *App) sessionModelSpeeds(c *ui.Context, d *sessionDetailData, color ui.C
 				}
 				ui.Box(c).Grow(1).Height(18).Label(m.name + " 速率范围 · " + label).Tooltip(label).Draw(func(p *ui.Painter, r ui.Rect) {
 					p.Fill(ui.Rect{X: r.X, Y: r.Y + r.H/2 - 0.5, W: r.W, H: 1}, t.Border, 0)
-					lo, hi := float32(m.p10/scale)*r.W, float32(m.p90/scale)*r.W
+					lo, hi := min(float32(m.p10/scale), 1)*r.W, min(float32(m.p90/scale), 1)*r.W
 					p.Fill(ui.Rect{X: r.X + lo, Y: r.Y + 4, W: max(4, hi-lo), H: r.H - 8}, band, (r.H-8)/2)
-					mid := float32(m.median/scale) * r.W
+					mid := min(float32(m.median/scale), 1) * r.W
 					p.Fill(ui.Rect{X: r.X + min(mid, r.W-2) - 1, Y: r.Y + 1, W: 2, H: r.H - 2}, color, 1)
 				})
 				number(c, fmt.Sprintf("%.0f", m.median)).FontSize(13).FontWeight(600).Width(speedValueWidth).TextAlign(ui.End).Tooltip("中位数 tok/s")
@@ -176,12 +176,17 @@ func (a *App) sessionModelSpeeds(c *ui.Context, d *sessionDetailData, color ui.C
 
 // sessionCalls ranks what was called, each name over a bar of its count.
 func (a *App) sessionCalls(c *ui.Context, title string, calls []callCount, unsupported bool, color ui.Color) {
+	callRanking(c, title, calls, unsupported, color, 0, 150)
+}
+
+// callRanking shows the first limit calls, or all when limit is 0; the total
+// in its tooltip still counts them all.
+func callRanking(c *ui.Context, title string, calls []callCount, unsupported bool, color ui.Color, limit int, nameWidth float32) {
 	t := c.Theme()
 	muted := token(t, "ink-3")
-	total, peak := 0, 1
+	total := 0
 	for _, call := range calls {
 		total += call.count
-		peak = max(peak, call.count)
 	}
 	ui.Column(c).Gap(8).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Children(func() {
@@ -198,19 +203,32 @@ func (a *App) sessionCalls(c *ui.Context, title string, calls []callCount, unsup
 		if len(calls) == 0 {
 			ui.Text(c, "没有记录到调用").FontSize(12).TextColor(t.TextMuted)
 		}
-		for _, call := range calls {
-			label := call.name
-			if call.child {
-				label += " · 含子 Agent 调用"
-			}
-			ui.Row(c).Gap(10).AlignItems(ui.Center).Label(fmt.Sprintf("%s ×%d", label, call.count)).Children(func() {
-				ui.Text(c, call.name).FontSize(13).Width(150).Shrink(0).SingleLine().Tooltip(label)
-				share := float32(call.count) / float32(peak)
-				ui.Box(c).Grow(1).Height(8).Draw(func(p *ui.Painter, r ui.Rect) {
-					p.Fill(ui.Rect{X: r.X, Y: r.Y, W: max(3, share*r.W), H: r.H}, color, 1.5)
-				})
-				number(c, fmt.Sprint(call.count)).FontSize(12).TextColor(t.TextMuted).Width(40).TextAlign(ui.End)
-			})
-		}
+		callRows(c, calls, color, limit, nameWidth)
 	})
+}
+
+// callRows are the ranked names, each over a bar scaled to the most called.
+func callRows(c *ui.Context, calls []callCount, color ui.Color, limit int, nameWidth float32) {
+	t := c.Theme()
+	peak := 1
+	for _, call := range calls {
+		peak = max(peak, call.count)
+	}
+	if limit > 0 && len(calls) > limit {
+		calls = calls[:limit]
+	}
+	for _, call := range calls {
+		label := call.name
+		if call.child {
+			label += " · 含子 Agent 调用"
+		}
+		ui.Row(c).Gap(10).AlignItems(ui.Center).Label(fmt.Sprintf("%s ×%d", label, call.count)).Children(func() {
+			ui.Text(c, call.name).FontSize(13).Width(nameWidth).Shrink(0).SingleLine().Tooltip(label)
+			share := float32(call.count) / float32(peak)
+			ui.Box(c).Grow(1).Height(8).Draw(func(p *ui.Painter, r ui.Rect) {
+				p.Fill(ui.Rect{X: r.X, Y: r.Y, W: max(3, share*r.W), H: r.H}, color, 1.5)
+			})
+			number(c, fmt.Sprint(call.count)).FontSize(12).TextColor(t.TextMuted).Width(40).TextAlign(ui.End)
+		})
+	}
 }

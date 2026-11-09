@@ -31,7 +31,7 @@ func TestRemoveSkillAndUndo(t *testing.T) {
 			a := New(home)
 			tt := ui.NewTester(a.View, 1200, 860)
 			click(t, tt, "重新扫描")
-			click(t, tt, "Claude")
+			openAgent(t, tt, "Claude")
 			click(t, tt, label)
 			click(t, tt, "取消")
 			if _, err := os.Lstat(entry); err != nil {
@@ -71,7 +71,7 @@ func TestClaudeInvocationSettingsAndUndo(t *testing.T) {
 	a := New(home)
 	tt := ui.NewTester(a.View, 1200, 860)
 	click(t, tt, "重新扫描")
-	click(t, tt, "Claude")
+	openAgent(t, tt, "Claude")
 	click(t, tt, "自动 + 手动调用")
 	click(t, tt, "仅手动调用")
 	click(t, tt, "取消")
@@ -142,11 +142,11 @@ func TestProtectedManagementEntries(t *testing.T) {
 	if _, err := os.Stat(pool); err != nil {
 		t.Fatal(err)
 	}
-	click(t, tt, "Codex")
+	openAgent(t, tt, "Codex")
 	if tt.HasText("Claude 调用方式") {
 		t.Fatal("unsupported agent offered preferences")
 	}
-	click(t, tt, "Claude")
+	openAgent(t, tt, "Claude")
 	click(t, tt, "shipped")
 	if tt.HasText("删除 skill") || tt.HasText("Claude 调用方式") {
 		t.Fatal("builtin offered management")
@@ -160,6 +160,7 @@ func TestHideAgentFromSidebar(t *testing.T) {
 	a := New(home)
 	tt := ui.NewTester(a.View, 1200, 860)
 	click(t, tt, "重新扫描")
+	click(t, tt, "Agents")
 	if _, ok := tt.Find("Cline"); !ok {
 		t.Fatalf("Cline missing: %q", tt.Texts())
 	}
@@ -189,7 +190,7 @@ func TestHideBrowseItems(t *testing.T) {
 	a := New(home)
 	tt := ui.NewTester(a.View, 1200, 860)
 	click(t, tt, "重新扫描")
-	a.setAgentsShown([]string{"overview", "sessions", "issues", libraryPage, graphPage, usagePage, insightsPage}, false)
+	a.setAgentsShown([]string{"overview", "sessions", "issues", libraryPage, graphPage, insightsPage}, false)
 	if a.page != "pool" {
 		t.Fatalf("page=%s", a.page)
 	}

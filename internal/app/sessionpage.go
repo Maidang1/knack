@@ -768,7 +768,7 @@ func (a *App) sessionBar(c *ui.Context) {
 		return
 	}
 	if outlineButton(c, "reveal-log", "定位原始日志").Height(28).Tooltip("在访达中显示原始日志").Clicked() {
-		a.reveal(d.session.Path)
+		a.reveal(session.LogPath(d.session.Path))
 	}
 	replay := primaryButton(c, "open-replay", "messages", "回放对话").Disabled(d.session.UnsupportedReason != "")
 	if replay.Clicked() {

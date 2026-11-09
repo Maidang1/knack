@@ -45,6 +45,7 @@ type storageState struct {
 	result       string
 	progress     string
 	showEmpty    bool
+	agentFilter  int
 	cancel       context.CancelFunc
 }
 

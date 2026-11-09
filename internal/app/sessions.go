@@ -21,6 +21,12 @@ type sessionState struct {
 	agent           string
 	day             int
 	overview        *overviewData
+	profile         *profileData
+	profileDay      string  // the heatmap's chosen date; "" follows the latest active day
+	profileTab      int     // the home page ranks Skills or tools
+	profileOpen     [2]bool // that ranking shows every row
+	agentCounts     map[session.Agent]int
+	agentCountsOf   *session.Snapshot
 	browser         *sessionBrowserData
 	query           string
 	hits            sessionHits // sessions the sidebar's query matches
@@ -57,6 +63,7 @@ type sessionState struct {
 func (a *App) loadSessions() {
 	// User-defined Agents register before the first read; see docs/agents.md.
 	problems := session.LoadAgentConfig(filepath.Join(a.home, ".config", "skill-manager", "agents.json"))
+	problems = append(problems, session.LoadPlugins(filepath.Join(a.home, ".config", "skill-manager", "plugins"), a.home)...)
 	path := filepath.Join(a.home, ".cache", "skill-manager", "sessions.json")
 	r, err := session.NewReader(a.home, path)
 	a.sessions = sessionState{reader: r, period: 2, agent: allAgents, day: -1, index: -1, agentProblems: problems}

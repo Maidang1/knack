@@ -70,6 +70,9 @@ type App struct {
 	// rail is set each frame when the window is too narrow for the
 	// sidebar; railPeek shows it anyway until the page changes.
 	rail, railPeek bool
+	agentListW     float32
+	agentQuery     string
+	lastAgent      string
 	railPage       string
 	// 技能库: the filter chip and the order of each source's skills.
 	libFilter, libSort int

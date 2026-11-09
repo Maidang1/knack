@@ -42,7 +42,7 @@ func (a *App) sessionReplay(d *sessionDetailData) *replayState {
 	if path == "" {
 		return nil
 	}
-	info, err := os.Stat(path)
+	info, err := os.Stat(session.LogPath(path))
 	var r *replayState
 	for i, x := range a.sessions.replay {
 		if x.path == path {

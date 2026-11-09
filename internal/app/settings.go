@@ -77,7 +77,7 @@ func (a *App) homePage() string {
 }
 
 // browsePages are the sidebar's places that settings can switch off.
-var browsePages = []string{"overview", "sessions", "issues", libraryPage, graphPage, usagePage, insightsPage, "pool"}
+var browsePages = []string{"overview", "sessions", "issues", libraryPage, graphPage, insightsPage, "pool"}
 
 type settingsRow struct {
 	id, name string
@@ -104,7 +104,6 @@ func (a *App) settingsDialog(c *ui.Context) {
 		{"issues", "待处理", look{"issues", ui.Hex("#f59e0b")}},
 		{libraryPage, "技能库", look{"pool", ui.Hex("#8E8E93")}},
 		{graphPage, "依赖图", look{"graph", ui.Hex("#8E8E93")}},
-		{usagePage, "用量与耗时", look{"chart", ui.Hex("#8E8E93")}},
 		{insightsPage, "诊断", look{"wave", ui.Hex("#8E8E93")}},
 		{"pool", "共享池", look{"package", ui.Hex("#2563eb")}},
 		{storagePage, "磁盘清理", look{"disk", ui.Hex("#8E8E93")}},

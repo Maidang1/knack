@@ -48,7 +48,7 @@ func TestAgentPage(t *testing.T) {
 				tt := ui.NewTester(a.View, width, 1100)
 				tt.SetTitleBar(ui.TitleBar{Height: 52, Left: 70})
 				tt.SetDark(dark)
-				click(t, tt, "Claude")
+				openAgent(t, tt, "Claude")
 				root, ok := a.agentPageRoot()
 				if !ok || agentKey(a.home, root.Path) != "claude" {
 					t.Fatal("sidebar did not open Agent page")
@@ -122,7 +122,7 @@ func TestAgentPage(t *testing.T) {
 					t.Fatal("Skill-to-session deep link")
 				}
 				// A different Agent starts on its own skills tab, then keeps a scoped empty-state.
-				click(t, tt, "Cursor")
+				openAgent(t, tt, "Cursor")
 				click(t, tt, "Agent 会话")
 				if len(a.sessionRows()) != 0 || !tt.HasText("Cursor 没有本地会话日志，会话与用量暂不支持") {
 					t.Fatal("Cursor displays other Agents as its own")
@@ -131,13 +131,13 @@ func TestAgentPage(t *testing.T) {
 				if !tt.HasText("Cursor 没有本地会话日志，会话与用量暂不支持") || tt.HasText("0 Token") {
 					t.Fatal("Cursor missing capability shown as zero")
 				}
-				click(t, tt, "Factory")
+				openAgent(t, tt, "Factory")
 				click(t, tt, "Agent 用量")
 				if !tt.HasText("暂不支持 · Factory 本地日志没有 Token 用量字段，Token、缓存与输出速率暂不支持") || tt.HasText("0 Token") {
 					t.Fatal("Factory missing capability shown as zero")
 				}
 				exportSessionPreview(t, tt, fmt.Sprintf("agent-factory-usage-%d-dark-%t.png", width, dark))
-				click(t, tt, "Codex")
+				openAgent(t, tt, "Codex")
 				click(t, tt, "Agent 用量")
 				// Codex loads skills by reading their SKILL.md, which the logs record.
 				if tt.HasText("Codex 本地日志没有可靠的 Skill 调用记录，Skill 使用情况暂不支持") {

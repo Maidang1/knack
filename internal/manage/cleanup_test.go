@@ -340,7 +340,11 @@ func TestMaintainDatabase(t *testing.T) {
 				t.Fatal(err)
 			}
 			path := filepath.Join(home, "state.sqlite")
-			u := url.URL{Scheme: "file", Path: filepath.ToSlash(path)}
+			uriPath := filepath.ToSlash(path)
+			if !strings.HasPrefix(uriPath, "/") {
+				uriPath = "/" + uriPath
+			}
+			u := url.URL{Scheme: "file", Path: uriPath}
 			db, err := sql.Open("sqlite", u.String())
 			if err != nil {
 				t.Fatal(err)

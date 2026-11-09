@@ -33,40 +33,17 @@ const (
 // refreshes again while Snapshot.More is set. A variable so tests can lower it.
 var maxRefreshRead int64 = 64 << 20
 
-// Codex compaction records embed the whole replacement history and can exceed
-// maxLineBytes. Their statistics only need the leading timestamp and type, so
-// an oversized record of a known metadata-only type is replayed as its header.
-var largeHeaderTypes = map[string]bool{"compacted": true}
-
+// Oversized records may retain a metadata-only header selected by a bundled
+// plugin. Only this bounded header is checkpointed while discarding the body.
 func largeRecordHeader(head []byte) []byte {
-	field := func(name string) string {
-		key := []byte(`"` + name + `":"`)
-		i := bytes.Index(head, key)
-		if i < 0 {
-			return ""
-		}
-		rest := head[i+len(key):]
-		j := bytes.IndexByte(rest, '"')
-		if j < 0 || bytes.IndexByte(rest[:j], '\\') >= 0 {
-			return ""
-		}
-		return string(rest[:j])
-	}
-	kind, at := field("type"), field("timestamp")
-	if at == "" {
-		return nil
-	}
-	// Messages carrying large attachments (images) keep their role, which is
-	// all the statistics read from a message; the replay shows them as skipped.
-	if kind == "response_item" && bytes.Contains(head, []byte(`"payload":{"type":"message"`)) {
-		if role := field("role"); role != "" {
-			return []byte(`{"timestamp":"` + at + `","type":"response_item","payload":{"type":"message","role":"` + role + `"}}`)
+	for _, f := range builtinFormats {
+		if f, ok := f.(*streamingFormat); ok {
+			if header := f.header(head); header != nil {
+				return header
+			}
 		}
 	}
-	if !largeHeaderTypes[kind] {
-		return nil
-	}
-	return []byte(`{"timestamp":"` + at + `","type":"` + kind + `"}`)
+	return nil
 }
 
 type fileState struct {
@@ -77,8 +54,12 @@ type fileState struct {
 	State                 parseState
 	BadLines, LargeLines  int
 	Pending               bool
-	Discarding            bool // oversized line continued across bounded refreshes
-	Done                  bool // compressed log read to its end
+	Discarding            bool   // oversized line continued across bounded refreshes
+	Done                  bool   // compressed log read to its end, or plugin session read
+	Version               string `json:",omitempty"` // of the plugin session last read
+	// The plugin session version whose read failed, and why. Not persisted, so a
+	// failure caused by the moment is retried at the next launch.
+	failedVersion, failure string
 	// LargeHeader is the synthesized metadata-only record (timestamp, type,
 	// role) of an oversized record still being discarded; never its content.
 	LargeHeader string `json:",omitempty"`
@@ -107,6 +88,16 @@ type logFile struct {
 	agent         Agent
 	parent, child string
 	modTime       int64
+	id, version   string // plugin sessions only
+}
+
+// label names the log in warnings.
+func (f logFile) label() string {
+	base := filepath.Base(LogPath(f.path))
+	if f.id != "" {
+		return base + "#" + f.id
+	}
+	return base
 }
 
 func discover(ctx context.Context, home string) ([]logFile, []string, bool) {
@@ -114,6 +105,12 @@ func discover(ctx context.Context, home string) ([]logFile, []string, bool) {
 	var warnings []string
 	partial := false
 	for _, f := range formats() {
+		if pf, ok := f.(pluginFormat); ok {
+			w, p := discoverPlugin(ctx, pf, &files)
+			warnings = append(warnings, w[:min(len(w), max(0, maxWarnings-len(warnings)))]...)
+			partial = partial || p
+			continue
+		}
 		l := f.layout()
 		for _, rel := range l.roots {
 			w, p := discoverRoot(ctx, home, f, rel, l.suffixes, &files)
@@ -225,13 +222,13 @@ func (r *Reader) Refresh(ctx context.Context) (*Snapshot, error) {
 		}
 		out.ReadBytes += read
 		if err != nil && len(out.Warnings) < maxWarnings {
-			out.Warnings = append(out.Warnings, fmt.Sprintf("%s：%s", filepath.Base(file.path), err))
+			out.Warnings = append(out.Warnings, fmt.Sprintf("%s：%s", file.label(), err))
 		}
 		if st.Pending {
 			out.Partial = true
 		}
 		if st.BadLines+st.LargeLines > 0 && len(out.Warnings) < maxWarnings {
-			out.Warnings = append(out.Warnings, fmt.Sprintf("%s：跳过 %d 条无效记录、%d 条超出 4 MiB 的记录", filepath.Base(file.path), st.BadLines, st.LargeLines))
+			out.Warnings = append(out.Warnings, fmt.Sprintf("%s：跳过 %d 条无效记录、%d 条超出 4 MiB 的记录", file.label(), st.BadLines, st.LargeLines))
 		}
 	}
 	if err := ctx.Err(); err != nil {
@@ -288,6 +285,9 @@ func stale(st *fileState, file logFile) bool {
 }
 
 func readLog(ctx context.Context, file logFile, st *fileState, budget int64) (int64, error) {
+	if pf, ok := formatOf(file.agent).(pluginFormat); ok {
+		return readPlugin(ctx, pf, file, st, budget)
+	}
 	info, err := os.Lstat(file.path)
 	if err != nil {
 		st.Pending = true

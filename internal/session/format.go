@@ -63,20 +63,21 @@ type flatLayout struct{}
 func (flatLayout) visit([]string, bool) (string, string, bool) { return "", "", true }
 func (flatLayout) parentLog(logFile) string                    { return "" }
 
-var builtinFormats = []format{claudeFormat{}, codexFormat{}, factoryFormat{}}
+var builtinFormats = []format{embeddedFormat("claude"), embeddedFormat("codex"), factoryFormat{}}
 
-// registry adds the user-defined Agents of agents.json after the built-in ones.
-// It is set once at startup, before any Reader runs, and read concurrently.
+// registry adds the user-defined Agents of agents.json and of the plugins
+// directory after the built-in ones. It is set once at startup, before any
+// Reader runs, and read concurrently.
 var registry struct {
 	sync.RWMutex
-	custom   []format
-	warnings []string
+	custom, plugins          []format
+	warnings, pluginWarnings []string
 }
 
 func formats() []format {
 	registry.RLock()
 	defer registry.RUnlock()
-	return append(slices.Clip(builtinFormats), registry.custom...)
+	return slices.Concat(builtinFormats, registry.custom, registry.plugins)
 }
 
 // Agents without readable local logs are listed so the UI can say so.
