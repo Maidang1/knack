@@ -66,7 +66,7 @@ func (a *App) frictionTools(c *ui.Context, r insight.FrictionReport) {
 			bad := tool.Failed + tool.Interrupted + tool.TimeOut
 			ui.Row(c).Padding(7, 0).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).
 				Label(fmt.Sprintf("%s %d 次调用，%d 次失败", tool.Name, tool.Calls, bad)).Children(func() {
-				ui.Text(c, tool.Name).FontSize(13).Grow(1).MinWidth(0).SingleLine().Tooltip(tool.Name)
+				withTip(c, ui.Text(c, tool.Name).FontSize(13).Grow(1).MinWidth(0).SingleLine(), tool.Name)
 				cell(c, groupDigits(tool.Calls), widths[0], true).TextColor(t.TextMuted)
 				rate := cell(c, percent(float64(bad), float64(tool.Calls)), widths[1], true)
 				if tool.FailureRate() > .1 && bad >= 3 {
@@ -122,7 +122,7 @@ func (a *App) frictionLoops(c *ui.Context, r insight.FrictionReport) {
 			row.Children(func() {
 				ui.Icon(c, glyph("refresh")).FontSize(13).TextColor(t.Warning).Shrink(0)
 				ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
-					ui.Text(c, title).FontSize(13).SingleLine().Tooltip(title)
+					withTip(c, ui.Text(c, title).FontSize(13).SingleLine(), title)
 					ui.Text(c, fmt.Sprintf("第 %d 轮 · %s · %s", l.TurnNumber, l.Tool, l.At.Local().Format("01/02 15:04"))).FontSize(11.5).TextColor(token(t, "ink-3")).SingleLine()
 				})
 				number(c, fmt.Sprintf("×%d", l.Repeats)).FontSize(13).FontWeight(600).TextColor(t.Warning).Shrink(0)
@@ -166,7 +166,7 @@ func (a *App) insightProjects(c *ui.Context) {
 	t := c.Theme()
 	list := a.insightData().Projects
 	if len(list) == 0 {
-		emptyState(c, "项目", "folder", t.TextMuted, "这段时间没有会话", "项目按会话的工作目录归类。", nil)
+		emptyState(c, "项目", "folder", "这段时间没有会话", "项目按会话的工作目录归类。", nil)
 		return
 	}
 	totalCost := 0.0
@@ -199,7 +199,7 @@ func (a *App) insightProjects(c *ui.Context) {
 			row := listRow(c, fmt.Sprintf("project:%d", i), p.Name+" · "+shortPath(a.home, p.Path))
 			row.Children(func() {
 				ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
-					ui.Text(c, p.Name).FontSize(13).SingleLine().Tooltip(p.Path)
+					withTip(c, ui.Text(c, p.Name).FontSize(13).SingleLine(), p.Path)
 					meta := []string{strings.Join(p.Agents, "、")}
 					if !p.Last.IsZero() {
 						meta = append(meta, "最近 "+ago(time.Now(), p.Last))
@@ -231,7 +231,7 @@ func (a *App) insightProjects(c *ui.Context) {
 			if row.Clicked() && p.Path != "" {
 				a.openProjectSessions(p.Path)
 			}
-			row.ContextMenu(func(m *ui.Menu) {
+			contextMenu(c, row, func(m *menu) {
 				if p.Path == "" {
 					return
 				}

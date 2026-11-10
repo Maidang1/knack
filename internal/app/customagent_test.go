@@ -22,7 +22,7 @@ func TestMain(m *testing.M) {
 func TestPluginAgentLoads(t *testing.T) {
 	home := t.TempDir()
 	t.Cleanup(func() { session.LoadPlugins(filepath.Join(home, "missing"), home) })
-	dir := filepath.Join(home, ".config/skill-manager/plugins")
+	dir := filepath.Join(home, ".config/knack/plugins")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestCustomAgentOverview(t *testing.T) {
 		n, _ := strconv.ParseInt(string(m[5:]), 10, 64)
 		return []byte(`"ts":` + strconv.FormatInt(n+shift, 10))
 	})
-	for path, data := range map[string][]byte{".config/skill-manager/agents.json": []byte(config), ".my-agent/logs/chat-1.jsonl": b} {
+	for path, data := range map[string][]byte{".config/knack/agents.json": []byte(config), ".my-agent/logs/chat-1.jsonl": b} {
 		path = filepath.Join(home, path)
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)

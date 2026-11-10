@@ -2,6 +2,8 @@ package app
 
 import (
 	"github.com/egoist/mygo/ui"
+	"github.com/lobehub/lobe-mygo/pkg/action"
+	"github.com/lobehub/lobe-mygo/pkg/layout"
 )
 
 // Below railBelow the sidebar narrows to a rail of icons, as the design's
@@ -77,8 +79,8 @@ func (a *App) railSidebar(c *ui.Context) {
 				}
 				for _, r := range a.repos {
 					path := r.Path
-					a.railItem(c, "repo:"+path, "folder", a.repoLabel(path), ui.Color{}).Tooltip(path).
-						ContextMenu(func(m *ui.Menu) { a.repoMenu(m, path) })
+					item := withTip(c, a.railItem(c, "repo:"+path, "folder", a.repoLabel(path), ui.Color{}), path)
+					contextMenu(c, item, func(m *menu) { a.repoMenu(m, path) })
 				}
 				if railButton(c, "rail-add", "plus", "添加仓库…", "添加仓库", a.mutating).Clicked() {
 					a.beginAddRepo()
@@ -100,18 +102,12 @@ func (a *App) railSidebar(c *ui.Context) {
 }
 
 func railButton(c *ui.Context, key, icon, label, tip string, disabled bool) ui.Element {
-	t := c.Theme()
-	b := ui.ButtonBase(c.Key(key)).Size(36, 32).Radius(7).AlignItems(ui.Center).Justify(ui.Center).
-		Label(label).Tooltip(tip).Disabled(disabled).Shrink(0)
-	if b.Hovered() {
-		b.Background(t.SurfaceHover)
-	}
-	b.Children(func() { ui.Icon(c, glyph(icon)).FontSize(17).TextColor(token(t, "ink-2")) })
-	return b
+	return action.ActionIcon(c.Key(key), glyph(icon), action.ActionIconProps{Title: tip, BlockSize: 32, GlyphSize: 17}).
+		Width(36).Label(label).Disabled(disabled).Shrink(0)
 }
 
 func railDivider(c *ui.Context) {
-	ui.Box(c).Size(20, 1).Margin(6, 0).Background(c.Theme().Border)
+	layout.Divider(c, layout.DividerProps{}).AlignSelf(ui.Center).Width(20).Margin(6, 0)
 }
 
 // railItem is a page as an icon; dot, when set, marks it as needing
@@ -122,7 +118,7 @@ func (a *App) railItem(c *ui.Context, id, icon, label string, dot ui.Color) ui.E
 	railContent(c, item, func() {
 		color := token(t, "ink-2")
 		if a.activeNav(id) {
-			color = token(t, "accent-ink")
+			color = t.Text
 		}
 		ui.Icon(c, glyph(icon)).FontSize(17).TextColor(color)
 	})
@@ -136,7 +132,7 @@ func (a *App) railItem(c *ui.Context, id, icon, label string, dot ui.Color) ui.E
 
 func (a *App) railRow(c *ui.Context, id, label string) ui.Element {
 	t := c.Theme()
-	item := ui.SidebarItem(c.Key("rail:"+id), id, nil, "").Label(label).Tooltip(label).Size(36, 32).Padding(0).Gap(0).
+	item := withTip(c, ui.SidebarItem(c.Key("rail:"+id), id, nil, "").Label(label), label).Size(36, 32).Padding(0).Gap(0).
 		Radius(7).AlignItems(ui.Center).Justify(ui.Center)
 	if a.activeNav(id) {
 		item.Background(token(t, "selected"))

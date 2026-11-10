@@ -6,6 +6,12 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/lobehub/lobe-mygo/pkg/action"
+	"github.com/lobehub/lobe-mygo/pkg/choice"
+	"github.com/lobehub/lobe-mygo/pkg/display"
+	"github.com/lobehub/lobe-mygo/pkg/feedback"
+	"github.com/lobehub/lobe-mygo/pkg/field"
+	lobe "github.com/lobehub/lobe-mygo/pkg/theme"
 
 	"knack/internal/manage"
 	"knack/internal/repair"
@@ -85,6 +91,7 @@ func (a *App) View(c *ui.Context) {
 		a.dialogs(c)
 		a.settingsDialog(c)
 		a.repositoryDialog(c)
+		feedback.ToastHost(c, feedback.ToastHostProps{Placement: feedback.ToastBottom})
 	})
 }
 
@@ -175,10 +182,8 @@ func viewTabs(c *ui.Context, selected *int, labels ...string) {
 
 func (a *App) listSearch(c *ui.Context) {
 	placeholder := "搜索名称、说明或路径"
-	t := c.Theme()
 	ui.Row(c).Padding(0, 16, 8, 16).Children(func() {
-		ui.SearchField(c, &a.query).Grow(1).MinWidth(0).Height(30).Radius(7).Background(t.Surface).Border(1, t.Border).
-			PlaceholderColor(token(t, "ink-3")).Label("搜索").Placeholder(placeholder)
+		searchField(c, &a.query, "搜索", 0, field.SearchBarProps{Placeholder: placeholder})
 	})
 }
 
@@ -186,23 +191,22 @@ func (a *App) listSearch(c *ui.Context) {
 // status bar when the sidebar is hidden.
 func (a *App) footerActions(c *ui.Context) {
 	ui.Toolbar(c, func() {
-		scan := ui.Button(c, "").Height(toolbarControlHeight).Padding(0, 8).
-			Disabled(a.scanning || a.sessions.loading || a.mutating).Label("重新扫描").Tooltip("重新扫描（⌘R）")
+		scan := withTip(c, action.StyleButton(c, ui.ButtonBase(c), "", action.ButtonProps{Variant: action.Text, Size: lobe.Small}).
+			Height(toolbarControlHeight).PaddingX(8).AlignItems(ui.Center).Disabled(a.scanning || a.sessions.loading || a.mutating).Label("重新扫描"), "重新扫描（⌘R）")
 		scan.Children(func() {
 			if a.scanning || a.sessions.loading {
-				ui.Spinner(c).Size(14, 14).Label("正在扫描")
+				feedback.Spin(c, feedback.SpinProps{Size: lobe.Small}, nil).Label("正在扫描")
 			} else {
-				ui.Icon(c, glyph("refresh")).FontSize(15)
+				ui.Icon(c, glyph("refresh")).FontSize(14)
 			}
-			ui.Text(c, "重新扫描").FontSize(13).SingleLine()
+			ui.Text(c, "重新扫描").SingleLine()
 		})
 		if scan.Clicked() {
 			a.startScan()
 		}
 		ui.Spacer(c)
-		pick := ui.Button(c, "").Size(toolbarControlHeight, toolbarControlHeight).Padding(0).
-			Label("设置").Tooltip("设置（⌘,）")
-		pick.Children(func() { ui.Icon(c, glyph("gear")) })
+		pick := action.ActionIcon(c, glyph("gear"), action.ActionIconProps{Title: "设置（⌘,）", BlockSize: toolbarControlHeight, GlyphSize: 16}).
+			Label("设置")
 		if pick.Clicked() {
 			a.openSettings()
 			c.Invalidate()
@@ -218,8 +222,7 @@ func (a *App) sidebarToggle(c *ui.Context) {
 		label = "展开侧边栏"
 	}
 	ui.Toolbar(c, func() {
-		b := ui.Button(c, "").Label(label)
-		b.Children(func() { ui.Icon(c, glyph("sidebar")).FontSize(18) })
+		b := action.ActionIcon(c, glyph("sidebar"), action.ActionIconProps{Title: label, BlockSize: toolbarControlHeight, GlyphSize: 18}).Label(label)
 		if b.Clicked() {
 			a.sideCollapsed = !a.sideCollapsed
 			c.Invalidate()
@@ -248,7 +251,7 @@ func (a *App) barStatus(c *ui.Context) {
 	t := c.Theme()
 	switch {
 	case a.mutating:
-		ui.Spinner(c).Label("正在处理")
+		feedback.Spin(c, feedback.SpinProps{Size: lobe.Small}, nil).Label("正在处理")
 		ui.Text(c, "正在处理…").FontSize(13).TextColor(t.TextMuted).Shrink(0)
 	case a.cached:
 		ui.Text(c, "缓存").FontSize(13).TextColor(t.TextMuted).Shrink(0)
@@ -259,20 +262,13 @@ func (a *App) warnings(c *ui.Context) {
 	if a.snap == nil || len(a.snap.Warnings) == 0 {
 		return
 	}
-	t := c.Theme()
-	ink := token(t, "warn-ink")
 	n := min(len(a.snap.Warnings), 3)
-	ui.Row(c).Shrink(0).Margin(12, 32, 0, 32).Padding(10, 14).Gap(10).Radius(8).Background(token(t, "warn-bg")).Label("扫描提示").Children(func() {
-		ui.Icon(c, glyph("alert")).FontSize(15).TextColor(t.Warning).Shrink(0).Margin(1, 0, 0, 0)
-		ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
-			for _, w := range a.snap.Warnings[:n] {
-				ui.Text(c, w).FontSize(13).TextColor(ink).SingleLine().Tooltip(w)
-			}
-			if extra := len(a.snap.Warnings) - n; extra > 0 {
-				ui.Textf(c, "还有 %d 条提示", extra).FontSize(12).TextColor(ink)
-			}
-		})
-	})
+	lines := append([]string(nil), a.snap.Warnings[1:n]...)
+	if extra := len(a.snap.Warnings) - n; extra > 0 {
+		lines = append(lines, fmt.Sprintf("还有 %d 条提示", extra))
+	}
+	feedback.Alert(c, a.snap.Warnings[0], feedback.AlertProps{Type: feedback.Warning, Description: strings.Join(lines, "\n")}).
+		Shrink(0).Margin(12, 32, 0, 32).FontSize(13).Label("扫描提示")
 }
 
 // controlsBandHeight keeps every toolbar control on the traffic lights'
@@ -338,7 +334,7 @@ func (a *App) contentPane(c *ui.Context) {
 			return
 		}
 		if a.page == agentsPage {
-			emptyState(c, "还没有 Agent", "bot", t.TextMuted, "还没有发现 Agent", "扫描到 Agent 的技能目录后，它们会出现在这里。", nil)
+			emptyState(c, "还没有 Agent", "bot", "还没有发现 Agent", "扫描到 Agent 的技能目录后，它们会出现在这里。", nil)
 			a.statusBar(c)
 			return
 		}
@@ -419,7 +415,7 @@ func (a *App) listPane(c *ui.Context) {
 			a.issueSelectionBar(c, rows)
 		}
 		if path, ok := strings.CutPrefix(a.page, "repo:"); ok {
-			if ui.Button(c, "不再扫描").Margin(8, 16, 4, 16).AlignSelf(ui.Start).Disabled(a.scanning || a.mutating).Clicked() {
+			if action.Button(c, "不再扫描", action.ButtonProps{Size: lobe.Small}).Margin(8, 16, 4, 16).AlignSelf(ui.Start).Disabled(a.scanning || a.mutating).Clicked() {
 				a.confirmRepoRemoval(path)
 			}
 		}
@@ -477,9 +473,8 @@ func (a *App) listRows(c *ui.Context, rows []row) {
 			a.paintRow(c, rows[i], selected)
 		}).Grow(1).Padding(4, 8).Gap(2).Children(func() {
 			if len(rows) == 0 {
-				ui.Column(c).Padding(40, 12).Gap(10).AlignItems(ui.Center).Children(func() {
-					ui.Icon(c, glyph("empty")).FontSize(26).TextColor(t.TextMuted)
-					ui.Text(c, a.emptyText()).FontSize(13).TextColor(t.TextMuted)
+				ui.Column(c).Padding(40, 12).AlignItems(ui.Center).Children(func() {
+					display.Empty(c, display.EmptyProps{Icon: glyph("empty"), Description: a.emptyText()})
 				})
 			}
 		})
@@ -495,7 +490,7 @@ func (a *App) paintRow(c *ui.Context, r row, selected bool) {
 		if a.page == "issues" {
 			ps := a.state(a.page)
 			checked := ps.chosen.Has(r.key)
-			if ui.Checkbox(c, &checked, "").Label("选择 " + r.name).Shrink(0).Changed() {
+			if choice.Checkbox(c, &checked, "", choice.CheckboxProps{}).Label("选择 " + r.name).Shrink(0).Changed() {
 				if checked {
 					ps.chosen.Add(r.key)
 				} else {
@@ -511,7 +506,7 @@ func (a *App) paintRow(c *ui.Context, r row, selected bool) {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, r.name).FontSize(13).FontWeight(500).Grow(1).SingleLine()
 				if _, ok := a.agentPageRoot(); ok {
-					ui.Text(c, a.skillListUsage(r.entry)).FontSize(11).SingleLine().Tooltip("近 30 天 · 按日志中的 Skill 调用名匹配")
+					withTip(c, ui.Text(c, a.skillListUsage(r.entry)).FontSize(11).SingleLine(), "近 30 天 · 按日志中的 Skill 调用名匹配")
 				}
 				if r.badge != "" {
 					pill(c, r.badge, toneColor(t, r.tone))
@@ -564,15 +559,13 @@ func (a *App) detail(c *ui.Context, r row) {
 	ui.Column(c).Padding(26, 32, 36, 32).Gap(18).MaxWidth(820).Children(func() {
 		ui.Column(c).Gap(8).Children(func() {
 			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, e.Name).FontSize(22).FontWeight(600).MinWidth(0).SingleLine().Tooltip(e.Name)
+				withTip(c, ui.Text(c, e.Name).FontSize(22).FontWeight(600).MinWidth(0).SingleLine(), e.Name)
 				if r.badge != "" {
-					tone := toneColor(t, r.tone)
-					ui.Row(c).Gap(5).Padding(2, 8).Radius(5).AlignItems(ui.Center).Background(fade(tone, 26)).Shrink(0).Children(func() {
-						if r.glyph != "" {
-							ui.Icon(c, glyph(r.glyph)).FontSize(13).TextColor(tone)
-						}
-						ui.Text(c, r.badge).FontSize(12).TextColor(tone).SingleLine()
-					})
+					p := display.TagProps{Color: toneTag(r.tone)}
+					if r.glyph != "" {
+						p.Icon = glyph(r.glyph)
+					}
+					display.Tag(c, r.badge, p).Shrink(0)
 				}
 			})
 			if e.Description != "" {
@@ -699,7 +692,7 @@ func (a *App) actions(c *ui.Context, e skill.Entry) {
 			}
 			a.removalButton(c, e)
 		}
-		ui.PopoverMenuButton(c, "更多", func(m *ui.Menu) {
+		a.dropdown(c, "entry-more", func(m *menu) {
 			if m.Item("在访达中显示").Chosen() {
 				a.reveal(e.Path)
 			}
@@ -707,7 +700,7 @@ func (a *App) actions(c *ui.Context, e skill.Entry) {
 				a.copyPath(e.Path)
 				c.Toast("已复制路径")
 			}
-		}).Label("更多")
+		}, func(t ui.Element) { menuButton(c, t, "更多") })
 	})
 	a.actionNotes(c, e)
 	a.removalNote(c, e)
@@ -747,14 +740,15 @@ func (a *App) linkAgentMenu(c *ui.Context, pool skill.Entry) {
 	if len(free) == 0 {
 		return
 	}
-	menu := ui.MenuButton(c, "挂到 Agent", func(m *ui.Menu) {
+	a.dropdown(c, "link-agent", func(m *menu) {
 		for _, r := range free {
 			if m.Item(r.Name).Chosen() {
 				a.confirmFix(repair.LinkToAgent(pool, r))
 			}
 		}
+	}, func(t ui.Element) {
+		menuButton(c, t.Disabled(a.scanning || a.mutating), "挂到 Agent").AlignSelf(ui.Start)
 	})
-	menu.AlignSelf(ui.Start).Disabled(a.scanning || a.mutating)
 }
 
 // fixButton is one fix. The first on a page is the default button, filled;
@@ -763,9 +757,9 @@ func (a *App) fixButton(c *ui.Context, f repair.Fix, primary bool) {
 	key := c.Key(f.Label + "|" + f.Title)
 	var b ui.Element
 	if primary {
-		b = ui.PrimaryButton(key, f.Label)
+		b = action.Button(key, f.Label, action.ButtonProps{Variant: action.Primary, Size: lobe.Small})
 	} else {
-		b = ui.Button(key, f.Label)
+		b = action.Button(key, f.Label, action.ButtonProps{Size: lobe.Small})
 	}
 	if b.AlignSelf(ui.Start).Disabled(a.scanning || a.mutating).Clicked() {
 		a.confirmFix(f)
@@ -866,7 +860,7 @@ func (a *App) dialogs(c *ui.Context) {
 
 func (a *App) finish(c *ui.Context, done string, recs []manage.Record, err error) {
 	if err != nil && len(recs) == 0 {
-		c.Toast(err.Error())
+		feedback.ShowToast(c, feedback.ToastProps{Description: err.Error(), Type: feedback.ToastError})
 		if a.rescanPending {
 			a.startScan()
 		}
@@ -884,7 +878,11 @@ func (a *App) finish(c *ui.Context, done string, recs []manage.Record, err error
 	}
 	if len(recs) > 0 {
 		kept := append([]manage.Record(nil), recs...)
-		c.ToastAction(msg, "撤销", func() { a.undo(kept) })
+		typ := feedback.ToastSuccess
+		if err != nil {
+			typ = feedback.ToastWarning
+		}
+		feedback.ShowToast(c, feedback.ToastProps{Description: msg, Type: typ, Action: "撤销", OnAction: func() { a.undo(kept) }})
 	} else if msg != "" {
 		c.Toast(msg)
 	}
@@ -1044,6 +1042,20 @@ func clamp(sel *int, n int) {
 	}
 }
 
+// toneTag is a tone as the color of Lobe UI's tag.
+func toneTag(tone string) display.TagColor {
+	switch tone {
+	case "danger":
+		return display.TagError
+	case "warning":
+		return display.TagWarning
+	case "ok":
+		return display.TagSuccess
+	default:
+		return ""
+	}
+}
+
 func toneColor(t *ui.Theme, tone string) ui.Color {
 	switch tone {
 	case "danger":
@@ -1067,20 +1079,19 @@ func (a *App) allClear(c *ui.Context) bool {
 	if a.snap != nil && len(a.snap.Issues) > 0 {
 		return false
 	}
-	t := c.Theme()
 	switch {
 	case a.snap == nil && a.scanning:
-		emptyState(c, "正在扫描", "search", t.TextMuted, "正在查找本机的技能", "只读取文件头部元数据，不改动任何文件。", func() {
-			ui.Spinner(c).Size(16, 16).Label("正在扫描")
+		emptyState(c, "正在扫描", "search", "正在查找本机的技能", "只读取文件头部元数据，不改动任何文件。", func() {
+			feedback.Spin(c, feedback.SpinProps{CustomSize: 16}, nil).Label("正在扫描")
 		})
 	case a.snap == nil:
-		emptyState(c, "还没有扫描结果", "search", t.TextMuted, "还没有扫描结果", "点「重新扫描」读取磁盘，⌘R 同样会扫描。", func() {
+		emptyState(c, "还没有扫描结果", "search", "还没有扫描结果", "点「重新扫描」读取磁盘，⌘R 同样会扫描。", func() {
 			if primaryButton(c, "first-scan", "refresh", "开始扫描").Clicked() {
 				a.startScan()
 			}
 		})
 	default:
-		emptyState(c, "没有待处理的问题", "check", t.Success, "没有待处理的问题",
+		emptyState(c, "没有待处理的问题", "check", "没有待处理的问题",
 			fmt.Sprintf("共享池 %d 项，%d 个 Agent，%d 个仓库都已核对。", len(a.snap.EntriesFor("pool")), len(a.roots(skill.RoleAgent)), len(a.repos)), nil)
 	}
 	return true
@@ -1122,19 +1133,14 @@ func (a *App) statusBar(c *ui.Context) {
 	})
 }
 
-// sheet asks the question in a.ask as a macOS sheet: a narrow panel hung
-// from the top of the window with the cancel button beside a default
-// button that names the action. It returns 1 when the default button was
-// pressed, 0 when cancelled, and -1 while it is still open.
+// sheet asks the question in a.ask in Lobe UI's modal, with the cancel
+// button beside a default button that names the action. It returns 1 when
+// the default button was pressed, 0 when cancelled, and -1 while it is
+// still open.
 func (a *App) sheet(c *ui.Context) int {
 	t := c.Theme()
 	chosen := -1
-	ui.DialogBase(c, &a.ask.open, func(backdrop ui.Element, panel ui.Element) {
-		backdrop.Background(ui.RGBA(0, 0, 0, 0.12)).Justify(ui.Start)
-		panel.Width(a.sheetWidth()).MaxWidth(520).Margin(bandHeight(c.TitleBar()), 0, 0, 0).Padding(20, 22, 18, 22).Gap(8).Radius(12).
-			Background(t.Surface).Border(1, t.Border).Shadow(0, 12, 32, 0, ui.RGBA(0, 0, 0, 0.2)).
-			Label(a.ask.title)
-		ui.Text(c, a.ask.title).FontSize(15).FontWeight(600)
+	feedback.Modal(c, &a.ask.open, feedback.ModalProps{Title: a.ask.title, Width: a.sheetWidth(), NoFooter: true}, func() {
 		// A message may end with the list of what it touches, after a
 		// blank line; that part is shown as paths.
 		message, list, _ := strings.Cut(a.ask.message, "\n\n")
@@ -1148,18 +1154,18 @@ func (a *App) sheet(c *ui.Context) int {
 						ui.Text(c, line).FontSize(13).TextColor(t.TextMuted)
 						continue
 					}
-					ui.Text(c, line).Font(monoFont).FontSize(13).SingleLine().Tooltip(line)
+					withTip(c, ui.Text(c, line).Font(monoFont).FontSize(13).SingleLine(), line)
 				}
 			})
 		}
-		ui.Row(c).Gap(8).Justify(ui.End).Margin(10, 0, 0, 0).Children(func() {
-			if outlineButton(c, "ask-cancel", "取消").Height(28).Clicked() {
+		ui.Row(c).Gap(8).Justify(ui.End).Margin(16, 0, 0, 0).Children(func() {
+			if action.Button(c.Key("ask-cancel"), "取消", action.ButtonProps{}).Label("取消").Clicked() {
 				chosen = 0
 			}
-			if a.ask.alt != "" && outlineButton(c, "ask-alt", a.ask.alt).Height(28).Clicked() {
+			if a.ask.alt != "" && action.Button(c.Key("ask-alt"), a.ask.alt, action.ButtonProps{}).Label(a.ask.alt).Clicked() {
 				chosen = 2
 			}
-			if primaryButton(c, "ask-ok", "", a.ask.ok).AutoFocus().Clicked() {
+			if action.Button(c.Key("ask-ok"), a.ask.ok, action.ButtonProps{Variant: action.Primary}).Label(a.ask.ok).AutoFocus().Clicked() {
 				chosen = 1
 			}
 		})

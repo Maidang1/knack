@@ -6,6 +6,9 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/lobehub/lobe-mygo/pkg/action"
+	"github.com/lobehub/lobe-mygo/pkg/field"
+	lobe "github.com/lobehub/lobe-mygo/pkg/theme"
 
 	"knack/internal/session"
 	"knack/internal/skill"
@@ -105,28 +108,24 @@ func (a *App) beginPickWorkDir() {
 func (a *App) effectiveToolbar(c *ui.Context) {
 	t := c.Theme()
 	muted := token(t, "ink-3")
-	picker := func(key, label, tip string) ui.Element {
-		b := ui.ButtonBase(c.Key(key)).Height(28).Padding(0, 10).Gap(6).Radius(7).AlignItems(ui.Center).
-			Background(t.Surface).Border(1, token(t, "line-strong")).Label(label).Tooltip(tip).Shrink(0)
-		if b.Hovered() {
-			b.Background(t.SurfaceHover)
-		}
-		return b
+	picker := func(b ui.Element, label, tip string) ui.Element {
+		return withTip(c, action.StyleButton(c, b, "", action.ButtonProps{Size: lobe.Small}).
+			Height(28).Gap(6).Label(label), tip).Shrink(0)
 	}
 	if agent, ok := a.effAgentRoot(); ok {
-		b := picker("eff-agent", "Agent："+agent.Name, "选择 Agent")
-		b.Children(func() {
-			ui.Text(c, "Agent").FontSize(12).TextColor(muted)
-			ui.Box(c).Size(7, 7).Radius(3.5).Background(agentColor(session.Agent(agentKey(a.home, agent.Path)), t.Dark)).Shrink(0)
-			ui.Text(c, agent.Name).FontSize(13).FontWeight(500).SingleLine()
-			ui.Icon(c, glyph("chevron-down")).FontSize(13).TextColor(muted)
-		})
-		b.PopoverMenuButton(func(m *ui.Menu) {
+		a.dropdown(c, "eff-agent", func(m *menu) {
 			for _, r := range a.roots(skill.RoleAgent) {
 				if m.Item(r.Name).Checked(r.ID == agent.ID).Chosen() {
 					a.eff.agent, a.eff.chosen = r.ID, ""
 				}
 			}
+		}, func(b ui.Element) {
+			picker(b, "Agent："+agent.Name, "选择 Agent").Children(func() {
+				ui.Text(c, "Agent").FontSize(12).TextColor(muted)
+				ui.Box(c).Size(7, 7).Radius(3.5).Background(agentColor(session.Agent(agentKey(a.home, agent.Path)), t.Dark)).Shrink(0)
+				ui.Text(c, agent.Name).FontSize(13).FontWeight(500).SingleLine()
+				ui.Icon(c, glyph("chevron-down")).FontSize(13).TextColor(muted)
+			})
 		})
 	}
 	label := "选择工作目录…"
@@ -135,7 +134,7 @@ func (a *App) effectiveToolbar(c *ui.Context) {
 		label = shortPath(a.home, a.eff.workDir)
 		name, tip = label, a.eff.workDir
 	}
-	dir := picker("eff-dir", "工作目录："+label, tip).Shrink(1).MinWidth(0).MaxWidth(180)
+	dir := picker(ui.ButtonBase(c.Key("eff-dir")), "工作目录："+label, tip).Shrink(1).MinWidth(0).MaxWidth(180)
 	dir.Children(func() {
 		ui.Text(c, "工作目录").FontSize(12).TextColor(muted).Shrink(0)
 		ui.Text(c, name).Font(monoFont).FontSize(12).SingleLine().MinWidth(0).Shrink(1)
@@ -152,22 +151,18 @@ var effectiveFilters = []string{"全部", "存在覆盖", "仅一层"}
 // effectivePane is the page: what the Agent loads started in the folder,
 // every layer side by side, and the lookup for the chosen skill.
 func (a *App) effectivePane(c *ui.Context) {
-	t := c.Theme()
 	v, errText := a.effective()
 	if v == nil {
-		ui.Column(c).Grow(1).Gap(6).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-			ui.Icon(c, glyph("empty")).FontSize(28).TextColor(t.TextMuted)
-			msg := "还没有扫描结果。"
-			switch {
-			case errText != "":
-				msg = errText
-			case a.snap != nil:
-				msg = "没有找到 Agent 的 skill 目录。"
-			case a.scanning:
-				msg = "正在扫描。"
-			}
-			ui.Text(c, msg).FontSize(13).TextColor(t.TextMuted)
-		})
+		msg := "还没有扫描结果。"
+		switch {
+		case errText != "":
+			msg = errText
+		case a.snap != nil:
+			msg = "没有找到 Agent 的 skill 目录。"
+		case a.scanning:
+			msg = "正在扫描。"
+		}
+		emptyState(c, "生效视图", "empty", "", msg, nil)
 		return
 	}
 	skills := a.effectiveRows(v)
@@ -215,8 +210,7 @@ func (a *App) effectiveHeader(c *ui.Context, v *skill.EffectiveView) {
 	ui.Row(c).Gap(12).Wrap().AlignItems(ui.Center).Children(func() {
 		chipTabs(c, "生效筛选", &a.eff.filter, effectiveFilters, counts)
 		ui.Spacer(c)
-		ui.SearchField(c, &a.query).Width(220).Height(28).Radius(7).Background(t.Surface).Border(1, t.Border).
-			PlaceholderColor(token(t, "ink-3")).Label("搜索").Placeholder("搜索技能")
+		searchField(c, &a.query, "搜索", 220, field.SearchBarProps{Placeholder: "搜索技能"})
 	})
 }
 
@@ -313,7 +307,7 @@ func (a *App) matrixPane(c *ui.Context, v *skill.EffectiveView, skills []skill.E
 						ui.Icon(c, glyph(layerGlyph(l.Layer))).FontSize(13).TextColor(t.TextMuted)
 						ui.Text(c, l.Layer.Label()).FontSize(13).FontWeight(600).SingleLine()
 					})
-					where := ui.Text(c, a.layerWhere(v, l)).FontSize(11).TextColor(muted).SingleLine().Tooltip(l.Path)
+					where := withTip(c, ui.Text(c, a.layerWhere(v, l)).FontSize(11).TextColor(muted).SingleLine(), l.Path)
 					if l.Path != "" {
 						where.Font(monoFont)
 					}
@@ -374,7 +368,7 @@ func (a *App) matrixRow(c *ui.Context, v *skill.EffectiveView, s skill.Effective
 	}
 	b.Children(func() {
 		ui.Column(c).Grow(effNameGrow).Basis(0).MinWidth(0).Gap(3).Padding(0, 0, 0, 12).Children(func() {
-			ui.Text(c, s.Name).FontSize(13).FontWeight(500).SingleLine().Tooltip(s.Name)
+			withTip(c, ui.Text(c, s.Name).FontSize(13).FontWeight(500).SingleLine(), s.Name)
 			ui.Text(c, effectiveNote(s)).FontSize(11.5).TextColor(muted).SingleLine()
 		})
 		for _, l := range v.Layers {
@@ -468,7 +462,7 @@ func (a *App) lookupCard(c *ui.Context, v *skill.EffectiveView, n int, l skill.L
 			ui.Text(c, l.Layer.Label()).FontSize(13).FontWeight(600).Grow(1).SingleLine()
 			ui.Icon(c, glyph(icon)).FontSize(15).TextColor(iconColor).Shrink(0)
 		})
-		where := ui.Text(c, path).FontSize(11.5).TextColor(t.TextMuted).SingleLine().Tooltip(path)
+		where := withTip(c, ui.Text(c, path).FontSize(11.5).TextColor(t.TextMuted).SingleLine(), path)
 		if has || l.Path != "" {
 			where.Font(monoFont)
 		}

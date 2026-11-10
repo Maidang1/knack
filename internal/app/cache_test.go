@@ -99,7 +99,7 @@ func TestInvocationChangeKeepsCatalog(t *testing.T) {
 	if a.invocations["demo"] != manage.InvocationManual {
 		t.Fatal("invocations not refreshed")
 	}
-	click(t, tt, "撤销")
+	clickUndo(t, tt)
 	if a.snap != snap || a.scanGen != gen {
 		t.Fatal("invocation undo rescanned skill tree")
 	}

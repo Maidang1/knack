@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/egoist/mygo/ui"
 	"knack/internal/session"
 	"knack/internal/skill"
+
+	"github.com/egoist/mygo/ui"
 )
 
 // agentColumns are the design's fixed widths of the Agents table; the name
@@ -42,7 +43,7 @@ func (a *App) agentUsage(c *ui.Context, d *overviewData) {
 			e.TextColor(muted)
 		}
 		if tip != "" {
-			e.Tooltip(tip)
+			withTip(c, e, tip)
 		}
 	}
 	row("head", 26, func() {

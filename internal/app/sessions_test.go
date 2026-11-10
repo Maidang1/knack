@@ -10,8 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/egoist/mygo/ui"
 	"knack/internal/session"
+
+	"github.com/egoist/mygo/ui"
 )
 
 func TestSessionPalette(t *testing.T) {
@@ -29,13 +30,15 @@ func TestSessionPalette(t *testing.T) {
 			if sessionColor(name, false) != ui.Hex(pair[0]) || pair[0] == pair[1] {
 				t.Fatal("missing theme-specific palette")
 			}
-			for _, background := range []string{tokens["bg"][1], tokens["surface"][1], tokens["hover"][1], tokens["selected"][1]} {
-				x, y := luminance(sessionColor(name, true)), luminance(ui.Hex(background))
+			dark := &ui.Theme{Dark: true}
+			surface := token(dark, "surface")
+			for _, background := range []ui.Color{token(dark, "bg"), surface, flatten(token(dark, "hover"), surface), flatten(token(dark, "selected"), surface)} {
+				x, y := luminance(sessionColor(name, true)), luminance(background)
 				if x < y {
 					x, y = y, x
 				}
 				if ratio := (x + .05) / (y + .05); ratio < 3 {
-					t.Fatalf("%s vs %s: %.2f:1 < 3:1", pair[1], background, ratio)
+					t.Fatalf("%s vs %v: %.2f:1 < 3:1", pair[1], background, ratio)
 				}
 			}
 		})
@@ -141,7 +144,7 @@ func TestSessionBrowser(t *testing.T) {
 				if len(rows) != 1 || rows[0].Agent != session.Factory {
 					t.Fatal("session search")
 				}
-				click(t, tt, a.sessions.list.Label(0))
+				click(t, tt, recentLabel(rows[0]))
 				if !a.sessions.open || !tt.HasText("暂不支持") || !tt.HasText("速率暂不支持") {
 					t.Fatal("Factory usage must remain unsupported")
 				}

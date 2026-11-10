@@ -6,9 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/egoist/mygo/ui"
 	"knack/internal/session"
 	"knack/internal/skill"
+
+	"github.com/egoist/mygo/ui"
 )
 
 type activityRecord struct {
@@ -184,7 +185,7 @@ func (a *App) skillUsage(c *ui.Context, e skill.Entry) {
 			if agent == "" {
 				note += "跨 Agent 汇总已识别调用；Codex、Cursor 等缺少调用记录的来源不计为零。"
 			}
-			ui.Text(c, "按调用名统计，同名副本合并计数").FontSize(12).TextColor(muted).Shrink(1).MinWidth(0).SingleLine().Tooltip(note)
+			withTip(c, ui.Text(c, "按调用名统计，同名副本合并计数").FontSize(12).TextColor(muted).Shrink(1).MinWidth(0).SingleLine(), note)
 			segmented(c, "技能使用时间范围", &a.skillPeriod, "7 天", "30 天", "90 天")
 		})
 		if agent != "" {
@@ -202,7 +203,7 @@ func (a *App) skillUsage(c *ui.Context, e skill.Entry) {
 		summary := fmt.Sprintf("近 %d 天调用 %d 次 · %d 个会话 · 主 Agent %d 次 · 子 Agent %d 次", days, usage.calls, len(usage.sessions), usage.main, usage.child)
 		ui.Row(c).Gap(28).AlignItems(ui.End).Label(summary).Children(func() {
 			stat := func(value, label, tip string) {
-				ui.Column(c).Gap(3).Shrink(0).Tooltip(tip).Children(func() {
+				withTip(c, ui.Column(c).Gap(3).Shrink(0), tip).Children(func() {
 					if strings.ContainsFunc(value, func(r rune) bool { return r > 0x2e80 }) {
 						ui.Text(c, value).FontSize(16).FontWeight(600).Height(24).AlignContent(ui.End)
 					} else {
@@ -244,7 +245,7 @@ func skillDailyChart(c *ui.Context, usage *skillUsageData, days int, agent sessi
 			day := start.AddDate(0, 0, i).Format("2006-01-02")
 			count := usage.days[day]
 			label := fmt.Sprintf("%s · %d 次调用", day, count)
-			ui.ButtonBase(c.Key(day)).Grow(1).Basis(0).MinWidth(0).Label(label).Tooltip(label).Draw(func(p *ui.Painter, r ui.Rect) {
+			withTip(c, ui.ButtonBase(c.Key(day)).Grow(1).Basis(0).MinWidth(0).Label(label), label).Draw(func(p *ui.Painter, r ui.Rect) {
 				if count == 0 {
 					p.Fill(ui.Rect{X: r.X, Y: r.Y + r.H - 1, W: r.W, H: 1}, t.Border, 0)
 					return

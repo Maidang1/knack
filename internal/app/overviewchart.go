@@ -6,8 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/egoist/mygo/ui"
 	"knack/internal/session"
+
+	"github.com/egoist/mygo/ui"
 )
 
 func seriesName(id session.Agent) string {
@@ -81,7 +82,7 @@ func (a *App) dailyChart(c *ui.Context, d *overviewData) {
 				ui.Row(c).Grow(1).Gap(4).AlignItems(ui.Stretch).FocusGroup(ui.Horizontal).Label("每日 Token 图表").Children(func() {
 					for i, day := range d.days {
 						description := filteredDayDescription(day, d)
-						bar := ui.ButtonBase(c.Key(day.date)).Grow(1).Basis(0).MinWidth(0).Label(description).Tooltip(description)
+						bar := withTip(c, ui.ButtonBase(c.Key(day.date)).Grow(1).Basis(0).MinWidth(0).Label(description), description)
 						on := i == selected
 						bar.Draw(func(p *ui.Painter, r ui.Rect) {
 							if peak == 0 {
@@ -123,7 +124,7 @@ func (a *App) dailyChart(c *ui.Context, d *overviewData) {
 			ui.Row(c).Gap(8).Padding(8, 12).Radius(8).Background(t.Surface).Border(1, t.Border).AlignItems(ui.Center).Shrink(0).
 				Children(func() {
 					ui.Text(c, dayLabel(day.date)).FontSize(13).FontWeight(600).SingleLine()
-					ui.Text(c, caption).FontSize(13).TextColor(t.TextMuted).SingleLine().MinWidth(0).Tooltip(caption)
+					withTip(c, ui.Text(c, caption).FontSize(13).TextColor(t.TextMuted).SingleLine().MinWidth(0), caption)
 				})
 		}
 	})

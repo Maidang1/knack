@@ -6,9 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/egoist/mygo/ui"
 	"knack/internal/session"
 	"knack/internal/skill"
+
+	"github.com/egoist/mygo/ui"
+	"github.com/lobehub/lobe-mygo/pkg/display"
 )
 
 // The home page is flat on the window background: who and what the period
@@ -117,15 +119,13 @@ func (a *App) homeHero(c *ui.Context, d *overviewData, p *profileData) {
 		lifetime = append(lifetime, "首次记录 "+p.first.Local().Format("2006/01/02"))
 	}
 	ui.Row(c).Gap(18).AlignItems(ui.Center).Label("个人资料").Children(func() {
-		ui.Box(c).Size(68, 68).Shrink(0).Radius(34).Background(t.Accent).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-			ui.Text(c, strings.ToUpper(string([]rune(p.name)[:1]))).FontSize(28).FontWeight(600).TextColor(t.AccentText)
-		})
+		display.Avatar(c, p.name, display.AvatarProps{Size: 68, Shape: display.AvatarCircle, Fallback: display.AvatarText}).Shrink(0)
 		ui.Column(c).Grow(1).MinWidth(0).Gap(5).Children(func() {
 			ui.Text(c, title).FontSize(22).FontWeight(600).MaxLines(2)
 			ui.Text(c, line).FontSize(13.5).TextColor(t.TextMuted).MaxLines(2)
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Row(c).Shrink(0).Gap(4).Padding(2, 7).Radius(5).Background(t.SurfaceHover).AlignItems(ui.Center).
-					Tooltip("统计只读取本机日志，不联网").Children(func() {
+				withTip(c, ui.Row(c).Shrink(0).Gap(4).Padding(2, 7).Radius(5).Background(t.SurfaceHover).AlignItems(ui.Center),
+					"统计只读取本机日志，不联网").Children(func() {
 					ui.Icon(c, glyph("lock")).FontSize(11).TextColor(muted)
 					ui.Text(c, "仅存于本机").FontSize(11).TextColor(t.TextMuted).SingleLine()
 				})
@@ -147,7 +147,7 @@ func (a *App) overviewNotes(c *ui.Context, d *overviewData) {
 	ui.Column(c).Gap(4).Children(func() {
 		ui.Text(c, strings.Join(notes, " · ")).FontSize(11.5).TextColor(muted).MaxLines(2)
 		if n := len(a.sessions.agentProblems); n > 0 {
-			ui.Text(c, fmt.Sprintf("自定义 Agent 配置有 %d 个问题，相关 Agent 未加载，悬停查看", n)).FontSize(11.5).TextColor(t.Warning).Tooltip(strings.Join(a.sessions.agentProblems, "\n"))
+			withTip(c, ui.Text(c, fmt.Sprintf("自定义 Agent 配置有 %d 个问题，相关 Agent 未加载，悬停查看", n)).FontSize(11.5).TextColor(t.Warning), strings.Join(a.sessions.agentProblems, "\n"))
 		}
 		snap := a.sessions.snapshot
 		if snap == nil {
@@ -164,7 +164,7 @@ func (a *App) overviewNotes(c *ui.Context, d *overviewData) {
 		// Per-file details are diagnostics: summarize them, keep the list
 		// one hover away instead of printing raw file names in the page.
 		if n := len(snap.Warnings); n > 0 {
-			ui.Text(c, fmt.Sprintf("%d 条读取提示（跳过的无效或超长记录等），悬停查看", n)).FontSize(11.5).TextColor(muted).Tooltip(strings.Join(snap.Warnings[:min(12, n)], "\n"))
+			withTip(c, ui.Text(c, fmt.Sprintf("%d 条读取提示（跳过的无效或超长记录等），悬停查看", n)).FontSize(11.5).TextColor(muted), strings.Join(snap.Warnings[:min(12, n)], "\n"))
 		}
 	})
 }
@@ -272,7 +272,7 @@ func (a *App) metricCell(c *ui.Context, d *overviewData, m metric, i, j int) {
 		if m.warn {
 			v.TextColor(t.Warning)
 		}
-		ui.Text(c, m.note).FontSize(12).LineHeight(1.4).TextColor(m.noteColor).MaxLines(2).Tooltip(m.note)
+		withTip(c, ui.Text(c, m.note).FontSize(12).LineHeight(1.4).TextColor(m.noteColor).MaxLines(2), m.note)
 	})
 	if i == 4 && box.Clicked() {
 		a.openSessionAnomalies(d)
@@ -340,7 +340,7 @@ func (a *App) overviewIssues(c *ui.Context, d *overviewData) {
 			})
 			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
 				ui.Text(c, it.title).FontSize(13).SingleLine()
-				ui.Text(c, it.note).FontSize(12).TextColor(token(t, "ink-3")).SingleLine().Tooltip(it.note)
+				withTip(c, ui.Text(c, it.note).FontSize(12).TextColor(token(t, "ink-3")).SingleLine(), it.note)
 			})
 			if outlineButton(c, "act:"+it.key, it.action).Label(it.action + "：" + it.title).Clicked() {
 				it.open()
@@ -361,7 +361,7 @@ func (a *App) recentSessions(c *ui.Context, d *overviewData) {
 		row.Children(func() {
 			ui.Box(c).Size(3, 30).Radius(2).Shrink(0).Background(agentColor(s.Agent, t.Dark))
 			ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
-				ui.Text(c, recentLabel(s)).FontSize(13).SingleLine().Tooltip(recentLabel(s))
+				withTip(c, ui.Text(c, recentLabel(s)).FontSize(13).SingleLine(), recentLabel(s))
 				ui.Text(c, recentMeta(s)).FontSize(11.5).TextColor(token(t, "ink-3")).SingleLine()
 			})
 			if d.anomalies[sessionID(s)] {

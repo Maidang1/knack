@@ -74,7 +74,7 @@ func (a *App) contextCurve(c *ui.Context, d *sessionDetailData, diag *insight.Se
 			}
 			tip := contextTip(p)
 			on := p.Turn == index
-			bar := ui.ButtonBase(c.Key(fmt.Sprintf("ctx:%d", start))).Grow(1).MinWidth(1).Height(contextHeight).Label(tip).Tooltip(tip)
+			bar := withTip(c, ui.ButtonBase(c.Key(fmt.Sprintf("ctx:%d", start))).Grow(1).MinWidth(1).Height(contextHeight).Label(tip), tip)
 			bar.Draw(func(pa *ui.Painter, r ui.Rect) {
 				if !p.UsageKnown {
 					pa.Fill(ui.Rect{X: r.X, Y: r.Y + r.H - 2, W: r.W, H: 2}, t.Border, 0)
@@ -179,7 +179,7 @@ func (a *App) sessionFindings(c *ui.Context, d *sessionDetailData, diag *insight
 				ui.Icon(c, glyph(findingIcon(f.Kind))).FontSize(13).TextColor(tone).Shrink(0)
 				number(c, fmt.Sprintf("第 %d 轮", f.Turn+1)).FontSize(12).TextColor(muted).Width(52).Shrink(0)
 				ui.Text(c, f.Title).FontSize(13).FontWeight(600).Shrink(0).SingleLine()
-				ui.Text(c, f.Detail).FontSize(13).TextColor(t.TextMuted).Grow(1).MinWidth(0).SingleLine().Tooltip(f.Detail)
+				withTip(c, ui.Text(c, f.Detail).FontSize(13).TextColor(t.TextMuted).Grow(1).MinWidth(0).SingleLine(), f.Detail)
 			})
 			if row.Clicked() {
 				a.chooseSessionTurn(d, f.Turn)
@@ -191,9 +191,7 @@ func (a *App) sessionFindings(c *ui.Context, d *sessionDetailData, diag *insight
 			if all {
 				text = "收起"
 			}
-			b := ui.ButtonBase(c.Key("findings-all")).Label(text).Padding(4, 0).AlignSelf(ui.Start)
-			b.Children(func() { ui.Text(c, text).FontSize(13).TextColor(t.TextMuted) })
-			if b.Clicked() {
+			if linkButton(c, "findings-all", text).AlignSelf(ui.Start).Clicked() {
 				if all {
 					a.sessions.allFindings = ""
 				} else {

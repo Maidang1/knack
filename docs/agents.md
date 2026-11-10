@@ -1,8 +1,8 @@
 # 自定义 Agent
 
-Knack 随程序嵌入 Claude、Codex 的 JS 插件，Factory 仍由内建 Go format 读取。三者无需用户安装插件，也不依赖 `~/.config/skill-manager/plugins`。内建 Agent 的 id、name 和日志根目录始终保留，用户配置或插件不能覆盖、认领（包括通过符号链接）。其他 Agent 有两种接入方式，都能进入首页统计、全部会话、轮次回放和 Agent 用量统计：
+Knack 随程序嵌入 Claude、Codex 的 JS 插件，Factory 仍由内建 Go format 读取。三者无需用户安装插件，也不依赖 `~/.config/knack/plugins`。内建 Agent 的 id、name 和日志根目录始终保留，用户配置或插件不能覆盖、认领（包括通过符号链接）。其他 Agent 有两种接入方式，都能进入首页统计、全部会话、轮次回放和 Agent 用量统计：
 
-- **字段映射**：日志是 JSON Lines（每行一个 JSON 记录）时，在 `~/.config/skill-manager/agents.json` 中声明字段路径。
+- **字段映射**：日志是 JSON Lines（每行一个 JSON 记录）时，在 `~/.config/knack/agents.json` 中声明字段路径。
 - **[JS 插件](#js-插件)**：日志是任意格式（纯文本、整个 JSON 文件、SQLite……）或需要计算时，用一个 JS 文件读取。
 
 自定义 Agent 和内置 Agent 遵守同样的约束：日志只读，不联网，缓存只保存统计元信息，回放内容只在打开会话时读取到内存中。字段映射不执行任何代码；插件可以运行任意 JavaScript，但只能通过 Knack 暴露的只读方法接触本机。
@@ -89,7 +89,7 @@ Anthropic 消息格式的日志把工具调用和结果放在 `content` 块里�
 
 ## JS 插件
 
-用户插件放在 `~/.config/skill-manager/plugins/` 下。一个 `.js` 文件定义一个 Agent，也可以是一个带 `plugin.json` 的目录。在设置的「插件」里可以从 GitHub 仓库、本机目录、`.js` 文件或 ZIP 安装；GitHub 取最新 release 里适合本机的 zip，没有带平台名的 zip 时用通用 zip，再没有就用源码，没有 release 时用默认分支最新提交。脚本调用 `knack.registerAgent` 注册自己，或在模块里 `export function list` 和 `export function read`（这时 `id` 和 `name` 写在 `plugin.json`）。`list` 列出会话，`read` 把一个会话转成[标准记录](#标准记录)。
+用户插件放在 `~/.config/knack/plugins/` 下。一个 `.js` 文件定义一个 Agent，也可以是一个带 `plugin.json` 的目录。在设置的「插件」里可以从 GitHub 仓库、本机目录、`.js` 文件或 ZIP 安装；GitHub 取最新 release 里适合本机的 zip，没有带平台名的 zip 时用通用 zip，再没有就用源码，没有 release 时用默认分支最新提交。脚本调用 `knack.registerAgent` 注册自己，或在模块里 `export function list` 和 `export function read`（这时 `id` 和 `name` 写在 `plugin.json`）。`list` 列出会话，`read` 把一个会话转成[标准记录](#标准记录)。
 
 读取 `时间戳|角色|正文` 格式的纯文本日志：
 

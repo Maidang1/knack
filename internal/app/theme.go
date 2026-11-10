@@ -1,44 +1,57 @@
 package app
 
-import "github.com/egoist/mygo/ui"
+import (
+	"github.com/egoist/mygo/ui"
+	"github.com/lobehub/lobe-mygo/pkg/layout"
+	lobe "github.com/lobehub/lobe-mygo/pkg/theme"
+)
 
-// The design tokens: cool neutral chrome with a faint violet cast, and one
-// violet accent for what is interactive or chosen (the primary action, the
-// selected row, focus). Data keeps its own hues (sessionPalette), none of
-// them violet, so the accent never reads as a series. Values are derived in
-// OKLCH (neutrals at hue 286, accent at 292) and stored as hex; text pairs
-// clear WCAG AA in both appearances. Each pair is light, dark.
-var tokens = map[string][2]string{
-	"bg":           {"#F8F8FA", "#0F0F14"},
-	"surface":      {"#FFFFFF", "#15151C"},
-	"sidebar":      {"#F2F2F6", "#111117"},
-	"line":         {"#E3E3E9", "#26262F"},
-	"line-strong":  {"#D2D2DA", "#363540"},
-	"ink":          {"#16161F", "#F0F0F3"},
-	"ink-2":        {"#4F4E5B", "#C3C3CC"},
-	"ink-3":        {"#6D6D79", "#9D9DA7"},
-	"hover":        {"#ECECF3", "#201F28"},
-	"pressed":      {"#E2E2EB", "#292934"},
-	"selected":     {"#EDEAFE", "#322853"},
-	"raised":       {"#FFFFFF", "#3F3E4A"},
-	"on-ink":       {"#FFFFFF", "#0F0F14"},
-	"accent":       {"#703FD5", "#7D53E1"},
-	"accent-hover": {"#6134BD", "#7046CF"},
-	"accent-ink":   {"#6335BE", "#B9A9FE"},
-	"accent-bg":    {"#F1EFFE", "#231E39"},
-	"on-accent":    {"#FFFFFF", "#FFFFFF"},
-	"ok":           {"#1C7F4C", "#65C98C"},
-	"ok-bg":        {"#E4F5E9", "#122D1D"},
-	"warn":         {"#A46603", "#EBAE51"},
-	"warn-bg":      {"#FDF1D9", "#32230E"},
-	"warn-ink":     {"#694413", "#F0D49B"},
-	"warn-line":    {"#E6D2A8", "#5E4925"},
-	"danger":       {"#C63A2A", "#F47C6B"},
-	"danger-bg":    {"#FFEBE7", "#3B1C1A"},
-	"diff-add":     {"#E5F7EB", "#152C1E"},
-	"diff-del":     {"#FFECEA", "#3A1D1B"},
-	"code-bg":      {"#15151E", "#07070C"},
-	"code-ink":     {"#D7D7DE", "#D7D7DE"},
+// The design tokens, named for what they do here and drawn from Lobe UI's
+// tokens (lobe-mygo's theme package), so the pages and the Lobe components
+// they hold share one palette: neutral chrome, a near-black primary, and
+// see-through fills for hover, press and choice. Data keeps its own hues
+// (sessionPalette).
+var tokens = map[string]func(*lobe.Tokens) ui.Color{
+	"bg":           func(k *lobe.Tokens) ui.Color { return k.BgLayout },
+	"surface":      func(k *lobe.Tokens) ui.Color { return k.BgContainer },
+	"sidebar":      func(k *lobe.Tokens) ui.Color { return flatten(k.FillTertiary, k.BgLayout) },
+	"line":         func(k *lobe.Tokens) ui.Color { return k.BorderSecondary },
+	"line-strong":  func(k *lobe.Tokens) ui.Color { return k.Border },
+	"ink":          func(k *lobe.Tokens) ui.Color { return k.Text },
+	"ink-2":        func(k *lobe.Tokens) ui.Color { return k.TextSecondary },
+	"ink-3":        func(k *lobe.Tokens) ui.Color { return k.TextTertiary },
+	"hover":        func(k *lobe.Tokens) ui.Color { return k.FillTertiary },
+	"pressed":      func(k *lobe.Tokens) ui.Color { return k.FillSecondary },
+	"selected":     func(k *lobe.Tokens) ui.Color { return k.FillSecondary },
+	"raised":       func(k *lobe.Tokens) ui.Color { return k.BgElevated },
+	"on-ink":       func(k *lobe.Tokens) ui.Color { return k.BgLayout },
+	"accent":       func(k *lobe.Tokens) ui.Color { return k.Primary },
+	"accent-hover": func(k *lobe.Tokens) ui.Color { return k.PrimaryHover },
+	"accent-ink":   func(k *lobe.Tokens) ui.Color { return k.Link },
+	"accent-bg":    func(k *lobe.Tokens) ui.Color { return k.PrimaryBg },
+	"on-accent":    func(k *lobe.Tokens) ui.Color { return k.BgLayout },
+	"ok":           func(k *lobe.Tokens) ui.Color { return k.SuccessText },
+	"ok-bg":        func(k *lobe.Tokens) ui.Color { return k.SuccessBg },
+	"warn":         func(k *lobe.Tokens) ui.Color { return k.WarningText },
+	"warn-bg":      func(k *lobe.Tokens) ui.Color { return k.WarningBg },
+	"warn-ink":     func(k *lobe.Tokens) ui.Color { return k.WarningTextActive },
+	"warn-line":    func(k *lobe.Tokens) ui.Color { return k.WarningBorder },
+	"danger":       func(k *lobe.Tokens) ui.Color { return k.ErrorText },
+	"danger-bg":    func(k *lobe.Tokens) ui.Color { return k.ErrorBg },
+	"diff-add":     func(k *lobe.Tokens) ui.Color { return k.SuccessBg },
+	"diff-del":     func(k *lobe.Tokens) ui.Color { return k.ErrorBg },
+	"code-bg":      func(k *lobe.Tokens) ui.Color { return flatten(k.FillTertiary, k.BgContainer) },
+	"code-ink":     func(k *lobe.Tokens) ui.Color { return k.Text },
+}
+
+var lightTokens, darkTokens = lobe.Light(), lobe.Dark()
+
+// lobeTokens returns Lobe UI's tokens for the theme's appearance.
+func lobeTokens(t *ui.Theme) *lobe.Tokens {
+	if t.Dark {
+		return darkTokens
+	}
+	return lightTokens
 }
 
 // token returns a design token for the theme's appearance.
@@ -47,10 +60,12 @@ func token(t *ui.Theme, name string) ui.Color {
 	if !ok {
 		panic("unknown design token " + name)
 	}
-	if t.Dark {
-		return ui.Hex(v[1])
-	}
-	return ui.Hex(v[0])
+	return v(lobeTokens(t))
+}
+
+// flatten is col drawn over an opaque under, as one opaque color.
+func flatten(col, under ui.Color) ui.Color {
+	return blend(ui.Color{R: col.R, G: col.G, B: col.B, A: 255}, under, float32(col.A)/255)
 }
 
 // monoFont sets what is typed rather than read: paths, code, commands and
@@ -58,31 +73,32 @@ func token(t *ui.Theme, name string) ui.Color {
 // figures get tabular digits (number) so columns still line up.
 const monoFont = "SF Mono, Menlo, monospace"
 
-// appTheme maps the design tokens onto the toolkit's theme. The accent is
-// violet: primary buttons, checked controls and the focus ring; text
-// selection is a wash of it.
+// appTheme is Lobe UI's theme for the appearance, keeping what the window
+// set that Lobe has no say in (vibrancy, fonts).
 func appTheme(base *ui.Theme) *ui.Theme {
 	t := *base
-	tk := func(name string) ui.Color { return token(&t, name) }
-	t.Radius = 6
-	t.Background = tk("bg")
-	t.Surface = tk("surface")
-	t.SurfaceHover = tk("hover")
-	t.SurfacePressed = tk("pressed")
-	t.Border = tk("line")
-	t.Text = tk("ink")
-	t.TextMuted = tk("ink-2")
-	t.Accent = tk("accent")
-	t.AccentHover = tk("accent-hover")
-	t.AccentPressed = tk("accent-hover")
-	t.AccentText = tk("on-accent")
-	t.Success = tk("ok")
-	t.Warning = tk("warn")
-	t.Danger = tk("danger")
-	t.Inverse = tk("ink")
-	t.InverseText = tk("on-ink")
-	t.Focus = fade(tk("accent"), 170)
-	t.Selection = fade(tk("accent"), 72)
+	lt := lobeTokens(base).Theme()
+	t.Radius = lt.Radius
+	t.Background = lt.Background
+	t.Surface = token(&t, "surface")
+	t.SurfaceHover = lt.SurfaceHover
+	t.SurfacePressed = lt.SurfacePressed
+	t.Border = token(&t, "line")
+	t.Text = lt.Text
+	t.TextMuted = lt.TextMuted
+	t.Accent = lt.Accent
+	t.AccentHover = lt.AccentHover
+	t.AccentPressed = lt.AccentPressed
+	t.AccentText = lt.AccentText
+	t.Success = token(&t, "ok")
+	t.Warning = token(&t, "warn")
+	t.Danger = token(&t, "danger")
+	t.Inverse = lt.Text
+	t.InverseText = token(&t, "on-ink")
+	t.Focus = lt.Focus
+	t.FocusRingWidth, t.FocusRingOffset = lt.FocusRingWidth, lt.FocusRingOffset
+	t.Selection = fade(lobeTokens(base).Info, 64)
+	t.Scrollbar, t.ScrollbarWidth = lt.Scrollbar, lt.ScrollbarWidth
 	return &t
 }
 
@@ -92,11 +108,9 @@ func fade(col ui.Color, a uint8) ui.Color {
 	return col
 }
 
-// card is a grouped panel: surface fill, hairline border, no shadow, the
-// corner radius of a macOS grouped list.
+// card is a grouped panel: Lobe UI's outlined block.
 func card(c *ui.Context) ui.Element {
-	t := c.Theme()
-	return ui.Column(c).Radius(8).Background(t.Surface).Border(1, t.Border)
+	return layout.Block(c, layout.BlockProps{Variant: layout.BlockOutlined}).Column()
 }
 
 // sectionTitle heads a group of content: a heavy label with an optional

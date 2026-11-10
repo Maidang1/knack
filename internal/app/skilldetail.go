@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/lobehub/lobe-mygo/pkg/action"
+	lobe "github.com/lobehub/lobe-mygo/pkg/theme"
 
 	"knack/internal/repair"
 	"knack/internal/session"
@@ -32,7 +34,7 @@ func (a *App) splitContentBar(c *ui.Context, padStart float32) {
 	ui.Row(c).Width(max(0, a.listW-padStart-8-lead)).Shrink(0).Gap(8).AlignItems(ui.Center).Children(func() {
 		title := ui.Text(c, a.pageTitle()).FontSize(15).FontWeight(600).Shrink(1).MinWidth(0).SingleLine()
 		if strings.HasPrefix(a.page, "repo:") {
-			title.Tooltip(strings.TrimPrefix(a.page, "repo:"))
+			withTip(c, title, strings.TrimPrefix(a.page, "repo:"))
 		}
 		if a.snap != nil {
 			n := len(a.rows())
@@ -75,9 +77,12 @@ func (a *App) detailBar(c *ui.Context, e skill.Entry) {
 	})
 	ui.Box(c).Grow(1).MinWidth(8)
 	compact := a.compactDetail(c)
-	b := outlineButton(c, "reveal", "").Label("在访达中显示").Tooltip(e.Path).Gap(6)
+	b := outlineButton(c, "reveal", "").Label("在访达中显示").Gap(6)
 	if compact {
-		b.Padding(0).Width(28).Justify(ui.Center).Tooltip("在访达中显示")
+		b.Padding(0).Width(28).Justify(ui.Center)
+		withTip(c, b, "在访达中显示")
+	} else {
+		withTip(c, b, e.Path)
 	}
 	b.Children(func() {
 		ui.Icon(c, glyph("reveal")).FontSize(13)
@@ -94,13 +99,7 @@ func (a *App) detailBar(c *ui.Context, e skill.Entry) {
 		fixes = a.fixesFor(e)
 	}
 	removal := a.removalFor(e)
-	more := ui.ButtonBase(c.Key("detail-more")).Size(28, 26).Radius(6).Center().Background(t.Surface).
-		Border(1, token(t, "line-strong")).Label("更多").Tooltip("更多").Shrink(0)
-	if more.Hovered() {
-		more.Background(t.SurfaceHover)
-	}
-	more.Children(func() { ui.Icon(c, glyph("more")).FontSize(15) })
-	more.PopoverMenuButton(func(m *ui.Menu) {
+	a.dropdown(c, "detail-more", func(m *menu) {
 		if m.Item("复制路径").Chosen() {
 			a.copyPath(e.Path)
 			c.Toast("已复制路径")
@@ -112,11 +111,11 @@ func (a *App) detailBar(c *ui.Context, e skill.Entry) {
 		}
 		if !readOnly && removal.Available && e.Kind != skill.KindBroken && !e.Vacant {
 			m.Separator()
-			if m.Item(removal.Label).Disabled(a.scanning || a.mutating || (removal.Err != "" && !removal.Unlinkable)).Chosen() {
+			if m.Item(removal.Label).Danger().Disabled(a.scanning || a.mutating || (removal.Err != "" && !removal.Unlinkable)).Chosen() {
 				a.confirmRemoval(e, removal)
 			}
 		}
-	})
+	}, func(b ui.Element) { styleIconButton(c, b, "more", "更多", "更多") })
 	switch {
 	case len(fixes) > 0:
 		f := fixes[0]
@@ -128,13 +127,14 @@ func (a *App) detailBar(c *ui.Context, e skill.Entry) {
 		if len(free) == 0 {
 			return
 		}
-		b := primaryButton(c, "link-agent", "link", "挂到 Agent…").Label("挂到 Agent").Disabled(a.scanning || a.mutating)
-		b.PopoverMenuButton(func(m *ui.Menu) {
+		a.dropdown(c, "detail-link-agent", func(m *menu) {
 			for _, r := range free {
 				if m.Item(r.Name).Chosen() {
 					a.confirmFix(repair.LinkToAgent(e, r))
 				}
 			}
+		}, func(b ui.Element) {
+			stylePrimary(c, b.Disabled(a.scanning || a.mutating), "link", "挂到 Agent…").Label("挂到 Agent")
 		})
 	}
 }
@@ -225,7 +225,7 @@ func (a *App) skillMeta(c *ui.Context, e skill.Entry) {
 		where = e.LinkAbs
 	}
 	item := func(icon, text, tip string) {
-		ui.Row(c).Gap(5).AlignItems(ui.Center).MinWidth(0).Tooltip(tip).Children(func() {
+		withTip(c, ui.Row(c).Gap(5).AlignItems(ui.Center).MinWidth(0), tip).Children(func() {
 			ui.Icon(c, glyph(icon)).FontSize(13).TextColor(muted).Shrink(0)
 			number(c, text).FontSize(13).TextColor(muted).MinWidth(0)
 		})
@@ -308,11 +308,8 @@ func (a *App) copyBanner(c *ui.Context, pool skill.Entry) {
 				if f.Label != "改为软链" {
 					continue
 				}
-				link := ui.ButtonBase(c.Key("relink:"+copyEntry.Path)).Padding(4, 6).Radius(5).Label(f.Label + "：" + copyEntry.RootName).Disabled(a.scanning || a.mutating)
-				if link.Hovered() {
-					link.Background(fade(t.Warning, 30))
-				}
-				link.Children(func() { ui.Text(c, f.Label).FontSize(13).FontWeight(600).TextColor(ink) })
+				link := action.Button(c.Key("relink:"+copyEntry.Path), f.Label, action.ButtonProps{Size: lobe.Small}).
+					Label(f.Label + "：" + copyEntry.RootName).Disabled(a.scanning || a.mutating)
 				if link.Clicked() {
 					a.confirmFix(f)
 				}
@@ -368,7 +365,7 @@ func (a *App) mountMap(c *ui.Context, pool skill.Entry) {
 		}
 		ui.Row(c).Padding(18, 18).AlignItems(ui.Center).Radius(10).Border(1, t.Border).Background(t.Surface).Label("挂载关系").Children(func() {
 			card := func(icon, title, text, tip string) {
-				ui.Column(c).Width(168).Shrink(1).MinWidth(110).Padding(9, 12).Gap(3).Radius(8).Border(1, token(t, "line-strong")).Background(t.Background).Tooltip(tip).Children(func() {
+				withTip(c, ui.Column(c).Width(168).Shrink(1).MinWidth(110).Padding(9, 12).Gap(3).Radius(8).Border(1, token(t, "line-strong")).Background(t.Background), tip).Children(func() {
 					ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
 						ui.Icon(c, glyph(icon)).FontSize(13).TextColor(t.TextMuted)
 						ui.Text(c, title).FontSize(11.5).TextColor(t.TextMuted).SingleLine()
@@ -427,7 +424,7 @@ func (a *App) mountRow(c *ui.Context, pool skill.Entry, root skill.Root, found *
 		ui.Box(c).Size(8, 8).Radius(4).Shrink(0).Background(a.rootColor(c, root))
 		name := ui.Text(c, root.Name).FontSize(13).Grow(1).MinWidth(40).SingleLine()
 		status := func(icon, text string, color ui.Color) {
-			ui.Row(c).Gap(4).AlignItems(ui.Center).Shrink(1).MinWidth(0).Tooltip(text).Children(func() {
+			withTip(c, ui.Row(c).Gap(4).AlignItems(ui.Center).Shrink(1).MinWidth(0), text).Children(func() {
 				if icon != "" {
 					ui.Icon(c, glyph(icon)).FontSize(13).TextColor(color).Shrink(0)
 				}
@@ -516,8 +513,8 @@ func (a *App) fileList(c *ui.Context, e skill.Entry, st dirStat) {
 	ui.Column(c).Label("技能文件").Children(func() {
 		for _, f := range st.files {
 			file := filepath.Join(dir, filepath.FromSlash(f.rel))
-			b := ui.ButtonBase(c.Key("file:"+f.rel)).Padding(7, 6).Gap(8).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).
-				Label("打开 " + f.rel).Tooltip(file)
+			b := withTip(c, ui.ButtonBase(c.Key("file:"+f.rel)).Padding(7, 6).Gap(8).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).
+				Label("打开 "+f.rel), file)
 			if b.Hovered() {
 				b.Background(t.SurfaceHover)
 			}
@@ -586,7 +583,7 @@ func (a *App) usedInSessions(c *ui.Context, usage *skillUsageData, ok bool) {
 				b.Background(t.SurfaceHover)
 			}
 			b.Children(func() {
-				ui.Text(c, use.label).FontSize(13).Grow(1).MinWidth(0).SingleLine().Tooltip(use.label)
+				withTip(c, ui.Text(c, use.label).FontSize(13).Grow(1).MinWidth(0).SingleLine(), use.label)
 				number(c, fmt.Sprintf("%s · %d 次", use.last.Local().Format("01/02 15:04"), use.calls)).FontSize(11.5).TextColor(muted)
 			})
 			if b.Clicked() {

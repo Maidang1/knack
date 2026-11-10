@@ -16,9 +16,7 @@ import (
 func repoMenuChoice(t *testing.T, tt *ui.Tester, path, choice string) {
 	t.Helper()
 	click(t, tt, "仓库操作："+path)
-	if err := tt.ChooseMenuItem(choice); err != nil {
-		t.Fatal(err)
-	}
+	click(t, tt, choice)
 }
 
 func TestRepositoryRecordCRUD(t *testing.T) {
@@ -55,9 +53,10 @@ func TestRepositoryRecordCRUD(t *testing.T) {
 	if err := tt.RightClick("demo"); err != nil {
 		t.Fatal(err)
 	}
-	if err := tt.ChooseMenuItem("在访达中显示"); err != nil {
-		t.Fatal(err)
-	}
+	// The detail bar has a button of the same name, so choose by keys.
+	tt.Key(0, ui.KeyDown)
+	tt.Key(0, ui.KeyDown)
+	tt.Key(0, ui.KeyEnter)
 	if revealed != repo {
 		t.Fatalf("revealed %q", revealed)
 	}

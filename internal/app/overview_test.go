@@ -10,8 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/egoist/mygo/ui"
 	"knack/internal/skill"
+
+	"github.com/egoist/mygo/ui"
 )
 
 func overviewFixture(t *testing.T) *App {
@@ -115,7 +116,7 @@ func TestSessionOverview(t *testing.T) {
 				if bars < 6 {
 					t.Fatalf("heatmap shows no active day (%d pixels)", bars)
 				}
-				click(t, tt, "统计时间范围")
+				click(t, tt, periodLabels[a.sessions.period])
 				tt.Key(0, ui.KeyHome)
 				if a.sessions.period != 0 {
 					t.Fatal("period keyboard navigation")

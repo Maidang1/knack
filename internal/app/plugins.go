@@ -6,16 +6,17 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+	"github.com/lobehub/lobe-mygo/pkg/layout"
 
 	"knack/internal/session"
 )
 
 func (a *App) pluginDir() string {
-	return filepath.Join(a.home, ".config", "skill-manager", "plugins")
+	return filepath.Join(a.configDir, "plugins")
 }
 
 func (a *App) reloadPlugins() []string {
-	problems := session.LoadAgentConfig(filepath.Join(a.home, ".config", "skill-manager", "agents.json"))
+	problems := session.LoadAgentConfig(filepath.Join(a.configDir, "agents.json"))
 	problems = append(problems, session.LoadPlugins(a.pluginDir(), a.home)...)
 	a.sessions.agentProblems = problems
 	if a.sessions.loading {
@@ -136,7 +137,7 @@ func (a *App) settingsPlugins(c *ui.Context) {
 	ui.Column(c).Gap(12).Children(func() {
 		ui.Text(c, "从 GitHub 安装").FontSize(13).TextColor(t.TextMuted)
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.TextInput(c, &a.pluginRepo).Label("GitHub 仓库").Placeholder("owner/repo 或仓库地址").Grow(1).MinWidth(0)
+			textField(c, &a.pluginRepo, "GitHub 仓库", "owner/repo 或仓库地址")
 			if primaryButton(c, "plugin-github", "", "安装").Disabled(a.pluginBusy || strings.TrimSpace(a.pluginRepo) == "").Clicked() {
 				a.installPluginRepo(a.pluginRepo)
 			}
@@ -167,7 +168,7 @@ func (a *App) settingsPlugins(c *ui.Context) {
 		ui.Column(c).Background(t.Surface).Border(1, t.Border).Radius(10).Clip().Children(func() {
 			for i, p := range listed {
 				if i > 0 {
-					ui.Divider(c.Key("plugin-div:" + p.Name))
+					layout.Divider(c.Key("plugin-div:"+p.Name), layout.DividerProps{})
 				}
 				ui.Row(c.Key("plugin:"+p.Name)).AlignItems(ui.Center).Gap(12).Padding(10, 14).Children(func() {
 					ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {

@@ -5,6 +5,10 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/lobehub/lobe-mygo/pkg/action"
+	"github.com/lobehub/lobe-mygo/pkg/feedback"
+	"github.com/lobehub/lobe-mygo/pkg/field"
+	lobe "github.com/lobehub/lobe-mygo/pkg/theme"
 
 	"knack/internal/session"
 	"knack/internal/skill"
@@ -86,14 +90,9 @@ func (a *App) sidebar(c *ui.Context) {
 // the sessions page; from a page without a list it opens the library, whose
 // list then offers the sessions the words find. ⌘K focuses it from anywhere.
 func (a *App) sidebarSearch(c *ui.Context) {
-	t := c.Theme()
 	ui.Row(c).Padding(0, 10).Shrink(0).Children(func() {
-		field := ui.SearchField(c, &a.query).Grow(1).Height(30).Radius(7).Background(searchBackground(t)).
-			Border(1, t.Border).Placeholder("搜索技能、会话、路径").PlaceholderColor(token(t, "ink-3")).Label("搜索技能")
-		if c.Shortcut(ui.Cmd, ui.KeyK) {
-			field.Focus()
-		}
-		if field.Changed() {
+		search := searchField(c, &a.query, "搜索技能", 0, field.SearchBarProps{Placeholder: "搜索", ShortKey: "mod+k", Variant: field.InputFilled})
+		if search.Changed() {
 			switch {
 			case a.page == "sessions":
 				a.sessions.query, a.sessions.open, a.sessions.replayOpen = a.query, false, false
@@ -101,19 +100,7 @@ func (a *App) sidebarSearch(c *ui.Context) {
 				a.page = libraryPage
 			}
 		}
-		field.Children(func() {
-			if a.query == "" {
-				ui.Text(c, "⌘K").FontSize(11.5).TextColor(token(t, "ink-3")).Shrink(0)
-			}
-		})
 	})
-}
-
-func searchBackground(t *ui.Theme) ui.Color {
-	if t.Dark {
-		return ui.RGBA(255, 255, 255, 0.05)
-	}
-	return ui.RGBA(255, 255, 255, 0.7)
 }
 
 // listPage reports whether the page lists skills that the search filters.
@@ -144,7 +131,7 @@ func (a *App) navItem(c *ui.Context, id, icon, label, count string) ui.Element {
 		ui.Row(c).Grow(1000).Margin(0, 0, 0, -9).Gap(9).AlignItems(ui.Center).Children(func() {
 			glyphColor := token(t, "ink-2")
 			if a.activeNav(id) {
-				glyphColor = token(t, "accent-ink")
+				glyphColor = t.Text
 			}
 			ui.Icon(c, glyph(icon)).FontSize(16).TextColor(glyphColor)
 			a.sideLabel(c, id, label)
@@ -173,9 +160,10 @@ func alertBadge(c *ui.Context, count string) {
 	if count == "" {
 		return
 	}
-	t := c.Theme()
-	ui.Box(c).Padding(1, 6).Radius(9).Background(t.Danger).Shrink(0).Children(func() {
-		ui.Text(c, count).FontFeatures("tnum").FontSize(11.5).FontWeight(600).TextColor(token(t, "on-ink")).SingleLine()
+	// The count pill of Lobe UI's badge.
+	tk := lobe.TokensOf(c)
+	ui.Row(c).Height(16).MinWidth(16).PaddingX(5).Radius(8).Center().Background(tk.Error).Shrink(0).Children(func() {
+		ui.Text(c, count).FontFeatures("tnum").FontSize(11).FontWeight(500).TextColor(ui.RGB(255, 255, 255)).SingleLine().LineHeight(1)
 	})
 }
 
@@ -235,9 +223,10 @@ func (a *App) repoItems(c *ui.Context) {
 				count = fmt.Sprint(n)
 			}
 		}
-		menu := func(m *ui.Menu) { a.repoMenu(m, path) }
+		build := func(m *menu) { a.repoMenu(m, path) }
 		label := a.repoLabel(path)
-		item := a.sideRow(c, id, label).Tooltip(path).ContextMenu(menu)
+		item := withTip(c, a.sideRow(c, id, label), path)
+		contextMenu(c, item, build)
 		item.Children(func() {
 			ui.Row(c).Grow(1000).Margin(0, 0, 0, -9).Gap(9).AlignItems(ui.Center).Children(func() {
 				glyphColor := token(t, "ink-2")
@@ -248,26 +237,25 @@ func (a *App) repoItems(c *ui.Context) {
 				a.sideLabel(c, id, label)
 				// The count's place holds the menu button, which shows its
 				// icon on hover and keyboard focus.
-				more := ui.ButtonBase(c).MinWidth(20).Height(16).Shrink(0).Justify(ui.End).AlignItems(ui.Center).
-					Label("仓库操作：" + path).Tooltip("仓库操作").Menu(menu)
-				more.Children(func() {
-					if item.Hovered() || more.FocusVisible() {
-						ui.Icon(c, glyph("more")).FontSize(16).TextColor(token(t, "ink-2"))
-					} else {
-						sideCount(c, count)
-					}
+				a.dropdown(c, "repo-more:"+path, build, func(more ui.Element) {
+					withTip(c, more.MinWidth(20).Height(16).Shrink(0).Justify(ui.End).AlignItems(ui.Center).
+						Label("仓库操作："+path), "仓库操作")
+					more.Children(func() {
+						if item.Hovered() || more.FocusVisible() {
+							ui.Icon(c, glyph("more")).FontSize(16).TextColor(token(t, "ink-2"))
+						} else {
+							sideCount(c, count)
+						}
+					})
 				})
 			})
 		})
 	}
-	add := ui.ButtonBase(c).Height(28).Padding(0, 8).Gap(9).Radius(t.Radius).Justify(ui.Start).
-		Label("添加仓库…").Disabled(a.mutating)
-	if add.Hovered() {
-		add.Background(t.SurfaceHover)
-	}
+	add := action.StyleButton(c, ui.ButtonBase(c), "", action.ButtonProps{Variant: action.Dashed, Size: lobe.Small}).
+		Height(28).Gap(6).Label("添加仓库…").Disabled(a.mutating)
 	add.Children(func() {
-		ui.Icon(c, glyph("plus")).FontSize(16).TextColor(token(t, "ink-2"))
-		ui.Text(c, "添加仓库").FontSize(13).TextColor(token(t, "ink-2")).SingleLine()
+		ui.Icon(c, glyph("plus")).FontSize(14)
+		ui.Text(c, "添加仓库").FontSize(13).SingleLine()
 	})
 	if add.Clicked() {
 		a.beginAddRepo()
@@ -284,7 +272,7 @@ func (a *App) sidebarFooter(c *ui.Context) {
 		busy := a.scanning || a.sessions.loading
 		status, color := a.scanStatus(time.Now())
 		if busy {
-			ui.Spinner(c).Size(10, 10).Label("正在扫描")
+			feedback.Spin(c, feedback.SpinProps{CustomSize: 10}, nil).Label("正在扫描")
 		} else {
 			ui.Box(c).Size(7, 7).Radius(4).Shrink(0).Background(token(t, color))
 		}
@@ -334,15 +322,16 @@ func ago(now, at time.Time) string {
 	return at.Local().Format("01/02 15:04")
 }
 
-// iconButton is a quiet square button showing only a glyph.
+// iconButton is Lobe UI's action icon: a glyph that shows a fill under the
+// pointer, named label, with tip as its tooltip.
 func iconButton(c *ui.Context, icon, label, tip string) ui.Element {
-	t := c.Theme()
-	b := ui.ButtonBase(c).Size(24, 24).Radius(5).Center().Label(label).Tooltip(tip)
-	if b.Hovered() {
-		b.Background(t.SurfaceHover)
-	}
-	b.Children(func() { ui.Icon(c, glyph(icon)).FontSize(15).TextColor(token(t, "ink-3")) })
-	return b
+	return styleIconButton(c, ui.ButtonBase(c), icon, label, tip)
+}
+
+// styleIconButton gives b, a button of any kind, iconButton's look.
+func styleIconButton(c *ui.Context, b ui.Element, icon, label, tip string) ui.Element {
+	return action.StyleActionIcon(c, b, glyph(icon), action.ActionIconProps{Title: tip, BlockSize: 24, GlyphSize: 15}).
+		Label(label).Shrink(0)
 }
 
 func groupDigits(n int) string {

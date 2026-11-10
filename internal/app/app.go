@@ -22,6 +22,8 @@ import (
 // window can show it.
 type App struct {
 	home        string
+	configDir   string // ~/.config/knack
+	cacheDir    string // ~/.cache/knack
 	configPath  string
 	undoRoot    string
 	catalogPath string
@@ -32,10 +34,12 @@ type App struct {
 	hidden        map[string]bool // agent root IDs left out of the sidebar
 	settingsOpen  bool
 	settingsTab   int
+	menus         map[string]*bool // which dropdown menus are open, by key
 	pluginRepo    string
 	pluginBusy    bool
 	pluginErr     string
 	pluginPicking bool
+	model         modelState
 
 	repos      []store.Repo
 	snap       *skill.Snapshot
@@ -51,6 +55,7 @@ type App struct {
 
 	cache       viewCache
 	documents   map[string]*documentState
+	docView     int // SKILL.md as rendered (0) or as source (1)
 	comparisons map[string]*comparisonState
 	graphs      map[string]*graphState
 
@@ -128,15 +133,19 @@ type ask struct {
 }
 
 // New loads the repo list for home. A missing config file is an empty list.
-// Keep the original data directories so Knack retains existing settings and undo records.
+// Data directories from before the rename to Knack are moved across first, so
+// existing settings and undo records carry over.
 func New(home string) *App {
 	home = filepath.Clean(home)
+	config, cache, moveErr := dataDirs(home)
 	a := &App{
 		home:         home,
-		configPath:   filepath.Join(home, ".config", "skill-manager", "repos.json"),
-		undoRoot:     filepath.Join(home, ".config", "skill-manager", "undo"),
-		catalogPath:  filepath.Join(home, ".cache", "skill-manager", "catalog.json"),
-		settingsPath: filepath.Join(home, ".config", "skill-manager", "settings.json"),
+		configDir:    config,
+		cacheDir:     cache,
+		configPath:   filepath.Join(config, "repos.json"),
+		undoRoot:     filepath.Join(config, "undo"),
+		catalogPath:  filepath.Join(cache, "catalog.json"),
+		settingsPath: filepath.Join(config, "settings.json"),
 		hidden:       map[string]bool{},
 		skillPeriod:  1,
 		page:         "overview",
@@ -149,6 +158,9 @@ func New(home string) *App {
 		graphW:       720,
 		agentsOpen:   true,
 		storage:      storageState{retention: 1},
+	}
+	if moveErr != nil {
+		a.loadErr = "未能完整迁移旧的 skill-manager 数据目录：" + moveErr.Error()
 	}
 	repos, err := store.Load(a.configPath)
 	if err != nil {
@@ -171,6 +183,7 @@ func New(home string) *App {
 	}
 	a.loadSessions()
 	a.loadPrices()
+	a.loadModel()
 	return a
 }
 

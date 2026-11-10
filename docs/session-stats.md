@@ -4,7 +4,7 @@
 
 ## 数据入口与隐私边界
 
-`internal/session.NewReader(home, cachePath)` 加载统计检查点；`Cached()` 返回启动展示数据，不扫描日志；`Refresh(ctx)` 在后台发现并增量读取；`Aggregate(snapshot, filter)` 提供总览聚合。缓存路径由 App 设为 `~/.cache/skill-manager/sessions.json`。
+`internal/session.NewReader(home, cachePath)` 加载统计检查点；`Cached()` 返回启动展示数据，不扫描日志；`Refresh(ctx)` 在后台发现并增量读取；`Aggregate(snapshot, filter)` 提供总览聚合。缓存路径由 App 设为 `~/.cache/knack/sessions.json`。
 
 读取范围：
 
@@ -134,7 +134,7 @@ App 测试覆盖首页、筛选键盘操作、问题/会话导航、自带只读
 
 步骤详情按类型显示适用的字段：模型/重试请求显示模型、Token 和估算 tok/s；工具显示工具名和执行状态，仅 Skill 调用显示 Skill 名；子 Agent 显示其模型/用量/速率/中断信息；等待显示等待类型或权限来源；压缩显示压缩耗时；超时/中断事件只显示相应状态。不适用的字段直接隐藏。模型请求使用互斥的输入/输出/缓存桶；子 Agent 行仅汇总该子 Agent 本体已记录请求，部分用量有明确标记。不把相邻模型请求的用量或模型归给工具调用。可解析状态没有记录时显示“未记录”，没有支持数据的字段显示“暂不支持”。权限来源直接来自已采集的 permission source/decision；人工权限间隔包含执行时间的说明保持不变。
 
-折叠偏好写入 `~/.config/skill-manager/settings.json` 的 `foldLongSteps`，默认真实比例。使用现有 `store.SaveSettings` 的临时文件加重命名流程；只有成功后才改变可见选择。切换比例和修改侧栏隐藏设置相互保留，重启恢复。保存失败保持原比例并显示通知。
+折叠偏好写入 `~/.config/knack/settings.json` 的 `foldLongSteps`，默认真实比例。使用现有 `store.SaveSettings` 的临时文件加重命名流程；只有成功后才改变可见选择。切换比例和修改侧栏隐藏设置相互保留，重启恢复。保存失败保持原比例并显示通知。
 
 ### 与设计稿的差异
 
@@ -285,7 +285,7 @@ Claude/Codex 目前通过内嵌 JS 流式 format、Factory 通过 Go format 接�
 
 ### 自定义 Agent
 
-其他 Agent 的 JSON Lines 日志可以在 `~/.config/skill-manager/agents.json` 中声明字段映射接入，见 [自定义 Agent](agents.md)。设计取舍：
+其他 Agent 的 JSON Lines 日志可以在 `~/.config/knack/agents.json` 中声明字段映射接入，见 [自定义 Agent](agents.md)。设计取舍：
 
 - 声明式映射不执行代码。映射表达不了的格式用 JS 插件：外部可执行程序或 WASM 会破坏“只读、不联网”的承诺，或者对 GB 级日志太重。用户插件用纯 Go 的 moejs 执行，脚本默认接触不到本机，只能调用 Knack 暴露的只读方法。脚本运行在 Knack 自身以 worker 模式启动的子进程里：宿主调用（例如一条不返回的 SQL）不响应中断，只有结束进程才可靠。内嵌 Claude / Codex 脚本仍在主进程的 goja 里运行。
 - 用户插件接管读取，输出标准记录，可用扩展 stats/replay 操作补足 Skill、子 Agent、实测思考、权限/工具结果及事件信息。用户插件仍按会话 `version` 整体重读，不做字节检查点；内嵌流式插件由宿主读取和维护字节检查点，见下节。
@@ -366,4 +366,4 @@ KNACK_RENDER_DIR=/private/tmp/knack-home go test ./internal/app -run '^(TestProf
 
 回补先保存为检查点中的待配对请求，只在脱离检查点的快照中加入轮次；后到的原生记录可以撤销对应 fallback，而不会改变原生计时锚点或创建多余轮次。跨文件拥有者在每次快照（含 Cached）从所有检查点重算，因此读取顺序、最近日志优先和重启不影响去重结果。状态只含 ID、累计桶、配对计数和请求统计，不保存对话正文。Codex 脚本哈希变化会重建其旧缓存；新增操作不改变其他插件已有操作的含义，Claude/Factory 不重建。
 
-合成测试覆盖旧版单次用量、重复上报、两个上报顺序及重启、1024 字节预算下多批重启、缺失/null/全零用量、混合日志中独立的相同成本请求、子 Agent 重放及父文件缺席。真实核验只输出数值与计数，缓存使用系统临时目录，没有写入 ~/.cache/skill-manager。
+合成测试覆盖旧版单次用量、重复上报、两个上报顺序及重启、1024 字节预算下多批重启、缺失/null/全零用量、混合日志中独立的相同成本请求、子 Agent 重放及父文件缺席。真实核验只输出数值与计数，缓存使用系统临时目录，没有写入 ~/.cache/knack。

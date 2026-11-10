@@ -45,7 +45,7 @@ func TestRemoveSkillAndUndo(t *testing.T) {
 			if _, err := os.Stat(filepath.Join(pool, "SKILL.md")); err != nil {
 				t.Fatal("shared source changed:", err)
 			}
-			click(t, tt, "撤销")
+			clickUndo(t, tt)
 			if _, err := os.Stat(filepath.Join(entry, "SKILL.md")); err != nil {
 				t.Fatal(err)
 			}
@@ -99,7 +99,7 @@ func TestClaudeInvocationSettingsAndUndo(t *testing.T) {
 		if !tt.HasText(mode.label) {
 			t.Fatalf("preference did not refresh: %q", tt.Texts())
 		}
-		click(t, tt, "撤销")
+		clickUndo(t, tt)
 		if !tt.HasText("自动 + 手动调用") {
 			t.Fatalf("undo: %q", tt.Texts())
 		}
@@ -234,7 +234,7 @@ func TestRemovePoolSkillWithLinksAndUndo(t *testing.T) {
 			t.Fatalf("%s remained: %v", p, err)
 		}
 	}
-	click(t, tt, "撤销")
+	clickUndo(t, tt)
 	if _, err := os.Stat(filepath.Join(pool, "SKILL.md")); err != nil {
 		t.Fatal(err)
 	}

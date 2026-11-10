@@ -27,7 +27,8 @@ func TestIssueHeaderLayout(t *testing.T) {
 					t.Fatal("missing issue filters")
 				}
 				search, _ := tt.Find("搜索")
-				if track.X != search.X || track.X+track.W != search.X+search.W {
+				// The search's label names its input, inset in its frame.
+				if search.X < track.X || search.X+search.W > track.X+track.W || search.W < track.W-48 {
 					t.Errorf("filters and search edges differ: filters=%+v search=%+v", track, search)
 				}
 				if track.Y < 36 || track.Y+track.H+4 > search.Y {

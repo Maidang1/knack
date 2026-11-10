@@ -72,7 +72,12 @@ func TestContentControlPlacement(t *testing.T) {
 					tt.Frame()
 					for _, label := range labels {
 						r, ok := tt.Find(label)
-						if !ok || r.H < 24 || r.W < 24 || r.X < 0 || r.X+r.W > float32(width) || r.Y < 0 || r.Y+r.H > 760 {
+						// A search's label names its input, shorter than its frame.
+						minH := float32(24)
+						if label == "搜索" {
+							minH = 16
+						}
+						if !ok || r.H < minH || r.W < 24 || r.X < 0 || r.X+r.W > float32(width) || r.Y < 0 || r.Y+r.H > 760 {
 							t.Errorf("%s: control %q is clipped or too small: %+v", state, label, r)
 						}
 						switch label {

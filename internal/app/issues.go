@@ -6,6 +6,9 @@ import (
 	"slices"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/lobehub/lobe-mygo/pkg/action"
+	"github.com/lobehub/lobe-mygo/pkg/choice"
+	lobe "github.com/lobehub/lobe-mygo/pkg/theme"
 
 	"knack/internal/repair"
 	"knack/internal/session"
@@ -114,7 +117,7 @@ func (a *App) paintIssueRow(c *ui.Context, r row, selected bool) {
 	ps := a.state(a.page)
 	ui.Row(c).Padding(8, 10).Gap(10).AlignItems(ui.Center).Children(func() {
 		checked := ps.chosen.Has(r.key)
-		if ui.Checkbox(c, &checked, "").Label("选择 " + r.name).Shrink(0).Changed() {
+		if choice.Checkbox(c, &checked, "", choice.CheckboxProps{}).Label("选择 " + r.name).Shrink(0).Changed() {
 			if checked {
 				ps.chosen.Add(r.key)
 			} else {
@@ -132,7 +135,7 @@ func (a *App) paintIssueRow(c *ui.Context, r row, selected bool) {
 				}
 			})
 			if r.subtitle != "" {
-				sub := ui.Text(c, r.subtitle).FontSize(12).SingleLine().Tooltip(r.subtitle)
+				sub := withTip(c, ui.Text(c, r.subtitle).FontSize(12).SingleLine(), r.subtitle)
 				if !selected {
 					sub.TextColor(muted)
 				}
@@ -146,16 +149,12 @@ func (a *App) paintIssueRow(c *ui.Context, r row, selected bool) {
 			return
 		}
 		fix := *r.fix
-		b := ui.ButtonBase(c.Key("fix:"+r.key)).Label(fix.Label).Padding(3, 6).Radius(5).Shrink(0).Disabled(a.scanning || a.mutating || a.cached)
-		if b.Hovered() {
-			b.Background(t.SurfaceHover)
+		variant := action.Text
+		if selected {
+			variant = action.Filled
 		}
-		b.Children(func() {
-			text := ui.Text(c, fix.Label).FontSize(12).SingleLine()
-			if !selected {
-				text.TextColor(t.TextMuted)
-			}
-		})
+		b := action.Button(c.Key("fix:"+r.key), fix.Label, action.ButtonProps{Variant: variant, Size: lobe.Small}).
+			Label(fix.Label).Shrink(0).Disabled(a.scanning || a.mutating || a.cached)
 		if b.Clicked() {
 			a.confirmFix(fix)
 			c.Invalidate()

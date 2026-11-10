@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/egoist/mygo/ui"
 	"knack/internal/session"
+
+	"github.com/egoist/mygo/ui"
 )
 
 // The conversation replay is the design's 对话回放: every turn in one
@@ -167,9 +168,9 @@ func (a *App) replayMap(c *ui.Context, d *sessionDetailData, content *replayInde
 				case turn.warning:
 					color = t.Warning
 				}
-				b := ui.ButtonBase(c.Key("replay-turn:"+turn.turn.ID)).Width(replayMapWidth).Height(replayMapStep).
+				b := withTip(c, ui.ButtonBase(c.Key("replay-turn:"+turn.turn.ID)).Width(replayMapWidth).Height(replayMapStep).
 					Padding(0, 0, 0, replayMapIndent).Radius(4).Justify(ui.Start).
-					Label(turnLabel(turn)).Tooltip(replayPreview(turn, prompt))
+					Label(turnLabel(turn)), replayPreview(turn, prompt))
 				switch {
 				case b.Hovered():
 					// The dash under the pointer leads, in the brightest ink.

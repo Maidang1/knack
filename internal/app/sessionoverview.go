@@ -44,8 +44,8 @@ func (a *App) sessionAgentTimeline(c *ui.Context, d *sessionDetailData) {
 			note := tr.note
 			ui.Column(c.Key("track:"+s.ID)).Gap(4).Padding(4, 0).Children(func() {
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, label).Width(104).FontSize(11.5).SingleLine().Tooltip(label)
-					ui.Box(c).Grow(1).Height(12).Background(t.SurfaceHover).Radius(2).Label(label + "调用时间线").Tooltip(label + " · " + sessionSpan(s)).Draw(func(p *ui.Painter, r ui.Rect) {
+					withTip(c, ui.Text(c, label).Width(104).FontSize(11.5).SingleLine(), label)
+					withTip(c, ui.Box(c).Grow(1).Height(12).Background(t.SurfaceHover).Radius(2).Label(label+"调用时间线"), label+" · "+sessionSpan(s)).Draw(func(p *ui.Painter, r ui.Rect) {
 						if span <= 0 || s.Start.IsZero() || s.End.IsZero() {
 							return
 						}
@@ -65,7 +65,7 @@ func (a *App) sessionAgentTimeline(c *ui.Context, d *sessionDetailData) {
 					})
 					number(c, sessionSpan(s)).FontSize(11).Width(66)
 				})
-				ui.Text(c, note).FontSize(11).TextColor(t.TextMuted).SingleLine().Tooltip(note)
+				withTip(c, ui.Text(c, note).FontSize(11).TextColor(t.TextMuted).SingleLine(), note)
 			})
 		}
 	})
@@ -143,7 +143,7 @@ func (a *App) sessionModelSpeeds(c *ui.Context, d *sessionDetailData, color ui.C
 			label := fmt.Sprintf("P10 %.1f · 中位数 %.1f · P90 %.1f tok/s · %d 个样本（估算）", m.p10, m.median, m.p90, m.samples)
 			ui.Row(c.Key("model:"+m.name)).Padding(10, 0).Gap(12).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
 				ui.Column(c).Width(speedNameWidth).Shrink(0).Gap(3).Children(func() {
-					ui.Text(c, m.name).FontSize(13).SingleLine().Tooltip(m.name)
+					withTip(c, ui.Text(c, m.name).FontSize(13).SingleLine(), m.name)
 					meta := fmt.Sprintf("%d 请求", m.requests)
 					if m.sessions > 0 {
 						meta = fmt.Sprintf("%d 会话 · %s", m.sessions, meta)
@@ -154,21 +154,21 @@ func (a *App) sessionModelSpeeds(c *ui.Context, d *sessionDetailData, color ui.C
 					if m.samples > 0 && m.samples < 5 {
 						meta += " · 样本少"
 					}
-					ui.Text(c, meta).FontSize(11.5).TextColor(muted).SingleLine().Tooltip(meta)
+					withTip(c, ui.Text(c, meta).FontSize(11.5).TextColor(muted).SingleLine(), meta)
 				})
 				if m.samples == 0 {
 					ui.Text(c, "速率暂不支持").FontSize(12).TextColor(t.TextMuted).Grow(1)
 					ui.Text(c, "—").FontSize(13).TextColor(muted).Width(speedValueWidth).TextAlign(ui.End)
 					return
 				}
-				ui.Box(c).Grow(1).Height(18).Label(m.name + " 速率范围 · " + label).Tooltip(label).Draw(func(p *ui.Painter, r ui.Rect) {
+				withTip(c, ui.Box(c).Grow(1).Height(18).Label(m.name+" 速率范围 · "+label), label).Draw(func(p *ui.Painter, r ui.Rect) {
 					p.Fill(ui.Rect{X: r.X, Y: r.Y + r.H/2 - 0.5, W: r.W, H: 1}, t.Border, 0)
 					lo, hi := min(float32(m.p10/scale), 1)*r.W, min(float32(m.p90/scale), 1)*r.W
 					p.Fill(ui.Rect{X: r.X + lo, Y: r.Y + 4, W: max(4, hi-lo), H: r.H - 8}, band, (r.H-8)/2)
 					mid := min(float32(m.median/scale), 1) * r.W
 					p.Fill(ui.Rect{X: r.X + min(mid, r.W-2) - 1, Y: r.Y + 1, W: 2, H: r.H - 2}, color, 1)
 				})
-				number(c, fmt.Sprintf("%.0f", m.median)).FontSize(13).FontWeight(600).Width(speedValueWidth).TextAlign(ui.End).Tooltip("中位数 tok/s")
+				withTip(c, number(c, fmt.Sprintf("%.0f", m.median)).FontSize(13).FontWeight(600).Width(speedValueWidth).TextAlign(ui.End), "中位数 tok/s")
 			})
 		}
 	})
@@ -193,7 +193,7 @@ func callRanking(c *ui.Context, title string, calls []callCount, unsupported boo
 			overviewTitle(c, title)
 			ui.Spacer(c)
 			if !unsupported {
-				ui.Text(c, "调用次数").FontSize(11.5).TextColor(muted).Tooltip(fmt.Sprintf("共 %d 次", total))
+				withTip(c, ui.Text(c, "调用次数").FontSize(11.5).TextColor(muted), fmt.Sprintf("共 %d 次", total))
 			}
 		})
 		if unsupported {
@@ -223,7 +223,7 @@ func callRows(c *ui.Context, calls []callCount, color ui.Color, limit int, nameW
 			label += " · 含子 Agent 调用"
 		}
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Label(fmt.Sprintf("%s ×%d", label, call.count)).Children(func() {
-			ui.Text(c, call.name).FontSize(13).Width(nameWidth).Shrink(0).SingleLine().Tooltip(label)
+			withTip(c, ui.Text(c, call.name).FontSize(13).Width(nameWidth).Shrink(0).SingleLine(), label)
 			share := float32(call.count) / float32(peak)
 			ui.Box(c).Grow(1).Height(8).Draw(func(p *ui.Painter, r ui.Rect) {
 				p.Fill(ui.Rect{X: r.X, Y: r.Y, W: max(3, share*r.W), H: r.H}, color, 1.5)

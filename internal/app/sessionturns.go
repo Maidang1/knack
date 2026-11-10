@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/egoist/mygo/ui"
 	"knack/internal/session"
+
+	"github.com/egoist/mygo/ui"
 )
 
 // The turn list is the design's left column: a row per turn with what was
@@ -115,8 +116,8 @@ func (a *App) turnRow(c *ui.Context, d *sessionDetailData, i int, on bool, badge
 	muted := token(t, "ink-3")
 	turn := d.turns[i]
 	prompt, quiet := turnPrompt(turn, content)
-	b := ui.ButtonBase(c.Key("turn:"+turn.turn.ID)).Column().AlignItems(ui.Stretch).Gap(6).Padding(8, 10).Radius(7).Border(1, ui.Transparent).
-		Label(turnLabel(turn)).Tooltip(fmt.Sprintf("第 %d 轮 · %s\n%s", i+1, activeText(turn), prompt))
+	b := withTip(c, ui.ButtonBase(c.Key("turn:"+turn.turn.ID)).Column().AlignItems(ui.Stretch).Gap(6).Padding(8, 10).Radius(7).Border(1, ui.Transparent).
+		Label(turnLabel(turn)), fmt.Sprintf("第 %d 轮 · %s\n%s", i+1, activeText(turn), prompt))
 	switch {
 	case on:
 		b.Background(token(t, "selected"))
@@ -153,7 +154,7 @@ func (a *App) turnRow(c *ui.Context, d *sessionDetailData, i int, on bool, badge
 				turnBadge(c, "refresh", fmt.Sprint(badge.retries), sessionColor("phase-retry", t.Dark), fmt.Sprintf("%d 次重试或压缩", badge.retries))
 			}
 			if concern {
-				ui.Icon(c, glyph("issues")).FontSize(11.5).TextColor(t.Warning).Label("本轮有耗时异常").Tooltip("本轮有耗时异常")
+				withTip(c, ui.Icon(c, glyph("issues")).FontSize(11.5).TextColor(t.Warning).Label("本轮有耗时异常"), "本轮有耗时异常")
 			}
 		})
 	})
@@ -193,7 +194,7 @@ func miniPhases(c *ui.Context, p phaseTotals, peak time.Duration, width float32)
 }
 
 func turnBadge(c *ui.Context, icon, text string, color ui.Color, tip string) {
-	ui.Row(c).Gap(3).AlignItems(ui.Center).Shrink(0).Tooltip(tip).Label(tip).Children(func() {
+	withTip(c, ui.Row(c).Gap(3).AlignItems(ui.Center).Shrink(0), tip).Label(tip).Children(func() {
 		ui.Icon(c, glyph(icon)).FontSize(11.5).TextColor(color)
 		number(c, text).FontSize(11).TextColor(color)
 	})
@@ -238,7 +239,7 @@ func subagentGroupRow(c *ui.Context, turn sessionTurnView, steps []sessionStep, 
 		span.elapsed = session.Duration{Value: span.end.Sub(span.start), Known: true, Estimated: true}
 	}
 	label := fmt.Sprintf("并行 %d 个子 Agent · %s", len(steps), stepDuration(span))
-	ui.Row(c).Height(34).Padding(0, 8).Gap(10).Radius(6).AlignItems(ui.Center).Background(t.SurfaceHover).Label(label).Tooltip(label).Children(func() {
+	withTip(c, ui.Row(c).Height(34).Padding(0, 8).Gap(10).Radius(6).AlignItems(ui.Center).Background(t.SurfaceHover).Label(label), label).Children(func() {
 		ui.Row(c).Width(stepLabelWidth).Shrink(0).Gap(6).AlignItems(ui.Center).Children(func() {
 			ui.Box(c).Width(11).Shrink(0)
 			ui.Icon(c, glyph("bot")).FontSize(15).TextColor(color).Shrink(0)
@@ -351,7 +352,7 @@ func childStepRow(c *ui.Context, turn sessionTurnView, step sessionStep, axis st
 	muted := token(t, "ink-3")
 	icon, name, _ := stepFace(step, nil)
 	label := "子 Agent 步骤 · " + step.name + " · " + stepDuration(step)
-	ui.Row(c).Height(28).Padding(0, 8).Gap(10).AlignItems(ui.Center).Label(label).Tooltip(label).Children(func() {
+	withTip(c, ui.Row(c).Height(28).Padding(0, 8).Gap(10).AlignItems(ui.Center).Label(label), label).Children(func() {
 		ui.Row(c).Width(stepLabelWidth).Height(28).Shrink(0).Gap(6).AlignItems(ui.Center).Children(func() {
 			ui.Box(c).Width(indent + 6).Shrink(0)
 			ui.Box(c).Width(2).Height(28).Shrink(0).Background(fade(sessionColor("phase-sub", t.Dark), 110))

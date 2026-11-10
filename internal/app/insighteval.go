@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/lobehub/lobe-mygo/pkg/feedback"
 
 	"knack/internal/insight"
 	"knack/internal/session"
@@ -20,8 +21,8 @@ import (
 // skill authors test: does the description make the model load the skill
 // when it should (triggering), and does the turn go better once it is
 // loaded (execution). The list ranks skills by loads; a skill opens into
-// its verdicts, a before/after of its last edit, every load, and a trigger
-// eval set picked from real prompts for skill-creator to optimize against.
+// its verdicts, a before/after of its last edit, a model's review of each
+// load, every load, and a trigger eval set run against its description.
 
 type insightEval struct {
 	snapshot *session.Snapshot
@@ -29,20 +30,6 @@ type insightEval struct {
 	agent    string
 	date     string
 	report   insight.SkillEvalReport
-}
-
-// evalSet is a trigger eval set being picked or reviewed for one skill.
-type evalSet struct {
-	skill   string
-	loading bool
-	err     string
-	cases   []evalCase
-	written string
-}
-
-type evalCase struct {
-	insight.TriggerCandidate
-	label int // 0 should trigger, 1 should not, 2 leave out
 }
 
 // skillFiles is what the eval needs from a skill's directory.
@@ -198,7 +185,7 @@ func (a *App) insightEval(c *ui.Context) {
 func (a *App) evalList(c *ui.Context, r insight.SkillEvalReport) {
 	t := c.Theme()
 	if len(r.Skills) == 0 {
-		emptyState(c, "技能评测", "sparkle", t.TextMuted, "这段时间没有加载过技能",
+		emptyState(c, "技能评测", "sparkle", "这段时间没有加载过技能",
 			"Claude Code 的 Skill 调用和 /命令、Codex 读取 SKILL.md 都会算作一次加载。旧缓存要重新扫描后才能识别。", nil)
 		return
 	}
@@ -250,8 +237,8 @@ func (a *App) evalList(c *ui.Context, r insight.SkillEvalReport) {
 			row := listRow(c, "eval:"+e.Name, e.Name)
 			row.Children(func() {
 				ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
-					ui.Text(c, e.Name).FontSize(13).SingleLine().Tooltip(e.Name)
-					ui.Text(c, strings.Join(meta, " · ")).FontSize(11.5).TextColor(tone).SingleLine().Tooltip(strings.Join(meta, " · "))
+					withTip(c, ui.Text(c, e.Name).FontSize(13).SingleLine(), e.Name)
+					withTip(c, ui.Text(c, strings.Join(meta, " · ")).FontSize(11.5).TextColor(tone).SingleLine(), strings.Join(meta, " · "))
 				})
 				cell(c, groupDigits(len(e.Episodes)), widths[0], true)
 				cell(c, percent(float64(e.Auto), float64(len(e.Episodes))), widths[1], true)
@@ -303,12 +290,7 @@ func (a *App) evalDetail(c *ui.Context, e insight.SkillEval, base insight.Window
 	muted := token(t, "ink-3")
 	in := a.evalInstall(e)
 	ui.Column(c).Gap(6).Children(func() {
-		back := ui.ButtonBase(c.Key("eval-back")).Label("返回全部技能").Padding(2, 0).Gap(4).AlignItems(ui.Center).AlignSelf(ui.Start)
-		back.Children(func() {
-			ui.Icon(c, glyph("arrow-left")).FontSize(13).TextColor(t.TextMuted)
-			ui.Text(c, "全部技能").FontSize(13).TextColor(t.TextMuted)
-		})
-		if back.Clicked() {
+		if textButton(c, "eval-back", "arrow-left", "全部技能").Label("返回全部技能").AlignSelf(ui.Start).Clicked() {
 			a.insights.evalSkill = ""
 			c.Invalidate()
 		}
@@ -322,12 +304,12 @@ func (a *App) evalDetail(c *ui.Context, e insight.SkillEval, base insight.Window
 		if len(in.lib) > 0 {
 			sub += " · " + shortPath(a.home, in.lib[0].Path)
 			if d := in.lib[0].Description; d != "" {
-				ui.Text(c, d).FontSize(13).LineHeight(1.5).TextColor(t.TextMuted).MaxLines(3).Tooltip(d)
+				withTip(c, ui.Text(c, d).FontSize(13).LineHeight(1.5).TextColor(t.TextMuted).MaxLines(3), d)
 			}
 		} else {
 			sub += " · 不在技能目录中（内置或插件技能）"
 		}
-		ui.Text(c, sub).FontSize(12).TextColor(muted).SingleLine().Tooltip(sub)
+		withTip(c, ui.Text(c, sub).FontSize(12).TextColor(muted).SingleLine(), sub)
 	})
 	filesValue, filesNote := "—", "技能目录里只有 SKILL.md"
 	if in.files {
@@ -343,14 +325,15 @@ func (a *App) evalDetail(c *ui.Context, e insight.SkillEval, base insight.Window
 	if hints := evalHints(e, base, in); len(hints) > 0 {
 		ui.Column(c).Gap(8).Label("结论").Children(func() {
 			for _, h := range hints {
-				tone, icon := t.TextMuted, "info"
+				kind := feedback.Info
 				if h.warn {
-					tone, icon = t.Warning, "alert"
+					kind = feedback.Warning
 				}
-				callout(c, icon, tone, h.text)
+				callout(c, kind, h.text)
 			}
 		})
 	}
+	a.evalJudge(c, e, in)
 	a.evalEpisodes(c, e)
 	a.evalTriggers(c, e, in)
 }
@@ -384,7 +367,7 @@ func (a *App) evalEpisodes(c *ui.Context, e insight.SkillEval) {
 			row := listRow(c, fmt.Sprintf("episode:%d", i), fmt.Sprintf("%s 第 %d 轮", title, ep.Turn+1))
 			row.Children(func() {
 				ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
-					ui.Text(c, title).FontSize(13).SingleLine().Tooltip(title)
+					withTip(c, ui.Text(c, title).FontSize(13).SingleLine(), title)
 					ui.Text(c, meta).FontSize(11.5).TextColor(token(t, "ink-3")).SingleLine()
 				})
 				cell(c, episodeSource(ep), widths[0], true)
@@ -417,142 +400,11 @@ func episodeSource(ep insight.Episode) string {
 	return "自动"
 }
 
-// ---- 触发评测集 ----
-
-func (a *App) evalTriggers(c *ui.Context, e insight.SkillEval, in evalInstall) {
-	t := c.Theme()
-	set := a.insights.evalSet
-	if set != nil && set.skill != e.Name {
-		set = nil
-	}
-	ui.Column(c).Gap(10).Label("触发评测集").Children(func() {
-		sectionHead(c, "触发评测集", "", nil)
-		note(c, "按 skill-creator 的 eval_set.json 格式（query / should_trigger）从会话里挑提示词：加载过这个技能的轮次默认应触发，描述相近却没加载的提示词作为待确认的近似反例。逐条确认后导出，可交给 skill-creator 的描述优化（run_loop）使用。导出的文件包含提示词原文，只写到本机。")
-		desc := ""
-		if len(in.lib) > 0 {
-			desc = in.lib[0].Description
-		}
-		switch {
-		case set == nil:
-			if outlineButton(c, "eval-pick", "从会话中挑选").Clicked() {
-				a.pickTriggers(e, desc)
-			}
-		case set.loading:
-			ui.Text(c, "正在读取会话里的提示词…").FontSize(13).TextColor(t.TextMuted)
-		case set.err != "":
-			ui.Text(c, set.err).FontSize(13).TextColor(t.Warning)
-		case len(set.cases) == 0:
-			ui.Text(c, "没有找到可用的提示词").FontSize(13).TextColor(t.TextMuted)
-		default:
-			a.evalCases(c, set, e)
-		}
-	})
-}
-
-func (a *App) evalCases(c *ui.Context, set *evalSet, e insight.SkillEval) {
-	t := c.Theme()
-	yes, no := 0, 0
-	for i := range set.cases {
-		ec := &set.cases[i]
-		switch ec.label {
-		case 0:
-			yes++
-		case 1:
-			no++
-		}
-		ui.Row(c.Key(fmt.Sprintf("case:%d", i))).Padding(8, 0).Gap(12).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
-			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-				q := ui.Text(c, ec.Query).FontSize(13).LineHeight(1.45).MaxLines(2).Tooltip(ec.Query)
-				if ec.label == 2 {
-					q.TextColor(t.TextMuted)
-				}
-				src := "加载了这个技能"
-				switch {
-				case ec.Manual:
-					src = "手动输入 /" + e.Name
-				case !ec.Loaded && ec.Score > 0:
-					src = fmt.Sprintf("没有加载 · 与描述重合 %s", pct(ec.Score))
-				case !ec.Loaded:
-					src = "加载了 " + ec.Other + "，没有加载这个技能"
-				}
-				ui.Text(c, src+" · "+ec.At.Local().Format("01/02 15:04")).FontSize(11.5).TextColor(token(t, "ink-3")).SingleLine()
-			})
-			segmented(c, fmt.Sprintf("用例 %d 的标注", i+1), &ec.label, "应触发", "不应触发", "不用")
-		})
-	}
-	ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, fmt.Sprintf("应触发 %d · 不应触发 %d", yes, no)).FontSize(13).TextColor(t.TextMuted).Grow(1)
-		if outlineButton(c, "eval-repick", "重新挑选").Clicked() {
-			a.insights.evalSet = nil
-		}
-		if primaryButton(c, "eval-export", "", "导出 eval_set.json").Clicked() {
-			a.exportTriggers(set)
-		}
-	})
-	if set.written != "" {
-		callout(c, "check", t.TextMuted, "已写入 "+shortPath(a.home, set.written)+"。在 skill-creator 目录运行：python -m scripts.run_loop --eval-set "+set.written+" --skill-path <技能目录> --max-iterations 5")
-		if outlineButton(c, "eval-reveal", "在访达中显示").Clicked() {
-			a.reveal(set.written)
-		}
-	}
-}
-
-func (a *App) evalSetPath(skill string) string {
-	name := strings.NewReplacer("/", "-", ":", "-", "\\", "-").Replace(skill)
-	return filepath.Join(filepath.Dir(a.pricesPath()), "evals", name, "eval_set.json")
-}
-
-func (a *App) exportTriggers(set *evalSet) {
-	var cases []insight.TriggerCase
-	for _, ec := range set.cases {
-		if ec.label < 2 {
-			cases = append(cases, insight.TriggerCase{Query: ec.Query, ShouldTrigger: ec.label == 0})
-		}
-	}
-	path := a.evalSetPath(set.skill)
-	if err := insight.WriteTriggerSet(path, cases); err != nil {
-		set.err = "导出失败：" + err.Error()
-		return
-	}
-	set.written = path
-}
-
 // triggerLimit is the size skill-creator suggests for a trigger eval set.
 const (
 	triggerLimit    = 20
 	triggerSessions = 40
 )
-
-// pickTriggers reads, in the background, the prompts of the turns that
-// loaded the skill and of recent turns that did not, and offers the closest.
-func (a *App) pickTriggers(e insight.SkillEval, description string) {
-	set := &evalSet{skill: e.Name, loading: true}
-	a.insights.evalSet = set
-	snap := a.sessions.snapshot
-	f := overviewFilter(a.sessions.period, a.sessionAgentFilter(), time.Now())
-	run := func() {
-		loaded, others, err := triggerCandidates(snap, f, e, description)
-		a.post(func() {
-			set.loading = false
-			if err != nil {
-				set.err = err.Error()
-				return
-			}
-			for _, cand := range insight.TriggerSet(loaded, others, triggerLimit) {
-				label := 1
-				if cand.ShouldTrigger() {
-					label = 0
-				}
-				set.cases = append(set.cases, evalCase{TriggerCandidate: cand, label: label})
-			}
-		})
-	}
-	if a.win == nil {
-		run()
-	} else {
-		go run()
-	}
-}
 
 func triggerCandidates(snap *session.Snapshot, f session.Filter, e insight.SkillEval, description string) (loaded, others []insight.TriggerCandidate, err error) {
 	if snap == nil {
@@ -637,10 +489,7 @@ func turnPrompts(s session.Session, tr *session.Transcript) map[string]prompt {
 		if e.Kind != session.EntryUser {
 			continue
 		}
-		i, _ := slices.BinarySearchFunc(s.Turns, e.Start, func(t session.Turn, at time.Time) int { return t.Start.Compare(at) })
-		if i == len(s.Turns) || !s.Turns[i].Start.Equal(e.Start) {
-			i--
-		}
+		i := turnAt(s, e.Start)
 		if i < 0 {
 			continue
 		}

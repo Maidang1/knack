@@ -364,8 +364,8 @@ func (a *App) profileHeatmap(c *ui.Context, p *profileData, width float32) {
 						ui.Column(c).Gap(heatGap).Shrink(0).Children(func() {
 							for _, day := range week {
 								description := heatDescription(p, day)
-								square := ui.ButtonBase(c.Key("heat:"+day.date)).Size(cell, cell).Shrink(0).Radius(2.5).
-									Background(heatFill(t, day, p.from)).Label(description).Tooltip(description)
+								square := withTip(c, ui.ButtonBase(c.Key("heat:"+day.date)).Size(cell, cell).Shrink(0).Radius(2.5).
+									Background(heatFill(t, day, p.from)).Label(description), description)
 								if day.date == selected.date {
 									square.Border(1.5, t.Text)
 								}
@@ -532,7 +532,7 @@ func (a *App) profileRhythm(c *ui.Context, p *profileData) {
 					}
 				}
 				tip := fmt.Sprintf("%02d:00 – %02d:00 · %d 轮", hour, (hour+1)%24, n)
-				ui.Box(c.Key(hour)).Grow(1).Basis(0).MinWidth(0).AlignSelf(ui.Stretch).Label(tip).Tooltip(tip).Draw(func(painter *ui.Painter, r ui.Rect) {
+				withTip(c, ui.Box(c.Key(hour)).Grow(1).Basis(0).MinWidth(0).AlignSelf(ui.Stretch).Label(tip), tip).Draw(func(painter *ui.Painter, r ui.Rect) {
 					h := max(2, float32(n)/float32(peak)*r.H)
 					painter.Fill(ui.Rect{X: r.X, Y: r.Y + r.H - h, W: r.W, H: h}, color, 2)
 				})

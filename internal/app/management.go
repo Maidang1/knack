@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/lobehub/lobe-mygo/pkg/action"
+	lobe "github.com/lobehub/lobe-mygo/pkg/theme"
 
 	"knack/internal/manage"
 	"knack/internal/repair"
@@ -21,7 +23,7 @@ func (a *App) removalButton(c *ui.Context, e skill.Entry) {
 	if !r.Available {
 		return
 	}
-	if ui.Button(c, r.Label).TextColor(c.Theme().Danger).Disabled(a.scanning || a.mutating || (r.Err != "" && !r.Unlinkable)).Clicked() {
+	if action.Button(c, r.Label, action.ButtonProps{Size: lobe.Small}).TextColor(c.Theme().Danger).Disabled(a.scanning || a.mutating || (r.Err != "" && !r.Unlinkable)).Clicked() {
 		a.confirmRemoval(e, r)
 	}
 }
@@ -119,7 +121,7 @@ func (a *App) invocationSettings(c *ui.Context, e skill.Entry) {
 		if mode == manage.InvocationNameOnly {
 			options = append(options, invocationLabel(mode))
 		}
-		if ui.Select(c.Key(e.Path+"|invocation"), &chosen, options).AlignSelf(ui.Start).
+		if selectField(c.Key(e.Path+"|invocation"), &chosen, options).AlignSelf(ui.Start).
 			Label("Claude 调用方式").Disabled(a.scanning || a.mutating || a.cached).Changed() {
 			for _, next := range []manage.Invocation{manage.InvocationAuto, manage.InvocationManual, manage.InvocationOff, manage.InvocationNameOnly} {
 				if invocationLabel(next) == chosen && next != mode {

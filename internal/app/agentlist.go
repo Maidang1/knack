@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/lobehub/lobe-mygo/pkg/field"
 
 	"knack/internal/session"
 	"knack/internal/skill"
@@ -126,8 +127,7 @@ func (a *App) agentList(c *ui.Context) {
 			number(c, fmt.Sprint(total)).FontSize(12.5).TextColor(muted)
 		})
 		ui.Row(c).Padding(0, 10).Shrink(0).Children(func() {
-			ui.SearchField(c, &a.agentQuery).Grow(1).MinWidth(0).Height(30).Radius(7).Background(searchBackground(t)).
-				Border(1, t.Border).Placeholder("搜索 Agent").PlaceholderColor(muted).Label("搜索 Agent")
+			searchField(c, &a.agentQuery, "搜索 Agent", 0, field.SearchBarProps{Placeholder: "搜索 Agent", Variant: field.InputFilled})
 		})
 		ui.Sidebar(c, &a.page, func() {
 			if len(logged)+len(rest) == 0 {

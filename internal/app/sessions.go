@@ -8,8 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/egoist/mygo/ui"
 	"knack/internal/session"
+
+	"github.com/egoist/mygo/ui"
+	"github.com/lobehub/lobe-mygo/pkg/choice"
+	"github.com/lobehub/lobe-mygo/pkg/feedback"
+	"github.com/lobehub/lobe-mygo/pkg/field"
 )
 
 type sessionState struct {
@@ -63,9 +67,9 @@ type sessionState struct {
 
 func (a *App) loadSessions() {
 	// User-defined Agents register before the first read; see docs/agents.md.
-	problems := session.LoadAgentConfig(filepath.Join(a.home, ".config", "skill-manager", "agents.json"))
-	problems = append(problems, session.LoadPlugins(filepath.Join(a.home, ".config", "skill-manager", "plugins"), a.home)...)
-	path := filepath.Join(a.home, ".cache", "skill-manager", "sessions.json")
+	problems := session.LoadAgentConfig(filepath.Join(a.configDir, "agents.json"))
+	problems = append(problems, session.LoadPlugins(a.pluginDir(), a.home)...)
+	path := filepath.Join(a.cacheDir, "sessions.json")
 	r, err := session.NewReader(a.home, path)
 	a.sessions = sessionState{reader: r, period: 2, agent: allAgents, day: -1, index: -1, agentProblems: problems}
 	if err != nil {
@@ -280,12 +284,11 @@ func (a *App) sessionList(c *ui.Context, rows []session.Session) {
 	view := a.overviewData()
 	ui.Column(c).Fill().Padding(20, 32, 0, 32).Gap(12).Children(func() {
 		ui.Row(c).Gap(14).AlignItems(ui.Center).Children(func() {
-			field := ui.SearchField(c, &s.query).Label("搜索会话").Placeholder("标题、Agent、仓库或分支").Width(300).Height(30).Radius(7).
-				Background(t.Surface).Border(1, t.Border).PlaceholderColor(muted)
-			if field.Changed() {
+			search := searchField(c, &s.query, "搜索会话", 300, field.SearchBarProps{Placeholder: "标题、Agent、仓库或分支"})
+			if search.Changed() {
 				a.query = s.query
 			}
-			ui.Checkbox(c, &s.anomaliesOnly, "只看耗时异常")
+			choice.Checkbox(c, &s.anomaliesOnly, "只看耗时异常", choice.CheckboxProps{})
 			ui.Spacer(c)
 			ui.Textf(c, "%d 个会话 · 按最近活跃排序", len(rows)).FontSize(13).TextColor(muted)
 		})
@@ -334,7 +337,7 @@ func (a *App) sessionList(c *ui.Context, rows []session.Session) {
 					ui.Box(c).Width(3).Height(30).Radius(2).Shrink(0).Background(agentColor(row.Agent, t.Dark))
 					ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
 						ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-							ui.Text(c, recentLabel(row)).FontSize(13).MinWidth(0).SingleLine().Tooltip(recentLabel(row))
+							withTip(c, ui.Text(c, recentLabel(row)).FontSize(13).MinWidth(0).SingleLine(), recentLabel(row))
 							if warning {
 								ui.Icon(c, glyph("issues")).FontSize(13).TextColor(t.Warning).Label("有耗时异常").Shrink(0)
 							}
@@ -444,14 +447,9 @@ func (a *App) partialBanner(c *ui.Context) {
 	if snap == nil || !snap.Partial || a.sessions.loading {
 		return
 	}
-	t := c.Theme()
-	ink := token(t, "warn-ink")
-	ui.Column(c).Shrink(0).Padding(14, 16).Gap(8).Radius(8).Background(token(t, "warn-bg")).Label("会话统计还没读完").Children(func() {
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Icon(c, glyph("hourglass")).FontSize(15).TextColor(t.Warning)
-			ui.Text(c, "会话统计还没读完").FontSize(13).FontWeight(600).TextColor(ink)
-		})
-		ui.Text(c, "部分日志未能读取，下面的数字暂时偏少。重新读取可再次尝试。").FontSize(13).LineHeight(1.5).TextColor(ink)
+	ui.Column(c).Shrink(0).Gap(8).Label("会话统计还没读完").Children(func() {
+		feedback.Alert(c, "会话统计还没读完", feedback.AlertProps{Type: feedback.Warning,
+			Description: "部分日志未能读取，下面的数字暂时偏少。重新读取可再次尝试。"}).FontSize(13)
 		if outlineButton(c, "read-again", "继续读取").AlignSelf(ui.Start).Disabled(a.scanning || a.mutating).Clicked() {
 			a.startScan()
 		}

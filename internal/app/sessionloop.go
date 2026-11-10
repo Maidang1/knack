@@ -7,8 +7,11 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/egoist/mygo/ui"
 	"knack/internal/session"
+
+	"github.com/egoist/mygo/ui"
+	"github.com/lobehub/lobe-mygo/pkg/action"
+	lobe "github.com/lobehub/lobe-mygo/pkg/theme"
 )
 
 // A turn replays as a transcript, the way the Agent showed it: what the
@@ -229,7 +232,7 @@ func (a *App) replayTool(c *ui.Context, key string, e session.Entry, tool *sessi
 	inKey := "tool:" + key
 	inOpen := a.sessions.expanded[inKey]
 	replayBullet(c, dot, func() {
-		b := ui.ButtonBase(c.Key(inKey)).AlignSelf(ui.Stretch).Justify(ui.Start).AlignItems(ui.Start).Gap(12).Label(strings.TrimSpace(name + " " + args)).Tooltip("查看完整输入")
+		b := withTip(c, ui.ButtonBase(c.Key(inKey)).AlignSelf(ui.Stretch).Justify(ui.Start).AlignItems(ui.Start).Gap(12).Label(strings.TrimSpace(name+" "+args)), "查看完整输入")
 		b.Children(func() {
 			ui.Row(c).Gap(0).AlignItems(ui.Start).MinWidth(0).Grow(1).Children(func() {
 				ui.Text(c, name).Font(monoFont).FontSize(13).LineHeight(1.6).FontWeight(700).Shrink(0)
@@ -474,10 +477,11 @@ func headLines(s string, lines, chars int) string {
 	return out
 }
 
-func moreLink(c *ui.Context, key, label string, action func()) {
-	b := ui.Button(c.Key("more:"+key), label).Padding(0).Height(20).Border(0, ui.Transparent).Background(ui.Transparent).TextColor(token(c.Theme(), "ink-3")).FontSize(12).AlignSelf(ui.Start)
+func moreLink(c *ui.Context, key, label string, do func()) {
+	b := action.Button(c.Key("more:"+key), label, action.ButtonProps{Variant: action.Link, Size: lobe.Small}).Label(label).
+		Height(20).TextColor(token(c.Theme(), "ink-3")).AlignSelf(ui.Start)
 	if b.Clicked() {
-		action()
+		do()
 		c.Invalidate()
 	}
 }

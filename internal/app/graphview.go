@@ -7,6 +7,9 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/lobehub/lobe-mygo/pkg/action"
+	"github.com/lobehub/lobe-mygo/pkg/feedback"
+	lobe "github.com/lobehub/lobe-mygo/pkg/theme"
 
 	"knack/internal/skill"
 )
@@ -112,16 +115,7 @@ func (a *App) graphPicker(c *ui.Context) {
 	if ok {
 		name = e.Name
 	}
-	b := ui.ButtonBase(c.Key("graph-pick")).Height(28).Padding(0, 10).Gap(6).Radius(6).AlignItems(ui.Center).
-		Background(t.Surface).Border(1, token(t, "line-strong")).Label("依赖图技能：" + name).MaxWidth(260)
-	if b.Hovered() {
-		b.Background(t.SurfaceHover)
-	}
-	b.Children(func() {
-		ui.Text(c, name).FontSize(13).MinWidth(0).SingleLine()
-		ui.Icon(c, glyph("chevron-down")).FontSize(11.5).TextColor(token(t, "ink-3")).Shrink(0)
-	})
-	b.PopoverMenuButton(func(m *ui.Menu) {
+	a.dropdown(c, "graph-pick", func(m *menu) {
 		entries := a.libraryEntries()
 		count := map[string]int{}
 		for _, x := range entries {
@@ -140,6 +134,12 @@ func (a *App) graphPicker(c *ui.Context) {
 				c.Invalidate()
 			}
 		}
+	}, func(b ui.Element) {
+		action.StyleButton(c, b, "", action.ButtonProps{Size: lobe.Small}).Height(28).Gap(6).
+			Label("依赖图技能：" + name).MaxWidth(260).Children(func() {
+			ui.Text(c, name).FontSize(13).MinWidth(0).SingleLine()
+			ui.Icon(c, glyph("chevron-down")).FontSize(11.5).TextColor(token(t, "ink-3")).Shrink(0)
+		})
 	})
 }
 
@@ -158,7 +158,7 @@ func (a *App) graphPage(c *ui.Context) {
 	ps := a.state(graphPage)
 	e, ok := a.graphEntry()
 	if !ok || a.snap == nil {
-		emptyState(c, "没有技能", "graph", t.TextMuted, "还没有可以查看的技能", a.emptyText(), nil)
+		emptyState(c, "没有技能", "graph", "还没有可以查看的技能", a.emptyText(), nil)
 		return
 	}
 	state := a.fileGraphFor(e)
@@ -167,7 +167,7 @@ func (a *App) graphPage(c *ui.Context) {
 			if state.err != "" {
 				ui.Text(c, state.err).FontSize(13).TextColor(t.Warning)
 			} else {
-				ui.Spinner(c).Size(16, 16).Label("正在读取技能目录")
+				feedback.Spin(c, feedback.SpinProps{CustomSize: 16}, nil).Label("正在读取技能目录")
 			}
 		})
 		return
@@ -239,40 +239,34 @@ func (a *App) graphCanvas(c *ui.Context, ps *pageState, e skill.Entry, g *skill.
 		if n := len(g.Isolated); n > 0 {
 			note += fmt.Sprintf("另有 %d 个文件没有被引用。", n)
 		}
-		ui.Text(c, note).FontSize(12).TextColor(token(t, "ink-3")).Grow(1).MinWidth(0).SingleLine().Tooltip(strings.Join(g.Isolated, "\n"))
+		withTip(c, ui.Text(c, note).FontSize(12).TextColor(token(t, "ink-3")).Grow(1).MinWidth(0).SingleLine(), strings.Join(g.Isolated, "\n"))
 		a.zoomControls(c, s)
 	})
 }
 
 func (a *App) zoomControls(c *ui.Context, s *graphCanvasState) {
-	t := c.Theme()
+	// Lobe UI's action icon group: borderless icons on one bordered surface.
+	tk := lobe.TokensOf(c)
 	ui.Toolbar(c, func() {
-		zoom := func(text, label string, width float32) ui.Element {
-			b := ui.ButtonBase(c.Key("zoom:"+label)).Size(width, 26).Radius(5).AlignItems(ui.Center).Justify(ui.Center).Label(label)
-			if b.Hovered() {
-				b.Background(t.SurfaceHover)
-			}
-			b.Children(func() { number(c, text).FontSize(13) })
-			return b
+		zoom := func(icon, label string) ui.Element {
+			return action.ActionIcon(c.Key("zoom:"+label), glyph(icon), action.ActionIconProps{BlockSize: 26, GlyphSize: 14}).Label(label)
 		}
-		if zoom("−", "缩小依赖图", 26).Disabled(s.zoom <= graphMinZoom).Clicked() {
+		if zoom("minus", "缩小依赖图").Disabled(s.zoom <= graphMinZoom).Clicked() {
 			s.zoomAt(s.zoom/1.2, s.width/2, s.height/2)
 		}
-		if zoom(fmt.Sprintf("%.0f%%", s.zoom*100), "重置依赖图缩放", 48).Tooltip("重置到 100%").Clicked() {
+		reset := withTip(c, action.StyleButton(c, ui.ButtonBase(c.Key("zoom:reset")), "", action.ButtonProps{Variant: action.Text, Size: lobe.Small}).
+			Size(48, 26).Padding(0).Justify(ui.Center).Label("重置依赖图缩放"), "重置到 100%")
+		reset.Children(func() { number(c, fmt.Sprintf("%.0f%%", s.zoom*100)).FontSize(12) })
+		if reset.Clicked() {
 			s.zoom, s.x, s.y = 1, 0, 0
 		}
-		if zoom("+", "放大依赖图", 26).Disabled(s.zoom >= graphMaxZoom).Clicked() {
+		if zoom("plus", "放大依赖图").Disabled(s.zoom >= graphMaxZoom).Clicked() {
 			s.zoomAt(s.zoom*1.2, s.width/2, s.height/2)
 		}
-		fit := ui.ButtonBase(c.Key("zoom:fit")).Size(26, 26).Radius(5).AlignItems(ui.Center).Justify(ui.Center).Label("适应全图").Tooltip("适应全图")
-		if fit.Hovered() {
-			fit.Background(t.SurfaceHover)
-		}
-		fit.Children(func() { ui.Icon(c, glyph("expand")).FontSize(13) })
-		if fit.Clicked() {
+		if withTip(c, zoom("expand", "适应全图"), "适应全图").Clicked() {
 			s.fit()
 		}
-	}).Padding(1).Gap(1).Radius(7).Background(t.Surface).Border(1, token(t, "line-strong")).Shrink(0).Label("依赖图缩放")
+	}).Padding(2).Gap(2).Radius(tk.BorderRadius).Background(tk.BgContainer).Border(1, tk.BorderSecondary).Shrink(0).Label("依赖图缩放")
 }
 
 func (a *App) legend(c *ui.Context, label string, col ui.Color, dashed bool) {
@@ -376,8 +370,8 @@ func (a *App) graphNode(c *ui.Context, ps *pageState, g *skill.Graph, n skill.No
 	chosen := ps.node == n.Name
 	lit := highlight.nodes[n.Name]
 	gone := n.Kind == skill.NodeMissing || n.Kind == skill.NodeMissingFile
-	chip := ui.ButtonBase(c.Key("node-"+n.Name)).Absolute().Left(at.x).Top(at.y).Size(nodeW, nodeH).
-		Padding(0, 12).Gap(8).AlignItems(ui.Center).Radius(7).Cursor(ui.CursorPointer).Label(n.Name).Tooltip(n.Name)
+	chip := withTip(c, ui.ButtonBase(c.Key("node-"+n.Name)).Absolute().Left(at.x).Top(at.y).Size(nodeW, nodeH).
+		Padding(0, 12).Gap(8).AlignItems(ui.Center).Radius(7).Cursor(ui.CursorPointer).Label(n.Name), n.Name)
 	fg, iconColor := t.Text, t.TextMuted
 	switch {
 	case chosen && n.Name == "SKILL.md":
@@ -427,7 +421,7 @@ func (a *App) graphDetail(c *ui.Context, e skill.Entry, g *skill.Graph, name str
 			ui.Column(c).Gap(5).Children(func() {
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 					ui.Icon(c, glyph(nodeGlyph(n))).FontSize(15).TextColor(t.TextMuted).Shrink(0)
-					ui.Text(c, path.Base(n.Name)).FontSize(15).FontWeight(600).MinWidth(0).SingleLine().Tooltip(n.Name)
+					withTip(c, ui.Text(c, path.Base(n.Name)).FontSize(15).FontWeight(600).MinWidth(0).SingleLine(), n.Name)
 				})
 				sub := ""
 				switch n.Kind {
@@ -440,7 +434,7 @@ func (a *App) graphDetail(c *ui.Context, e skill.Entry, g *skill.Graph, name str
 				case skill.NodeMissing:
 					sub = "技能库里没有这个技能"
 				}
-				number(c, sub).FontSize(12).TextColor(muted).MinWidth(0).Tooltip(sub)
+				withTip(c, number(c, sub).FontSize(12).TextColor(muted).MinWidth(0), sub)
 			})
 			var by, uses [][2]string
 			for _, edge := range g.Edges {
@@ -465,7 +459,7 @@ func (a *App) graphDetail(c *ui.Context, e skill.Entry, g *skill.Graph, name str
 					dir = e.RealPath
 				}
 				file := filepath.Join(dir, filepath.FromSlash(n.Name))
-				if outlineButton(c, "graph-open", "用默认编辑器打开").Height(28).AlignSelf(ui.Start).Tooltip(file).Clicked() {
+				if withTip(c, outlineButton(c, "graph-open", "用默认编辑器打开").Height(28).AlignSelf(ui.Start), file).Clicked() {
 					a.openPath(file)
 				}
 			case skill.NodeSkill:
@@ -489,7 +483,7 @@ func refList(c *ui.Context, title string, items [][2]string) {
 		ui.Text(c, title).FontSize(12).TextColor(t.TextMuted).Padding(0, 0, 6, 0)
 		for _, item := range items {
 			ui.Row(c).Padding(7, 0).Gap(8).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
-				ui.Text(c, item[0]).Font(monoFont).FontSize(13).Grow(1).MinWidth(0).SingleLine().Tooltip(item[0])
+				withTip(c, ui.Text(c, item[0]).Font(monoFont).FontSize(13).Grow(1).MinWidth(0).SingleLine(), item[0])
 				ui.Text(c, item[1]).FontSize(11.5).TextColor(token(t, "ink-3")).Shrink(0)
 			})
 		}
@@ -498,7 +492,6 @@ func refList(c *ui.Context, title string, items [][2]string) {
 
 // missingCallout states the paths the skill names that are not there.
 func (a *App) missingCallout(c *ui.Context, g *skill.Graph) {
-	t := c.Theme()
 	var lines []string
 	files, skills := 0, 0
 	for _, n := range g.Nodes {
@@ -535,15 +528,8 @@ func (a *App) missingCallout(c *ui.Context, g *skill.Graph) {
 	if skills > 0 {
 		title = append(title, fmt.Sprintf("%d 个找不到的技能", skills))
 	}
-	ui.Column(c).Padding(12, 14).Gap(6).Radius(8).Background(token(t, "danger-bg")).Label("缺失引用").Children(func() {
-		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-			ui.Icon(c, glyph("file-question")).FontSize(13).TextColor(t.Danger)
-			ui.Text(c, "这个技能有 "+strings.Join(title, "、")).FontSize(13).FontWeight(600).TextColor(t.Danger)
-		})
-		for _, line := range lines {
-			ui.Text(c, line).FontSize(13).LineHeight(1.5).TextColor(t.Danger)
-		}
-	})
+	feedback.Alert(c, "这个技能有 "+strings.Join(title, "、"), feedback.AlertProps{Type: feedback.Error, Description: strings.Join(lines, "\n")}).
+		FontSize(13).Label("缺失引用")
 }
 
 func byteSize(n int64) string {

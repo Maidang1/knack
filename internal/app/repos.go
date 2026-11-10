@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/lobehub/lobe-mygo/pkg/action"
+	"github.com/lobehub/lobe-mygo/pkg/feedback"
 
 	"knack/internal/manage"
 	"knack/internal/store"
@@ -18,7 +20,7 @@ type repoDialogState struct {
 	original, name, path, err string
 }
 
-func (a *App) repoMenu(m *ui.Menu, path string) {
+func (a *App) repoMenu(m *menu, path string) {
 	if m.Item("查看路径…").Chosen() {
 		a.openRepoDialog(path, false)
 	}
@@ -33,7 +35,7 @@ func (a *App) repoMenu(m *ui.Menu, path string) {
 	if m.Item("编辑仓库…").Disabled(a.mutating).Chosen() {
 		a.openRepoDialog(path, true)
 	}
-	if m.Item("移除仓库…").Disabled(a.scanning || a.mutating).Chosen() {
+	if m.Item("移除仓库…").Danger().Disabled(a.scanning || a.mutating).Chosen() {
 		a.confirmRepoRemoval(path)
 	}
 }
@@ -149,57 +151,58 @@ func (a *App) repositoryDialog(c *ui.Context) {
 		return
 	}
 	t := c.Theme()
-	ui.DialogBase(c, &d.open, func(backdrop ui.Element, panel ui.Element) {
-		backdrop.Background(ui.RGBA(0, 0, 0, 0.25)).Center()
-		panel.Width(480).MaxWidth(480).Padding(20).Gap(12).Radius(12).
-			Background(t.Background).Border(1, t.Border).Shadow(0, 16, 40, 0, ui.RGBA(0, 0, 0, 0.25))
-		title := "仓库信息"
-		if d.editing {
-			title = "编辑仓库"
-		}
-		ui.Text(c, title).FontSize(15).FontWeight(600)
-		if d.editing {
-			ui.Text(c, "显示名称").FontSize(13).TextColor(t.TextMuted)
-			ui.TextInput(c, &d.name).Label("仓库显示名称").Placeholder("留空使用目录名").AutoFocus()
-			ui.Text(c, "扫描路径").FontSize(13).TextColor(t.TextMuted)
-			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.TextInput(c, &d.path).Label("仓库扫描路径").Grow(1).MinWidth(0)
-				if ui.Button(c, "选择目录…").Disabled(d.picking || a.mutating).Clicked() {
-					a.beginPickRepoPath()
-				}
-			})
-			ui.Text(c, "只修改本应用的记录，不会重命名、移动或删除磁盘文件。").FontSize(13).TextColor(t.TextMuted)
-		} else {
-			ui.Text(c, a.repoLabel(d.original)).FontWeight(600)
-			ui.Text(c, d.path).FontSize(13).Selectable()
-		}
-		if d.err != "" {
-			ui.Text(c, d.err).FontSize(13).TextColor(t.Danger)
-		}
-		ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
+	title := "仓库信息"
+	if d.editing {
+		title = "编辑仓库"
+	}
+	button := func(label string, variant action.ButtonVariant) ui.Element {
+		return action.Button(c.Key("repo:"+label), label, action.ButtonProps{Variant: variant}).Label(label)
+	}
+	feedback.Modal(c, &d.open, feedback.ModalProps{Title: title, Width: 480, NoFooter: true}, func() {
+		ui.Column(c).Gap(12).Children(func() {
 			if d.editing {
-				if ui.Button(c, "取消").Clicked() {
-					d.open = false
-				}
-				if ui.PrimaryButton(c, "保存").Disabled(d.picking || a.mutating).Clicked() {
-					if err := a.updateRepo(d.original, d.name, d.path); err != nil {
-						d.err = err.Error()
-					} else {
+				ui.Text(c, "显示名称").FontSize(13).TextColor(t.TextMuted)
+				textField(c, &d.name, "仓库显示名称", "留空使用目录名").AutoFocus()
+				ui.Text(c, "扫描路径").FontSize(13).TextColor(t.TextMuted)
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					textField(c, &d.path, "仓库扫描路径", "")
+					if button("选择目录…", action.Default).Disabled(d.picking || a.mutating).Clicked() {
+						a.beginPickRepoPath()
+					}
+				})
+				ui.Text(c, "只修改本应用的记录，不会重命名、移动或删除磁盘文件。").FontSize(13).TextColor(t.TextMuted)
+			} else {
+				ui.Text(c, a.repoLabel(d.original)).FontWeight(600)
+				ui.Text(c, d.path).FontSize(13).Selectable()
+			}
+			if d.err != "" {
+				ui.Text(c, d.err).FontSize(13).TextColor(t.Danger)
+			}
+			ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
+				if d.editing {
+					if button("取消", action.Default).Clicked() {
+						d.open = false
+					}
+					if button("保存", action.Primary).Disabled(d.picking || a.mutating).Clicked() {
+						if err := a.updateRepo(d.original, d.name, d.path); err != nil {
+							d.err = err.Error()
+						} else {
+							d.open = false
+						}
+					}
+				} else {
+					if button("复制路径", action.Default).Clicked() {
+						a.copyPath(d.path)
+						c.Toast("已复制路径")
+					}
+					if button("编辑…", action.Default).Disabled(a.mutating).Clicked() {
+						d.editing = true
+					}
+					if button("完成", action.Primary).Clicked() {
 						d.open = false
 					}
 				}
-			} else {
-				if ui.Button(c, "复制路径").Clicked() {
-					a.copyPath(d.path)
-					c.Toast("已复制路径")
-				}
-				if ui.Button(c, "编辑…").Disabled(a.mutating).Clicked() {
-					d.editing = true
-				}
-				if ui.PrimaryButton(c, "完成").Clicked() {
-					d.open = false
-				}
-			}
+			})
 		})
 	})
 }

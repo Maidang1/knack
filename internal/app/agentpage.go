@@ -8,9 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/egoist/mygo/ui"
 	"knack/internal/session"
 	"knack/internal/skill"
+
+	"github.com/egoist/mygo/ui"
 )
 
 func (a *App) agentPageRoot() (skill.Root, bool) {
@@ -58,17 +59,16 @@ func (a *App) agentMeta(c *ui.Context, root skill.Root) {
 		}
 	}
 	text := strings.Join(parts, " · ")
-	ui.Text(c, text).FontSize(13).TextColor(token(t, "ink-3")).SingleLine().Shrink(1).MinWidth(0).Tooltip(root.Path)
+	withTip(c, ui.Text(c, text).FontSize(13).TextColor(token(t, "ink-3")).SingleLine().Shrink(1).MinWidth(0), root.Path)
 }
 
 // noLogs stands in for the sessions and usage of an Agent whose logs can
 // not be read, and points back to what does work.
 func (a *App) noLogs(c *ui.Context, root skill.Root, reason string) {
-	t := c.Theme()
 	info := session.LookupAgent(session.Agent(agentKey(a.home, root.Path)))
 	name := strings.TrimSuffix(root.Name, " 自带")
 	body := name + " 不在本机保存可读的会话记录，所以这里暂不支持会话和用量统计。技能管理不受影响。"
-	emptyState(c, reason, "file-question", t.TextMuted, name+" "+info.Unsupported, body, func() {
+	emptyState(c, reason, "file-question", name+" "+info.Unsupported, body, func() {
 		if outlineButton(c, "no-logs-skills", fmt.Sprintf("查看 %s 的 %d 个技能", name, len(a.agentEntries(root)))).Height(28).Clicked() {
 			a.state(a.page).agentTab = 0
 			c.Invalidate()
@@ -228,7 +228,7 @@ func (a *App) tokenMix(c *ui.Context, sum session.Summary, known bool, reason st
 					text += " · " + tokenNumber(cost.UnpricedTokens.Total()) + " Token 未定价"
 				}
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Padding(0, 0, 4, 0).Children(func() {
-					number(c, text).FontSize(13).TextColor(t.TextMuted).Tooltip("按 Anthropic 官方 API 价格估算，未定价的模型不计入")
+					withTip(c, number(c, text).FontSize(13).TextColor(t.TextMuted), "按 Anthropic 官方 API 价格估算，未定价的模型不计入")
 					overviewLink(c, "费用明细 →", a.openCostDetail)
 				})
 			}

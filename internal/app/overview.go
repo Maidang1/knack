@@ -7,8 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/egoist/mygo/ui"
 	"knack/internal/session"
+
+	"github.com/egoist/mygo/ui"
+	"github.com/lobehub/lobe-mygo/pkg/action"
+	lobe "github.com/lobehub/lobe-mygo/pkg/theme"
 )
 
 type overviewAgent struct {
@@ -214,10 +217,10 @@ func number(c *ui.Context, value string) ui.Element {
 func overviewTitle(c *ui.Context, title string) {
 	ui.Text(c, title).FontSize(15).FontWeight(600).SingleLine()
 }
-func overviewLink(c *ui.Context, label string, action func()) {
-	b := ui.Button(c, label).Padding(0).Height(24).Border(0, ui.Transparent).Background(ui.Transparent).TextColor(c.Theme().Accent).FontSize(11.5)
+func overviewLink(c *ui.Context, label string, do func()) {
+	b := action.Button(c, label, action.ButtonProps{Variant: action.Link, Size: lobe.Small}).Label(label)
 	if b.Clicked() {
-		action()
+		do()
 		c.Invalidate()
 	}
 }
@@ -226,7 +229,7 @@ var periodLabels = []string{"今天", "7 天", "30 天", "全部"}
 
 func (a *App) overviewToolbar(c *ui.Context) {
 	segmented(c, "统计时间范围", &a.sessions.period, periodLabels...)
-	selectStyle(c, ui.Select(c, &a.sessions.agent, agentOptions())).Label("统计 Agent").Width(116)
+	selectField(c, &a.sessions.agent, agentOptions()).Label("统计 Agent").Width(116)
 }
 
 func recentLabel(s session.Session) string {

@@ -163,20 +163,15 @@ func (a *App) libraryHead(c *ui.Context) {
 
 // librarySortButton orders each source's skills.
 func (a *App) librarySortButton(c *ui.Context) {
-	t := c.Theme()
-	b := ui.ButtonBase(c.Key("lib-sort")).Size(26, 26).Radius(6).Center().Label("排序：" + librarySorts[a.libSort]).Tooltip("排序：" + librarySorts[a.libSort])
-	if b.Hovered() {
-		b.Background(t.SurfaceHover)
-	}
-	b.Children(func() { ui.Icon(c, glyph("sort")).FontSize(15).TextColor(token(t, "ink-2")) })
-	b.PopoverMenuButton(func(m *ui.Menu) {
+	label := "排序：" + librarySorts[a.libSort]
+	a.dropdown(c, "library-sort", func(m *menu) {
 		for i, s := range librarySorts {
 			if m.Item(s).Checked(i == a.libSort).Chosen() {
 				a.libSort = i
 				c.Invalidate()
 			}
 		}
-	})
+	}, func(b ui.Element) { styleIconButton(c, b, "sort", label, label) })
 }
 
 // paintLibraryRow is the design's library row: the name over what
@@ -202,14 +197,14 @@ func (a *App) paintLibraryRow(c *ui.Context, r row, selected bool) {
 				if r.problem == skill.RelBroken {
 					tone = t.Danger
 				}
-				ui.Icon(c, glyph(relationGlyph(r.problem))).FontSize(13).TextColor(tone).Tooltip(r.problem.Label())
+				withTip(c, ui.Icon(c, glyph(relationGlyph(r.problem))).FontSize(13).TextColor(tone), r.problem.Label())
 			}
 			if len(r.reach) > 0 {
 				names := make([]string, 0, len(r.reach))
 				for _, x := range r.reach {
 					names = append(names, x.RootName+" · "+x.Relation.Label())
 				}
-				ui.Row(c).Gap(3).AlignItems(ui.Center).Tooltip(strings.Join(names, "\n")).Children(func() {
+				withTip(c, ui.Row(c).Gap(3).AlignItems(ui.Center), strings.Join(names, "\n")).Children(func() {
 					for _, x := range r.reach {
 						ui.Box(c).Size(7, 7).Radius(4).Background(a.entryAgentColor(c, x))
 					}

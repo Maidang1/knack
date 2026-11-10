@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -23,11 +24,11 @@ func TestOverviewScanRelinkAndUndo(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(pool, "blank"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink("/tmp/skill-manager-missing", filepath.Join(pool, "gone")); err != nil {
+	if err := os.Symlink("/tmp/knack-missing", filepath.Join(pool, "gone")); err != nil {
 		t.Fatal(err)
 	}
 	writeSkill(t, filepath.Join(pool, "observe"), "observe")
-	if err := os.Symlink("/tmp/skill-manager-missing-observe", filepath.Join(claude, "observe")); err != nil {
+	if err := os.Symlink("/tmp/knack-missing-observe", filepath.Join(claude, "observe")); err != nil {
 		t.Fatal(err)
 	}
 	writeSkill(t, filepath.Join(home, ".grok", "bundled", "skills", "shipped"), "bundled")
@@ -78,7 +79,7 @@ func TestOverviewScanRelinkAndUndo(t *testing.T) {
 		t.Fatal("stale cloud was changed")
 	}
 
-	click(t, tt, "撤销")
+	clickUndo(t, tt)
 	if !tt.HasText("已撤销") {
 		t.Fatalf("after undo: %q", tt.Texts())
 	}
@@ -98,7 +99,7 @@ func TestStaleConfirmAndBrokenRetarget(t *testing.T) {
 	writeSkill(t, filepath.Join(pool, "cloud"), "pool cloud")
 	writeSkill(t, filepath.Join(claude, "cloud"), "agent cloud")
 	writeSkill(t, filepath.Join(pool, "observe"), "observe")
-	if err := os.Symlink("/tmp/skill-manager-missing-observe", filepath.Join(claude, "observe")); err != nil {
+	if err := os.Symlink("/tmp/knack-missing-observe", filepath.Join(claude, "observe")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -169,7 +170,7 @@ func TestEmptyDirAndBuiltinReadOnly(t *testing.T) {
 	if _, err := os.Lstat(filepath.Join(pool, "blank")); !os.IsNotExist(err) {
 		t.Fatalf("blank still there: %v", err)
 	}
-	click(t, tt, "撤销")
+	clickUndo(t, tt)
 	if _, err := os.Lstat(filepath.Join(pool, "blank")); err != nil {
 		t.Fatal(err)
 	}
@@ -376,13 +377,13 @@ func TestRepairAllAndUndo(t *testing.T) {
 	writeSkill(t, filepath.Join(pool, "observe"), "observe")
 	copyDirFile(t, filepath.Join(pool, "beta", "SKILL.md"), filepath.Join(claude, "beta", "SKILL.md"))
 	writeSkill(t, filepath.Join(claude, "cloud"), "agent cloud")
-	if err := os.Symlink("/tmp/skill-manager-missing-observe", filepath.Join(claude, "observe")); err != nil {
+	if err := os.Symlink("/tmp/knack-missing-observe", filepath.Join(claude, "observe")); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Join(pool, "blank"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink("/tmp/skill-manager-missing", filepath.Join(pool, "gone")); err != nil {
+	if err := os.Symlink("/tmp/knack-missing", filepath.Join(pool, "gone")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -414,7 +415,7 @@ func TestRepairAllAndUndo(t *testing.T) {
 		t.Fatal("a copy with different content was replaced without asking")
 	}
 
-	click(t, tt, "撤销")
+	clickUndo(t, tt)
 	if info, err := os.Lstat(filepath.Join(claude, "beta")); err != nil || !info.IsDir() {
 		t.Fatalf("undo did not bring beta back: %v", err)
 	}
@@ -489,6 +490,13 @@ func openAgent(t *testing.T, tt *ui.Tester, name string) {
 	t.Helper()
 	click(t, tt, "Agents")
 	click(t, tt, name)
+}
+
+// clickUndo clicks the toast's 撤销 once it has slid in.
+func clickUndo(t *testing.T, tt *ui.Tester) {
+	t.Helper()
+	tt.Advance(time.Second)
+	click(t, tt, "撤销")
 }
 
 func click(t *testing.T, tt *ui.Tester, label string) {

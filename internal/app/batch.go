@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/lobehub/lobe-mygo/pkg/action"
+	lobe "github.com/lobehub/lobe-mygo/pkg/theme"
 
 	"knack/internal/manage"
 	"knack/internal/repair"
@@ -47,12 +49,7 @@ func (a *App) issueSelectionBar(c *ui.Context, rows []row) {
 	ps := a.state("issues")
 	t := c.Theme()
 	link := func(key, text, tip string, disabled bool) bool {
-		b := ui.ButtonBase(c.Key(key)).Label(text).Padding(2, 4).Radius(4).Disabled(disabled).Tooltip(tip)
-		if b.Hovered() {
-			b.Background(t.SurfaceHover)
-		}
-		b.Children(func() { ui.Text(c, text).FontSize(13).TextColor(t.TextMuted).SingleLine() })
-		return b.Clicked()
+		return withTip(c, textButton(c, key, "", text).Disabled(disabled), tip).Clicked()
 	}
 	ui.Row(c).Padding(0, 14, 2, 18).Gap(6).Wrap().AlignItems(ui.Center).Children(func() {
 		note := "勾选多项后可以一起处理"
@@ -82,12 +79,12 @@ func (a *App) issueBatchDetail(c *ui.Context, entries []skill.Entry) {
 		ui.Row(c).Gap(8).Wrap().Children(func() {
 			a.batchLinkMenu(c, entries, disabled)
 			if safe := a.chosenSafeFixes(entries); len(safe) > 0 {
-				if ui.Button(c, fmt.Sprintf("修复所选 %d 项", len(safe))).Disabled(disabled).Clicked() {
+				if action.Button(c, fmt.Sprintf("修复所选 %d 项", len(safe)), action.ButtonProps{Size: lobe.Small}).Disabled(disabled).Clicked() {
 					a.confirmBatch(safe, "修复所选")
 				}
 			}
 			blocked := a.batchRemovalError(entries)
-			if ui.Button(c, "删除所选").TextColor(t.Danger).Disabled(disabled || blocked != "").Clicked() {
+			if action.Button(c, "删除所选", action.ButtonProps{Size: lobe.Small}).TextColor(t.Danger).Disabled(disabled || blocked != "").Clicked() {
 				a.confirmBatchRemoval(entries)
 			}
 		})
@@ -123,7 +120,7 @@ func (a *App) batchLinkMenu(c *ui.Context, entries []skill.Entry, disabled bool)
 		}
 	}
 	agents := a.roots(skill.RoleAgent)
-	ui.MenuButton(c, "挂到 Agent", func(m *ui.Menu) {
+	a.dropdown(c, "batch-link", func(m *menu) {
 		for _, root := range agents {
 			var fixes []repair.Fix
 			for _, e := range entries {
@@ -143,7 +140,7 @@ func (a *App) batchLinkMenu(c *ui.Context, entries []skill.Entry, disabled bool)
 				a.confirmBatchLinks(fixes, root.Name, len(entries)-len(fixes))
 			}
 		}
-	}).Disabled(disabled || len(agents) == 0)
+	}, func(t ui.Element) { menuButton(c, t.Disabled(disabled || len(agents) == 0), "挂到 Agent") })
 }
 
 func (a *App) confirmBatchLinks(fixes []repair.Fix, agent string, skipped int) {

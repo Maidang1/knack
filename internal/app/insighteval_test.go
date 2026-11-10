@@ -3,12 +3,12 @@ package app
 import (
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/egoist/mygo/ui"
+
+	"knack/internal/evals"
 	"knack/internal/insight"
 )
 
@@ -17,7 +17,7 @@ func TestSkillEvalDetail(t *testing.T) {
 	a.insights.tab = tabEval
 	tt := ui.NewTester(a.View, 1440, 1000)
 	click(t, tt, "pdf")
-	for _, want := range []string{"全部技能", "加载后顺利", "加载记录", "触发评测集", "从会话中挑选", "重构解析器", "有失败"} {
+	for _, want := range []string{"全部技能", "加载后顺利", "加载记录", "触发评测", "从会话中挑选", "重构解析器", "有失败"} {
 		if !hasTextPart(tt, want) {
 			t.Errorf("missing %q in %q", want, tt.Texts())
 		}
@@ -32,41 +32,106 @@ func TestSkillEvalDetail(t *testing.T) {
 	}
 }
 
-func TestTriggerSetExport(t *testing.T) {
-	a := insightsApp(t)
-	s := &a.sessions.snapshot.Sessions[0]
-	at := s.Turns[0].Start.UTC().Format(time.RFC3339Nano)
-	log := filepath.Join(t.TempDir(), "s1.jsonl")
-	line := `{"type":"user","uuid":"u1","sessionId":"s1","timestamp":"` + at + `","message":{"role":"user","content":"把这些 PDF 表单填好"}}`
-	if err := os.WriteFile(log, []byte(line+"\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	s.Path = log
-	a.insights.tab, a.insights.evalSkill = tabEval, "pdf"
-	tt := ui.NewTester(a.View, 1440, 1000)
+func TestTriggerSet(t *testing.T) {
+	a, m := judgeApp(t)
+	tt := ui.NewTester(a.View, 1440, 2400)
 	click(t, tt, "从会话中挑选")
 	tt.Frame()
-	if !hasTextPart(tt, "把这些 PDF 表单填好") || !hasTextPart(tt, "应触发 1 · 不应触发 0") {
-		t.Fatalf("picked cases %q", tt.Texts())
+	s := a.insights.trigger
+	if s.err != "" || len(s.set.Cases) != 1 || !hasTextPart(tt, "把这些 PDF 表单填好") || !hasTextPart(tt, "应触发 1 · 不应触发 0") {
+		t.Fatalf("picked cases %q %q", s.err, tt.Texts())
 	}
-	click(t, tt, "导出 eval_set.json")
-	b, err := os.ReadFile(a.evalSetPath("pdf"))
-	if err != nil {
-		t.Fatal(err)
+	if saved, _ := s.store.Triggers(); len(saved.Cases) != 1 || saved.Cases[0].Source != evals.FromSession {
+		t.Fatal("picked cases not saved")
 	}
-	var cases []insight.TriggerCase
-	if json.Unmarshal(b, &cases) != nil || len(cases) != 1 || cases[0].Query != "把这些 PDF 表单填好" || !cases[0].ShouldTrigger {
-		t.Fatalf("eval set %s", b)
-	}
+	// Picking again finds nothing new rather than adding the same prompt twice.
+	click(t, tt, "从会话中挑选")
 	tt.Frame()
-	if !hasTextPart(tt, "已写入") {
+	if len(s.set.Cases) != 1 || !hasTextPart(tt, "没有找到新的提示词") {
+		t.Fatalf("picked twice: %d", len(s.set.Cases))
+	}
+
+	// The person writes one; the model writes more, told what is there.
+	s.adding, s.addNo = "把这个 PDF 转成 Word", 1
+	tt.Frame()
+	click(t, tt, "添加请求")
+	tt.Frame()
+	m.replies = []string{`{"cases":[{"query":"invoice.pdf 的表格帮我填一下","should_trigger":true,"why":"填表"},{"query":"合并这两个 PDF","should_trigger":false,"why":"不是填表"}]}`}
+	click(t, tt, "让模型编写 16 条")
+	tt.Frame()
+	if len(s.set.Cases) != 4 || s.err != "" || !hasTextPart(tt, "应触发 2 · 不应触发 2") || !hasTextPart(tt, "模型编写 · 不是填表") {
+		t.Fatalf("cases: %+v %q", s.set.Cases, s.err)
+	}
+	if p := m.asked[0].Prompt; !strings.Contains(p, "[应触发] 把这些 PDF 表单填好") || !strings.Contains(p, "[不应触发] 把这个 PDF 转成 Word") {
+		t.Fatalf("synth prompt:\n%s", p)
+	}
+
+	// A run states what it sends, then asks once per request with the skill list.
+	click(t, tt, "模拟 4 条")
+	tt.Frame()
+	if s.plan == nil || len(m.asked) != 1 || !hasTextPart(tt, "将把 4 条请求逐条发给 api.anthropic.com") {
+		t.Fatalf("trigger plan: %q", tt.Texts())
+	}
+	m.replies = []string{`{"skill":"pdf","reason":"填表"}`, `{"skill":"pdf","reason":"提到 PDF"}`, `{"skill":"","reason":"不需要"}`, `{"skill":"","reason":"直接做"}`}
+	click(t, tt, "开始模拟")
+	tt.Frame()
+	last, ok := s.set.Last()
+	if !ok || s.busy != "" || s.err != "" || len(last.Trials) != 4 || !m.asked[1].Cache || !strings.Contains(m.asked[1].System, "- pdf: ") {
+		t.Fatalf("run: %+v busy=%q err=%q", last, s.busy, s.err)
+	}
+	score := last.Score("pdf", s.set.Cases)
+	if score.Hit != 1 || score.Should != 2 || score.False != 1 || !hasTextPart(tt, "现在的描述") || !hasTextPart(tt, "上次模拟误加载了它") {
+		t.Fatalf("score %+v %q", score, tt.Texts())
+	}
+
+	// The model rewords the description from the misses; trying it is a new run.
+	m.replies = []string{`{"description":"填写 PDF 表单。转换和合并 PDF 不用这个技能。","why":"写明了不该用的情况"}`}
+	click(t, tt, "让模型改写描述")
+	tt.Frame()
+	if s.draft != "填写 PDF 表单。转换和合并 PDF 不用这个技能。" || !hasTextPart(tt, "模型的改写：写明了不该用的情况") || !hasTextPart(tt, "改动只用于模拟") {
+		t.Fatalf("revised draft %q %q", s.draft, s.err)
+	}
+	if p := m.asked[len(m.asked)-1].Prompt; !strings.Contains(p, "不应触发，但 Agent 加载了这个技能") {
+		t.Fatalf("revise prompt:\n%s", p)
+	}
+	click(t, tt, "模拟 4 条")
+	tt.Frame()
+	m.replies = []string{`{"skill":"pdf"}`, `{"skill":"pdf"}`, `{"skill":""}`, `{"skill":""}`}
+	click(t, tt, "开始模拟")
+	tt.Frame()
+	if len(s.set.Runs) != 2 || !strings.Contains(m.asked[len(m.asked)-1].System, "转换和合并 PDF 不用这个技能") || !hasTextPart(tt, "试用的描述") {
+		t.Fatalf("second run: %d runs", len(s.set.Runs))
+	}
+
+	// Export writes the cases still in use in skill-creator's format.
+	s.set.Cases[1].Off = true
+	click(t, tt, "导出 eval_set.json")
+	tt.Frame()
+	b, err := os.ReadFile(a.evalSetPath("pdf"))
+	var cases []insight.TriggerCase
+	if err != nil || json.Unmarshal(b, &cases) != nil || len(cases) != 3 || cases[0].Query != "把这些 PDF 表单填好" || !cases[0].ShouldTrigger {
+		t.Fatalf("eval set %s %v", b, err)
+	}
+	if !hasTextPart(tt, "已写入") || strings.Contains(strings.Join(tt.Texts(), " "), "run_loop") {
 		t.Fatal("export not confirmed")
 	}
-	// Leaving a case out drops it from the file.
-	a.insights.evalSet.cases[0].label = 2
-	a.exportTriggers(a.insights.evalSet)
-	if b, _ := os.ReadFile(a.evalSetPath("pdf")); strings.TrimSpace(string(b)) != "null" && strings.TrimSpace(string(b)) != "[]" {
-		t.Fatalf("left-out case exported: %s", b)
+}
+
+func TestTriggerStopsOnFailure(t *testing.T) {
+	a, m := judgeApp(t)
+	tt := ui.NewTester(a.View, 1440, 2400)
+	tt.Frame()
+	s := a.insights.trigger
+	s.set.Add(evals.NewCase("a", true, evals.FromPerson, ""), evals.NewCase("b", false, evals.FromPerson, ""))
+	tt.Frame()
+	click(t, tt, "模拟 2 条")
+	tt.Frame()
+	m.replies = []string{`{"skill":"pdf"}`}
+	click(t, tt, "开始模拟")
+	tt.Frame()
+	last, _ := s.set.Last()
+	if s.busy != "" || len(last.Trials) != 1 || !hasTextPart(tt, "模拟停下了：no reply scripted") {
+		t.Fatalf("failed run: busy=%q trials=%d texts=%q", s.busy, len(last.Trials), tt.Texts())
 	}
 }
 

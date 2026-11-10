@@ -7,8 +7,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/egoist/mygo/ui"
 	"knack/internal/session"
+
+	"github.com/egoist/mygo/ui"
+	"github.com/lobehub/lobe-mygo/pkg/action"
+	"github.com/lobehub/lobe-mygo/pkg/choice"
+	"github.com/lobehub/lobe-mygo/pkg/field"
+	lobe "github.com/lobehub/lobe-mygo/pkg/theme"
 )
 
 // The session page is the design's 会话详情: the session's totals, where
@@ -92,7 +97,7 @@ func (a *App) sessionHeader(c *ui.Context, d *sessionDetailData, width float32) 
 	muted := token(t, "ink-3")
 	title := func() {
 		ui.Column(c).Grow(1).MinWidth(0).Gap(8).Children(func() {
-			ui.Text(c, recentLabel(root)).FontSize(22).FontWeight(600).SingleLine().Tooltip(recentLabel(root))
+			withTip(c, ui.Text(c, recentLabel(root)).FontSize(22).FontWeight(600).SingleLine(), recentLabel(root))
 			ui.Row(c).Gap(8).AlignItems(ui.Center).MinWidth(0).Children(func() {
 				ui.Box(c).Size(8, 8).Radius(4).Shrink(0).Background(agentColor(root.Agent, t.Dark))
 				ui.Text(c, sessionAgentName(root.Agent)).FontSize(13).Shrink(0).SingleLine()
@@ -103,7 +108,7 @@ func (a *App) sessionHeader(c *ui.Context, d *sessionDetailData, width float32) 
 				}
 				if root.CWD != "" {
 					sep()
-					number(c, shortPath(a.home, root.CWD)).FontSize(13).TextColor(t.TextMuted).MinWidth(0).SingleLine().Tooltip(root.CWD)
+					withTip(c, number(c, shortPath(a.home, root.CWD)).FontSize(13).TextColor(t.TextMuted).MinWidth(0).SingleLine(), root.CWD)
 				}
 				if root.GitBranch != "" {
 					sep()
@@ -119,7 +124,7 @@ func (a *App) sessionHeader(c *ui.Context, d *sessionDetailData, width float32) 
 	stats := sessionStats(d)
 	cells := func(align ui.Align) {
 		for _, m := range stats {
-			ui.Column(c).Gap(3).AlignItems(align).Shrink(0).Tooltip(m.tip).Children(func() {
+			withTip(c, ui.Column(c).Gap(3).AlignItems(align).Shrink(0), m.tip).Children(func() {
 				ui.Text(c, m.label).FontSize(11.5).TextColor(muted)
 				v := number(c, m.value).FontSize(17).FontWeight(600)
 				if m.muted {
@@ -227,7 +232,7 @@ func (a *App) sessionPhases(c *ui.Context, d *sessionDetailData) {
 func phaseBar(c *ui.Context, p phaseTotals, waiting, away time.Duration) {
 	t := c.Theme()
 	muted := token(t, "ink-3")
-	ui.Box(c).Height(10).Label("阶段占比条").Tooltip(phaseDescription(p)).Draw(func(painter *ui.Painter, r ui.Rect) {
+	withTip(c, ui.Box(c).Height(10).Label("阶段占比条"), phaseDescription(p)).Draw(func(painter *ui.Painter, r ui.Rect) {
 		if p.total <= 0 {
 			painter.Fill(r, t.SurfaceHover, 2)
 			return
@@ -269,7 +274,7 @@ func phaseBar(c *ui.Context, p phaseTotals, waiting, away time.Duration) {
 			waits = append(waits, "离开 ≈ "+session.FormatDuration(away))
 		}
 		if len(waits) > 0 {
-			number(c, strings.Join(waits, " · ")).FontSize(11.5).TextColor(muted).Tooltip("轮与轮之间的间隔不计入活跃时间")
+			withTip(c, number(c, strings.Join(waits, " · ")).FontSize(11.5).TextColor(muted), "轮与轮之间的间隔不计入活跃时间")
 		}
 	})
 }
@@ -279,7 +284,7 @@ func legendValue(c *ui.Context, color ui.Color, name, value, share, tip string) 
 	t := c.Theme()
 	row := ui.Row(c).Gap(6).AlignItems(ui.Center).Shrink(0)
 	if tip != "" {
-		row.Tooltip(tip)
+		withTip(c, row, tip)
 	}
 	row.Children(func() {
 		ui.Box(c).Size(8, 8).Radius(2).Background(color)
@@ -326,7 +331,7 @@ func (a *App) turnDetail(c *ui.Context, d *sessionDetailData, index int) {
 		}
 		fold := a.foldLongSteps
 		ui.Row(c).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
-			ui.Switch(c, &fold).Label("折叠长步骤")
+			choice.Switch(c, &fold, choice.SwitchProps{Size: lobe.Small}).Label("折叠长步骤")
 			ui.Text(c, "折叠长步骤").FontSize(13).TextColor(t.TextMuted)
 		})
 		if fold != a.foldLongSteps {
@@ -419,7 +424,7 @@ func (a *App) turnDetail(c *ui.Context, d *sessionDetailData, index int) {
 		if e.Text != "" {
 			text += " · " + firstLine(e.Text)
 		}
-		number(c, stepClock(e.Start)+"  "+text).FontSize(11.5).TextColor(t.TextMuted).SingleLine().Tooltip(e.Text)
+		withTip(c, number(c, stepClock(e.Start)+"  "+text).FontSize(11.5).TextColor(t.TextMuted).SingleLine(), e.Text)
 	}
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Padding(10, 0, 0, 0).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Children(func() {
 		if turn.gap > 0 {
@@ -516,7 +521,7 @@ func (a *App) stepRow(c *ui.Context, turn sessionTurnView, i int, step sessionSt
 	open := selected && a.sessions.stepOpen
 	icon, name, detail := stepFace(step, content)
 	label := stepLabel(i, step)
-	b := ui.ButtonBase(c.Key(i)).Height(36).Padding(0, 8).Gap(10).Radius(6).AlignItems(ui.Center).Border(1, ui.Transparent).Label(label).Tooltip(label)
+	b := withTip(c, ui.ButtonBase(c.Key(i)).Height(36).Padding(0, 8).Gap(10).Radius(6).AlignItems(ui.Center).Border(1, ui.Transparent).Label(label), label)
 	switch {
 	case selected:
 		b.Background(token(t, "selected"))
@@ -594,7 +599,7 @@ func (a *App) stepInspector(c *ui.Context, d *sessionDetailData, index int, cont
 			for _, fact := range facts {
 				ui.Column(c).Gap(2).Width(150).Children(func() {
 					ui.Text(c, fact[0]).FontSize(11.5).TextColor(t.TextMuted).SingleLine()
-					v := ui.Text(c, fact[1]).FontSize(13).MaxLines(2).Tooltip(fact[1])
+					v := withTip(c, ui.Text(c, fact[1]).FontSize(13).MaxLines(2), fact[1])
 					if fact[1] == "暂不支持" || fact[1] == "未记录" {
 						v.TextColor(muted)
 					}
@@ -715,48 +720,29 @@ func (a *App) sessionBar(c *ui.Context) {
 		title = recentLabel(d.session)
 	}
 	back := func(label, text string) {
-		b := ui.ButtonBase(c.Key("session-back")).Gap(6).Padding(4, 6).Radius(6).AlignItems(ui.Center).Label(label).Shrink(0)
-		hover := b.Hovered()
-		if hover {
-			b.Background(t.SurfaceHover)
-		}
-		b.Children(func() {
-			ui.Icon(c, glyph("arrow-left")).FontSize(15).TextColor(t.TextMuted)
-			if text != "" {
-				label := ui.Text(c, text).FontSize(13).TextColor(t.TextMuted).SingleLine()
-				if hover {
-					label.TextColor(t.Text)
-				}
-			}
-		})
-		if b.Clicked() {
+		if textButton(c, "session-back", "arrow-left", text).Label(label).Clicked() {
 			a.closeSession()
 			c.Invalidate()
 		}
 	}
 	if s.replayOpen {
 		back("返回会话详情", "")
-		ui.Text(c, title).FontSize(15).FontWeight(600).MinWidth(0).Shrink(1).SingleLine().Tooltip(title)
+		withTip(c, ui.Text(c, title).FontSize(15).FontWeight(600).MinWidth(0).Shrink(1).SingleLine(), title)
 		ui.Box(c).Grow(1).MinWidth(8)
 		if n := a.replayMatches(d); n >= 0 {
 			ui.Textf(c, "%d 轮匹配", n).FontSize(12).TextColor(token(t, "ink-3")).Shrink(0)
 		}
-		ui.SearchField(c, &s.replayQuery).Label("在对话中查找").Placeholder("在对话中查找").Width(200).Height(28).Radius(7).
-			Background(t.Surface).Border(1, t.Border).PlaceholderColor(token(t, "ink-3")).Shrink(1).MinWidth(100)
+		searchField(c, &s.replayQuery, "在对话中查找", 200, field.SearchBarProps{Placeholder: "在对话中查找"}).MinWidth(100)
 		segmented(c, "对话筛选", &s.replayFilter, "全部", "只看工具", "只看回复")
 		return
 	}
 	back("返回全部会话", "全部会话")
 	ui.Icon(c, glyph("chevron-right")).FontSize(13).TextColor(token(t, "ink-3")).Shrink(0)
-	ui.Text(c, title).FontSize(13).MinWidth(0).Shrink(1).SingleLine().Tooltip(title)
+	withTip(c, ui.Text(c, title).FontSize(13).MinWidth(0).Shrink(1).SingleLine(), title)
 	ui.Box(c).Grow(1).MinWidth(8)
 	step := func(icon, label string, by int) {
-		b := ui.ButtonBase(c.Key(label)).Size(28, 28).Radius(7).Center().Background(t.Surface).Border(1, token(t, "line-strong")).
-			Label(label).Tooltip(label).Shrink(0).Disabled(s.index+by < 0 || s.index+by >= len(rows))
-		if b.Hovered() {
-			b.Background(t.SurfaceHover)
-		}
-		b.Children(func() { ui.Icon(c, glyph(icon)).FontSize(15).TextColor(t.TextMuted) })
+		b := action.ActionIcon(c.Key(label), glyph(icon), action.ActionIconProps{Variant: action.ActionIconOutlined, Title: label, BlockSize: 28, GlyphSize: 15}).
+			Label(label).Shrink(0).Disabled(s.index+by < 0 || s.index+by >= len(rows))
 		if b.Clicked() {
 			a.stepSession(by)
 			c.Invalidate()
@@ -767,7 +753,7 @@ func (a *App) sessionBar(c *ui.Context) {
 	if d == nil {
 		return
 	}
-	if outlineButton(c, "reveal-log", "定位原始日志").Height(28).Tooltip("在访达中显示原始日志").Clicked() {
+	if withTip(c, outlineButton(c, "reveal-log", "定位原始日志").Height(28), "在访达中显示原始日志").Clicked() {
 		a.reveal(session.LogPath(d.session.Path))
 	}
 	replay := primaryButton(c, "open-replay", "messages", "回放对话").Disabled(d.session.UnsupportedReason != "")

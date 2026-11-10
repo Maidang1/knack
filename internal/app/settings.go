@@ -5,6 +5,9 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/lobehub/lobe-mygo/pkg/choice"
+	"github.com/lobehub/lobe-mygo/pkg/layout"
+	lobe "github.com/lobehub/lobe-mygo/pkg/theme"
 
 	"knack/internal/skill"
 	"knack/internal/store"
@@ -125,14 +128,17 @@ func (a *App) settingsDialog(c *ui.Context) {
 		{"Agent", "bot", "在侧边栏显示的 Agent", "选择在侧边栏显示的 Agent。"},
 		{"自带", "package", "Agent 自带的技能", "选择在对应 Agent 技能列表中显示的自带内容。"},
 		{"插件", "braces", "Agent 插件", "用 JavaScript 接入其他 Agent 的会话。可从 GitHub、本机目录、.js 文件或 ZIP 安装。"},
+		{"模型", "sparkle", "评测用的模型", "技能评测用它起草评估标准、评审会话、模拟触发。不连接也不影响其他功能。"},
 	}
 	a.settingsTab = max(0, min(a.settingsTab, len(categories)-1))
 	width, height := c.Size()
 	ui.DialogBase(c, &a.settingsOpen, func(backdrop ui.Element, panel ui.Element) {
-		backdrop.Background(ui.RGBA(0, 0, 0, 0.25)).Justify(ui.Center).AlignItems(ui.Center)
-		panel.Size(min(680, width-48), min(540, height-48)).Padding(0).Gap(0).Radius(12).
-			Background(t.Surface).Border(1, t.Border).Shadow(0, 16, 40, 0, ui.RGBA(0, 0, 0, 0.3)).
-			Label("设置")
+		// The frame of Lobe UI's modal: a frosted backdrop, an elevated panel.
+		tk := lobe.TokensOf(c)
+		backdrop.Background(tk.BgContainer.Alpha(0.6)).Justify(ui.Center).AlignItems(ui.Center)
+		panel.Size(min(680, width-48), min(600, height-48)).Padding(0).Gap(0).Radius(12).
+			Background(tk.BgElevated).Label("设置")
+		tk.Elevate(panel, lobe.BoxShadow)
 		ui.Column(c).Fill().Radius(11).Clip().Children(func() {
 			// The toolbar of a macOS settings window: the pane's name over
 			// a row of icon tabs.
@@ -173,8 +179,12 @@ func (a *App) settingsDialog(c *ui.Context) {
 					ui.Text(c, category.description).FontSize(13).TextColor(t.TextMuted)
 				})
 				ui.Scroll(c.Key("settings:" + category.name)).Grow(1).MinHeight(0).Label("设置列表").Children(func() {
-					if a.settingsTab == len(categories)-1 {
+					switch a.settingsTab {
+					case settingsPluginTab:
 						a.settingsPlugins(c)
+						return
+					case settingsModelTab:
+						a.settingsModel(c)
 						return
 					}
 					rows := [][]settingsRow{browse, agents, builtins}[a.settingsTab]
@@ -183,8 +193,11 @@ func (a *App) settingsDialog(c *ui.Context) {
 				ui.Row(c).Gap(12).Shrink(0).AlignItems(ui.Center).Children(func() {
 					ui.Icon(c, glyph("info")).FontSize(13).TextColor(token(t, "ink-3")).Shrink(0)
 					note := "隐藏只影响侧边栏显示，不会修改磁盘上的文件。"
-					if a.settingsTab == len(categories)-1 {
+					switch a.settingsTab {
+					case settingsPluginTab:
 						note = "插件只通过只读方法读取本机文件，安装前请先看一遍它的代码。"
+					case settingsModelTab:
+						note = "关闭时不会向任何服务发送内容。"
 					}
 					ui.Text(c, note).FontSize(12).TextColor(token(t, "ink-3")).Grow(1).MinWidth(0)
 					if primaryButton(c, "settings-done", "", "完成").AutoFocus().Clicked() {
@@ -227,13 +240,13 @@ func (a *App) settingsGroup(c *ui.Context, title string, rows []settingsRow) {
 		ui.Column(c).Background(t.Surface).Border(1, t.Border).Radius(10).Clip().Children(func() {
 			for i, r := range rows {
 				if i > 0 {
-					ui.Divider(c.Key("div:"+r.id)).Margin(0, 0, 0, 48)
+					layout.Divider(c.Key("div:"+r.id), layout.DividerProps{}).Margin(0, 0, 0, 48)
 				}
 				ui.Row(c.Key(r.id)).AlignItems(ui.Center).Gap(12).Padding(10, 14, 10, 12).Children(func() {
 					tile(c, r.look, 24)
 					ui.Text(c, r.name).FontSize(13).FontWeight(500).Grow(1).SingleLine()
 					shown := !a.hidden[r.id]
-					if ui.Switch(c, &shown).Label(r.name).Changed() {
+					if choice.Switch(c, &shown, choice.SwitchProps{}).Label(r.name).Changed() {
 						a.setAgentShown(r.id, shown)
 					}
 				})

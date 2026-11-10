@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/lobehub/lobe-mygo/pkg/feedback"
 
 	"knack/internal/insight"
 	"knack/internal/session"
@@ -49,8 +50,9 @@ type insightsState struct {
 	allRoots   bool
 
 	eval        *insightEval
-	evalSkill   string // the skill whose evaluation is open
-	evalSet     *evalSet
+	evalSkill   string        // the skill whose evaluation is open
+	judge       *judgeState   // the open skill's evaluator and verdicts
+	trigger     *triggerState // the open skill's trigger set and runs
 	allEvals    bool
 	allEpisodes bool
 	files       map[string]skillFiles // by skill path, per scan
@@ -74,7 +76,7 @@ type insightSkills struct {
 }
 
 func (a *App) pricesPath() string {
-	return filepath.Join(a.home, ".config", "skill-manager", "prices.json")
+	return filepath.Join(a.configDir, "prices.json")
 }
 
 // loadPrices reads the price table; a broken file keeps the defaults and
@@ -111,9 +113,9 @@ func (a *App) insightsPane(c *ui.Context) {
 	})
 	if a.sessions.snapshot == nil && a.insights.tab != tabSkills && a.insights.tab != tabConfig {
 		if a.sessions.loading {
-			emptyState(c, "诊断", "hourglass", t.TextMuted, "正在读取本地会话", "首次读取可能需要一会儿，读完的部分会先显示。", nil)
+			emptyState(c, "诊断", "hourglass", "正在读取本地会话", "首次读取可能需要一会儿，读完的部分会先显示。", nil)
 		} else {
-			emptyState(c, "诊断", "messages", t.TextMuted, "没有本地会话", "诊断基于 Claude、Codex 等 Agent 的本地会话日志。", nil)
+			emptyState(c, "诊断", "messages", "没有本地会话", "诊断基于 Claude、Codex 等 Agent 的本地会话日志。", nil)
 		}
 		return
 	}
@@ -182,7 +184,7 @@ func figures(c *ui.Context, items []metric) {
 						if color.A == 0 {
 							color = token(t, "ink-3")
 						}
-						ui.Text(c, m.note).FontSize(12).TextColor(color).SingleLine().Tooltip(m.note)
+						withTip(c, ui.Text(c, m.note).FontSize(12).TextColor(color).SingleLine(), m.note)
 					})
 				}
 				for range per - len(row) {
@@ -198,13 +200,9 @@ func note(c *ui.Context, text string) {
 	ui.Text(c, text).FontSize(12).LineHeight(1.5).TextColor(token(c.Theme(), "ink-3")).MaxLines(4)
 }
 
-// callout is a tinted box that says what to do about a finding.
-func callout(c *ui.Context, icon string, tone ui.Color, text string) {
-	t := c.Theme()
-	ui.Row(c).Padding(10, 12).Gap(8).Radius(8).Background(fade(tone, 22)).AlignItems(ui.Start).Children(func() {
-		ui.Icon(c, glyph(icon)).FontSize(13).TextColor(tone).Shrink(0)
-		ui.Text(c, text).FontSize(13).LineHeight(1.5).TextColor(t.Text).Grow(1).MinWidth(0)
-	})
+// callout is Lobe UI's alert: what to do about a finding.
+func callout(c *ui.Context, kind feedback.AlertType, text string) {
+	feedback.Alert(c, text, feedback.AlertProps{Type: kind}).FontSize(13)
 }
 
 // column is one cell of a table row: fixed width, end-aligned numbers.
@@ -215,7 +213,7 @@ func cell(c *ui.Context, text string, width float32, numeric bool) ui.Element {
 	} else {
 		e = ui.Text(c, text).FontSize(13).SingleLine()
 	}
-	return e.Width(width).Shrink(0).Tooltip(text)
+	return withTip(c, e.Width(width).Shrink(0), text)
 }
 
 // tableHead is a table's quiet column names over a hairline.
@@ -277,11 +275,11 @@ func (a *App) insightCost(c *ui.Context) {
 		{label: "已定价占比", value: percent(float64(priced), float64(priced+unpriced)), note: "按 Token 计"},
 	})
 	if a.insights.priceErr != "" {
-		callout(c, "alert", t.Warning, a.insights.priceErr+"。已使用内置价格。")
+		callout(c, feedback.Warning, a.insights.priceErr+"。已使用内置价格。")
 	}
 	if unpriced > 0 {
 		ui.Column(c).Gap(8).Children(func() {
-			callout(c, "info", token(t, "accent-ink"), "部分模型没有内置价格（"+strings.Join(r.UnpricedModels[:min(6, len(r.UnpricedModels))], "、")+ellipsis(len(r.UnpricedModels), 6)+
+			callout(c, feedback.Info, "部分模型没有内置价格（"+strings.Join(r.UnpricedModels[:min(6, len(r.UnpricedModels))], "、")+ellipsis(len(r.UnpricedModels), 6)+
 				"），这部分 Token 不计入费用。可在价格表里按模型名或前缀补充美元 / 百万 Token 的价格。")
 			ui.Row(c).Gap(8).Children(func() {
 				if outlineButton(c, "open-prices", "打开价格表").Clicked() {
@@ -414,7 +412,7 @@ func (a *App) costSessions(c *ui.Context, r insight.CostReport) {
 			row.Children(func() {
 				ui.Box(c).Size(3, 30).Radius(2).Shrink(0).Background(agentColor(s.Agent, t.Dark))
 				ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
-					ui.Text(c, title).FontSize(13).SingleLine().Tooltip(title)
+					withTip(c, ui.Text(c, title).FontSize(13).SingleLine(), title)
 					ui.Text(c, strings.Join(meta, " · ")).FontSize(11.5).TextColor(token(t, "ink-3")).SingleLine()
 				})
 				shareBar(c, s.Cost, peak, agentColor(s.Agent, t.Dark), 80)
@@ -435,7 +433,7 @@ func (a *App) costModels(c *ui.Context, r insight.CostReport) {
 		tableHead(c, "模型", []string{"Token", "费用"}, widths)
 		for _, m := range r.ByModel[:min(12, len(r.ByModel))] {
 			ui.Row(c).Padding(7, 0).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
-				ui.Text(c, m.Model).FontSize(13).Grow(1).MinWidth(0).SingleLine().Tooltip(fmt.Sprintf("%s · %d 次请求", m.Model, m.Requests))
+				withTip(c, ui.Text(c, m.Model).FontSize(13).Grow(1).MinWidth(0).SingleLine(), fmt.Sprintf("%s · %d 次请求", m.Model, m.Requests))
 				cell(c, tokenNumber(m.Tokens.Total()), widths[0], true).TextColor(t.TextMuted)
 				cost := dollars(m.Cost)
 				if !m.Priced {
@@ -530,7 +528,7 @@ func (a *App) insightContext(c *ui.Context) {
 			}
 			for _, g := range list[:min(limit, len(list))] {
 				ui.Row(c).Padding(7, 0).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Label(fmt.Sprintf("%s 中位 %s", g.Name, tokenNumber(g.Median))).Children(func() {
-					ui.Text(c, g.Name).FontSize(13).Grow(1).MinWidth(0).SingleLine().Tooltip(g.Name)
+					withTip(c, ui.Text(c, g.Name).FontSize(13).Grow(1).MinWidth(0).SingleLine(), g.Name)
 					shareBar(c, float64(g.Median), float64(peak), token(t, "ink-2"), 60)
 					cell(c, fmt.Sprint(g.Sessions), widths[0], true).TextColor(t.TextMuted)
 					cell(c, tokenNumber(g.Median), widths[1], true)
@@ -552,7 +550,7 @@ func (a *App) insightContext(c *ui.Context) {
 				row.Children(func() {
 					ui.Box(c).Size(3, 30).Radius(2).Shrink(0).Background(agentColor(s.Agent, t.Dark))
 					ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
-						ui.Text(c, title).FontSize(13).SingleLine().Tooltip(title)
+						withTip(c, ui.Text(c, title).FontSize(13).SingleLine(), title)
 						meta := fmt.Sprintf("%s · 峰值 %s · %d 次请求", filepath.Base(s.CWD), tokenNumber(s.Peak), s.Requests)
 						if s.Compactions > 0 {
 							meta += fmt.Sprintf(" · 压缩 %d 次", s.Compactions)
@@ -582,5 +580,5 @@ func (a *App) insightContext(c *ui.Context) {
 		groups("按项目", r.ByProject, 15)
 		sessions()
 	}
-	callout(c, "info", token(t, "accent-ink"), "想让开局更轻：在「技能」里卸载长期不用的技能、缩短冗长的描述；在「配置」里查看各层 CLAUDE.md / AGENTS.md 和未使用的 MCP 服务器。")
+	callout(c, feedback.Info, "想让开局更轻：在「技能」里卸载长期不用的技能、缩短冗长的描述；在「配置」里查看各层 CLAUDE.md / AGENTS.md 和未使用的 MCP 服务器。")
 }

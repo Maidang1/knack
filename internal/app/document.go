@@ -2,10 +2,11 @@ package app
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/lobehub/lobe-mygo/pkg/code"
+	"github.com/lobehub/lobe-mygo/pkg/markdown"
 
 	"knack/internal/repair"
 	"knack/internal/skill"
@@ -74,6 +75,7 @@ func (a *App) documentPane(c *ui.Context, e skill.Entry) {
 	ui.Column(c).Gap(10).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, "SKILL.md").FontSize(15).FontWeight(600).Grow(1)
+			segmented(c, "正文显示", &a.docView, "预览", "源码")
 			if outlineButton(c, "reload-document", "重新读取").Disabled(state.loading).Clicked() {
 				delete(a.documents, documentKey(e))
 				c.Invalidate()
@@ -84,21 +86,19 @@ func (a *App) documentPane(c *ui.Context, e skill.Entry) {
 			ui.Text(c, "正在读取正文…").FontSize(13).TextColor(t.TextMuted)
 		case state.err != "":
 			ui.Text(c, state.err).FontSize(13).TextColor(t.Warning)
-		default:
-			// Numbers and text share a size and line height and never wrap,
-			// so each number stays beside its line.
+		case a.docView == 1:
+			// Lobe UI's highlighter, the source as it is on disk.
 			text := strings.TrimRight(state.document.Text, "\n")
-			n := strings.Count(text, "\n") + 1
-			numbers := make([]string, n)
-			for i := range numbers {
-				numbers[i] = strconv.Itoa(i + 1)
-			}
-			ui.ScrollHorizontal(c).Label("SKILL.md 正文").Radius(8).Border(1, t.Border).Background(t.Surface).Children(func() {
-				ui.Row(c).Padding(12, 0).AlignItems(ui.Start).Children(func() {
-					ui.Text(c, strings.Join(numbers, "\n")).Font(monoFont).FontSize(13).LineHeight(1.7).NoWrap().
-						TextColor(token(t, "ink-3")).TextAlign(ui.End).MinWidth(28).Padding(0, 14, 0, 10).Shrink(0)
-					ui.Text(c, text).Font(monoFont).FontSize(13).LineHeight(1.7).NoWrap().Selectable().Padding(0, 18, 0, 4)
-				})
+			code.Highlighter(c, text, code.HighlighterProps{Language: "markdown", Variant: code.Outlined, FontSize: 13}).
+				Label("SKILL.md 正文")
+		default:
+			// Lobe UI's markdown, under the front matter as YAML.
+			front, body := splitFrontMatter(state.document.Text)
+			card(c).Padding(16, 20).Gap(12).Label("SKILL.md 正文").Children(func() {
+				if front != "" {
+					code.Highlighter(c, front, code.HighlighterProps{Language: "yaml", NoCopy: true, HideLanguage: true, FontSize: 12})
+				}
+				markdown.Markdown(c, body, markdown.MarkdownProps{FontSize: 14, HeaderMultiple: 0.5, MarginMultiple: 1.2})
 			})
 		}
 	})
@@ -230,4 +230,18 @@ func (a *App) graphFor(rootID string) *skill.Graph {
 		return state.graph
 	}
 	return a.snap.GraphFor(rootID)
+}
+
+// splitFrontMatter separates a SKILL.md's YAML header from its body.
+func splitFrontMatter(text string) (front, body string) {
+	rest, ok := strings.CutPrefix(text, "---\n")
+	if !ok {
+		return "", text
+	}
+	front, body, ok = strings.Cut(rest, "\n---")
+	if !ok {
+		return "", text
+	}
+	_, body, _ = strings.Cut(body, "\n")
+	return front, body
 }

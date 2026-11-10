@@ -102,7 +102,7 @@ func TestIssueBatchRemovalAndUndo(t *testing.T) {
 	if a.state("issues").chosen.Len() != 0 {
 		t.Fatal("new scan retained old choices")
 	}
-	click(t, tt, "撤销")
+	clickUndo(t, tt)
 	for _, name := range []string{"alpha", "beta"} {
 		if _, err := os.Stat(filepath.Join(a.home, ".agents", "skills", name, "SKILL.md")); err != nil {
 			t.Fatal("batch undo did not restore", name, err)
@@ -128,7 +128,7 @@ func TestIssueBatchRemovalFreshReferenceAndPartialUndo(t *testing.T) {
 			t.Fatal("removed blocked or unprocessed entry:", name, err)
 		}
 	}
-	click(t, tt, "撤销")
+	clickUndo(t, tt)
 	if _, err := os.Stat(filepath.Join(a.home, ".agents", "skills", "alpha", "SKILL.md")); err != nil {
 		t.Fatal("partial batch could not be undone:", err)
 	}
@@ -138,9 +138,7 @@ func TestIssueBatchLinksAndUndo(t *testing.T) {
 	a, tt := issueBatchFixture(t)
 	click(t, tt, "全选")
 	click(t, tt, "挂到 Agent")
-	if err := tt.ChooseMenuItem("Claude（3 项）"); err != nil {
-		t.Fatal(err)
-	}
+	click(t, tt, "Claude（3 项）")
 	// A conflicting copy added after confirmation must never be overwritten.
 	writeSkill(t, filepath.Join(a.home, ".claude", "skills", "alpha"), "existing copy")
 	click(t, tt, "确认批量挂出")
@@ -150,7 +148,7 @@ func TestIssueBatchLinksAndUndo(t *testing.T) {
 			t.Fatal("batch did not link", name, err)
 		}
 	}
-	click(t, tt, "撤销")
+	clickUndo(t, tt)
 	for _, name := range []string{"beta", "gamma"} {
 		if _, err := os.Lstat(filepath.Join(a.home, ".claude", "skills", name)); !os.IsNotExist(err) {
 			t.Fatal("batch undo kept link", name, err)
@@ -181,7 +179,7 @@ func TestIssueBatchRepairOnlyChosen(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(a.home, ".agents", "skills", "blank-c")); err != nil {
 		t.Fatal("unselected issue was repaired:", err)
 	}
-	click(t, tt, "撤销")
+	clickUndo(t, tt)
 }
 
 func TestIssueBatchProtectionAndCachedState(t *testing.T) {
