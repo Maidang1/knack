@@ -10,6 +10,12 @@ Knack 是一款面向 Windows、Linux 和 macOS 的桌面应用，用来管理�
 
 以磁盘上的 `SKILL.md` 和目录为准，用共享池与软链连接不同 Agent。
 
+<p align="center">
+  <a href="docs/knack-intro.mp4"><img src="docs/knack-intro.png" width="720" alt="Knack 介绍视频封面，点击播放"></a>
+</p>
+
+<p align="center"><a href="docs/knack-intro.mp4">观看 71 秒介绍视频</a>：技能库、共享池、待处理、会话统计与诊断。画面中为示例数据。</p>
+
 ## 功能
 
 | 功能 | 能做什么 |
