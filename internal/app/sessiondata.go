@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"knack/internal/insight"
 	"knack/internal/session"
 )
 
@@ -35,11 +34,10 @@ type phaseTotals struct {
 	total, away, unknown time.Duration
 }
 type sessionTurnView struct {
-	turn    session.Turn
-	steps   []sessionStep
-	phases  phaseTotals
-	index   int
-	warning bool
+	turn   session.Turn
+	steps  []sessionStep
+	phases phaseTotals
+	index  int
 	// active covers the turn's own work: from its start to the last request,
 	// tool, sub-Agent or event. gap is what follows until the next turn,
 	// waiting for the person's reply (or away), kept out of active time.
@@ -68,12 +66,6 @@ type callCount struct {
 	count int
 	child bool
 }
-type sessionConcern struct {
-	title, note, sessionID string
-	turn                   int
-	duration               session.Duration
-	at                     time.Time
-}
 type sessionDetailData struct {
 	session       session.Session
 	summary       session.Summary
@@ -82,9 +74,7 @@ type sessionDetailData struct {
 	phases        phaseTotals
 	models        []modelSpeed
 	skills, tools []callCount
-	concerns      []sessionConcern
 	toolCount     int
-	diag          *insight.SessionDiagnosis // built when first shown
 }
 
 func sessionID(s session.Session) string { return string(s.Agent) + ":" + s.ID }
@@ -100,28 +90,20 @@ func sessionSpan(s session.Session) string {
 func sessionDetail(snapshot *session.Snapshot, root session.Session) *sessionDetailData {
 	d := &sessionDetailData{session: root}
 	parents := map[string]bool{}
-	turnFor := map[string]int{}
-	var track func(session.Session, bool, int)
-	track = func(s session.Session, unlinked bool, parentTurn int) {
+	var track func(session.Session, bool)
+	track = func(s session.Session, unlinked bool) {
 		if parents[s.ID] {
 			return
 		}
 		parents[s.ID] = true
 		d.tracks = append(d.tracks, sessionTrack{session: s, unlinked: unlinked})
-		if parentTurn >= 0 {
-			turnFor[s.ID] = parentTurn
-		}
-		for i, t := range s.Turns {
+		for _, t := range s.Turns {
 			for _, child := range t.Subagents {
-				index := parentTurn
-				if s.ID == root.ID {
-					index = i
-				}
-				track(child.Session, unlinked, index)
+				track(child.Session, unlinked)
 			}
 		}
 	}
-	track(root, false, -1)
+	track(root, false)
 	var orphans []session.Session
 	if snapshot != nil {
 		for changed := true; changed; {
@@ -129,7 +111,7 @@ func sessionDetail(snapshot *session.Snapshot, root session.Session) *sessionDet
 			for _, s := range snapshot.UnlinkedSubagents {
 				if s.Agent == root.Agent && parents[s.ParentID] && !parents[s.ID] {
 					orphans = append(orphans, s)
-					track(s, true, -1)
+					track(s, true)
 					changed = true
 				}
 			}
@@ -252,77 +234,6 @@ func sessionDetail(snapshot *session.Snapshot, root session.Session) *sessionDet
 		d.turns = append(d.turns, view)
 	}
 	d.phases = partitionPhases(root.Start, root.End, all)
-	for _, an := range d.summary.Anomalies {
-		index := -1
-		if an.SessionID == root.ID {
-			for i, t := range root.Turns {
-				if t.ID == an.TurnID {
-					index = i
-					break
-				}
-			}
-		} else if i, ok := turnFor[an.SessionID]; ok {
-			index = i
-		}
-		concern := sessionConcern{turn: index, duration: an.Elapsed, at: an.At, sessionID: an.SessionID}
-		switch an.Kind {
-		case "slow_model":
-			concern.title = "模型请求慢"
-			concern.note = "模型请求间隔估算"
-		case "slow_tool":
-			concern.title = "工具执行慢"
-			concern.note = "工具调用到返回的间隔，估算"
-		case "permission_wait":
-			concern.title = "等待你确认"
-			concern.note = "权限相关工具间隔，估算，含执行时间"
-		case "retry":
-			concern.title = "API 重试（推断）"
-			concern.note = "前一次请求失败；退避和生成无法拆分"
-		case "api_error":
-			concern.title = "API 请求失败"
-			concern.note = "日志标记为 API 错误"
-		case "compact":
-			concern.title = "上下文压缩"
-			concern.note = "日志报告的压缩耗时"
-		case "interrupted":
-			concern.title = "已中断"
-			concern.note = "日志报告调用或轮次被中断"
-		case "timeout":
-			concern.title = "工具超时"
-			concern.note = "时长为日志报告的超时阈值"
-		default:
-			continue
-		}
-		if index < 0 {
-			concern.note += " · 子 Agent 轮次关联未知"
-		}
-		for _, tr := range d.tracks {
-			if tr.session.ID == an.SessionID {
-				for _, t := range tr.session.Turns {
-					for _, tool := range t.Tools {
-						if tool.ID == an.ItemID && an.ItemID != "" {
-							concern.note = tool.Name + " · " + concern.note
-						}
-					}
-				}
-			}
-		}
-		d.concerns = append(d.concerns, concern)
-	}
-	slices.SortStableFunc(d.concerns, func(a, b sessionConcern) int {
-		if a.duration.Value > b.duration.Value {
-			return -1
-		}
-		if a.duration.Value < b.duration.Value {
-			return 1
-		}
-		return b.at.Compare(a.at)
-	})
-	for _, item := range d.concerns {
-		if item.turn >= 0 {
-			d.turns[item.turn].warning = true
-		}
-	}
 	return d
 }
 
@@ -493,11 +404,7 @@ func phaseDescription(p phaseTotals) string {
 }
 
 func turnLabel(t sessionTurnView) string {
-	label := fmt.Sprintf("第 %d 轮 · 活跃 %s", t.index+1, activeText(t))
-	if t.warning {
-		label += " · 有耗时异常"
-	}
-	return label
+	return fmt.Sprintf("第 %d 轮 · 活跃 %s", t.index+1, activeText(t))
 }
 
 func trackNote(track sessionTrack) string {

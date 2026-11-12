@@ -166,7 +166,7 @@ func (a *App) contentBar(c *ui.Context) {
 		if a.page == graphPage {
 			a.graphLegend(c)
 		}
-		if a.page == "overview" || a.page == "sessions" || a.page == insightsPage {
+		if a.page == "overview" || a.page == "sessions" || a.page == usagePage || a.page == insightsPage {
 			a.overviewToolbar(c)
 		} else if root, ok := a.agentPageRoot(); ok && a.state(a.page).agentTab != 0 && logSupport(session.Agent(agentKey(a.home, root.Path))) == "" {
 			segmented(c, "统计时间范围", &a.sessions.period, periodLabels...)
@@ -338,6 +338,11 @@ func (a *App) contentPane(c *ui.Context) {
 			a.statusBar(c)
 			return
 		}
+		if a.page == usagePage {
+			a.usagePane(c)
+			a.statusBar(c)
+			return
+		}
 		if a.page == insightsPage {
 			a.insightsPane(c)
 			a.statusBar(c)
@@ -443,7 +448,6 @@ func (a *App) listPane(c *ui.Context) {
 		}
 		ui.Themed(c, lt).Grow(1).MinHeight(0).Background(ui.Transparent).Children(func() { a.listRows(c, rows) })
 		if a.page == "issues" {
-			a.anomalyGroup(c)
 			a.repairBar(c)
 		}
 	})
@@ -968,6 +972,8 @@ func (a *App) pageTitle() string {
 		return "依赖图"
 	case agentsPage:
 		return "Agents"
+	case usagePage:
+		return "用量"
 	case insightsPage:
 		return "诊断"
 	default:
@@ -1107,7 +1113,7 @@ func (a *App) statusBar(c *ui.Context) {
 	t := c.Theme()
 	ui.Row(c).Height(footerHeight).Shrink(0).Padding(0, 16).Gap(8).AlignItems(ui.Center).
 		BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Children(func() {
-		if a.page == "overview" || a.page == "sessions" {
+		if a.page == "overview" || a.page == "sessions" || a.page == usagePage {
 			text := "本地只读 · " + strings.Join(agentOptions()[1:], " / ")
 			if a.sessions.loading {
 				text = "正在增量读取本地会话…"

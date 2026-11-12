@@ -134,23 +134,3 @@ func TestTriggerStopsOnFailure(t *testing.T) {
 		t.Fatalf("failed run: busy=%q trials=%d texts=%q", s.busy, len(last.Trials), tt.Texts())
 	}
 }
-
-func TestSessionDiagnosisFindings(t *testing.T) {
-	a := insightsApp(t)
-	a.openSession("claude:s1")
-	tt := ui.NewTester(a.View, 1440, 1000)
-	tt.Frame()
-	for _, want := range []string{"每次模型调用的上下文", "疑似循环", "Bash 用同样的输入连续调用 3 次"} {
-		if !hasTextPart(tt, want) {
-			t.Errorf("missing %q in %q", want, tt.Texts())
-		}
-	}
-	click(t, tt, "第 1 轮 · 疑似循环 · Bash 用同样的输入连续调用 3 次")
-	d := a.selectedSessionData(a.sessionRows())
-	if d == nil || !a.sessions.stepOpen {
-		t.Fatal("finding did not open its step")
-	}
-	if step := d.turns[0].steps[a.sessions.selectedStep]; step.tool == nil || step.tool.ID != "b1" {
-		t.Fatalf("finding opened step %+v", step)
-	}
-}

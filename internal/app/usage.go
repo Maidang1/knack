@@ -9,6 +9,14 @@ import (
 	"knack/internal/session"
 )
 
+// usagePage is every Agent's usage over the period, the breakdowns the
+// home page leaves out; the toolbar's Agent filter narrows it to one.
+const usagePage = "usage"
+
+func (a *App) usagePane(c *ui.Context) {
+	a.usageBody(c, "usage", overviewFilter(a.sessions.period, a.sessions.agent, time.Now()).Agent)
+}
+
 // usageTimingData is where the period's active time went, turn by turn,
 // across the main sessions.
 type usageTimingData struct {
@@ -68,8 +76,7 @@ func (a *App) usageTimingFor(agent session.Agent, d *overviewData) *usageTimingD
 	return out
 }
 
-// usageTiming is the period's 耗时构成, with the sessions whose timing
-// looks wrong one click away.
+// usageTiming is the period's 耗时构成.
 func (a *App) usageTiming(c *ui.Context, agent session.Agent, d *overviewData) {
 	t := c.Theme()
 	muted := token(t, "ink-3")
@@ -81,10 +88,6 @@ func (a *App) usageTiming(c *ui.Context, agent session.Agent, d *overviewData) {
 				avg := timing.phases.total / time.Duration(timing.turns)
 				number(c, fmt.Sprintf("%d 轮 · 活跃 ≈ %s · 平均每轮 ≈ %s", timing.turns, session.FormatDuration(timing.phases.total), session.FormatDuration(avg))).
 					FontSize(12).TextColor(muted).MinWidth(0).SingleLine()
-			}
-			ui.Spacer(c)
-			if n := len(d.anomalies); n > 0 {
-				overviewLink(c, fmt.Sprintf("%d 个会话有耗时异常 →", n), func() { a.openSessionAnomalies(d) })
 			}
 		})
 		if timing.turns == 0 {

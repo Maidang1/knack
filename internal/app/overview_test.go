@@ -88,14 +88,14 @@ func TestSessionOverview(t *testing.T) {
 				tt := ui.NewTester(a.View, width, height)
 				tt.SetTitleBar(ui.TitleBar{Height: 52, Left: 70})
 				tt.SetDark(dark)
-				if a.page != "overview" || !tt.HasText("活跃足迹") || !tt.HasText("个会话有耗时异常") || !tt.HasText("最近会话") {
+				if a.page != "overview" || !tt.HasText("活跃足迹") || !tt.HasText("待处理") || !tt.HasText("最近会话") {
 					t.Fatalf("missing overview sections %q", tt.Texts())
 				}
 				d := a.overviewData()
 				if d.summary.Sessions != 3 || d.summary.Tokens.Total() != 407 || d.summary.UnmeteredRequests != 3 {
 					t.Fatalf("overview data %+v", d.summary)
 				}
-				if !tt.HasText("无本地日志") || !tt.HasText("暂不支持") {
+				if !tt.HasText("暂不支持") {
 					t.Fatal("unsupported sources look like measured values")
 				}
 				chart, ok := tt.Find("活跃足迹图表")

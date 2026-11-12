@@ -95,7 +95,7 @@ type ContextReport struct {
 type ToolFriction struct {
 	Name                                string
 	Calls, Failed, Interrupted, TimeOut int
-	PermissionWaits, Repeats            int
+	PermissionWaits                     int
 	PermissionTime, Elapsed             time.Duration
 }
 
@@ -113,18 +113,6 @@ type MCPUsage struct {
 	Tools  []string
 }
 
-// Loop is a turn that made the same tool call several times in a row.
-type Loop struct {
-	Agent      session.Agent
-	SessionID  string
-	Title, CWD string
-	TurnID     string
-	Tool       string
-	Repeats    int
-	At         time.Time
-	TurnNumber int
-}
-
 type FrictionReport struct {
 	Turns, InterruptedTurns         int
 	ToolCalls, FailedCalls          int
@@ -133,8 +121,6 @@ type FrictionReport struct {
 	PermissionTime                  time.Duration
 	Tools                           []ToolFriction
 	MCP                             []MCPUsage
-	Loops                           []Loop
-	RepeatKnown                     bool // some tool calls record an input fingerprint
 }
 
 type Project struct {
@@ -157,13 +143,6 @@ type NamedCount struct {
 	Name  string
 	Count int
 }
-
-// LoopRepeats is how many identical consecutive tool calls make a loop.
-const LoopRepeats = 3
-
-// pollingTools wait on or read from something still running; calling them
-// again with the same input is how they work, not a loop.
-var pollingTools = map[string]bool{"write_stdin": true, "wait": true, "BashOutput": true, "TaskOutput": true, "Monitor": true}
 
 // InteractiveTools ask the person something. Their confirmation time is
 // the person answering, not a permission prompt.
@@ -284,7 +263,7 @@ func (a *analysis) orphan(s session.Session) {
 }
 
 func (a *analysis) work(s session.Session, sc *SessionCost, p *projectState, child bool) {
-	for ti, t := range s.Turns {
+	for _, t := range s.Turns {
 		if a.included(t.Start) && !child {
 			a.friction.Turns++
 			p.project.Turns++
@@ -299,7 +278,7 @@ func (a *analysis) work(s session.Session, sc *SessionCost, p *projectState, chi
 			}
 			a.request(s, r, sc, p, child)
 		}
-		a.toolCalls(s, ti, t, p)
+		a.toolCalls(s, t, p)
 		for _, ev := range t.Events {
 			if !a.included(ev.At) {
 				continue
@@ -376,9 +355,7 @@ func (a *analysis) request(s session.Session, r session.Request, sc *SessionCost
 	}
 }
 
-func (a *analysis) toolCalls(s session.Session, ti int, t session.Turn, p *projectState) {
-	run, last := 0, ""
-	flagged := map[string]bool{}
+func (a *analysis) toolCalls(s session.Session, t session.Turn, p *projectState) {
 	for _, call := range t.Tools {
 		if !a.included(call.Start) {
 			continue
@@ -422,24 +399,6 @@ func (a *analysis) toolCalls(s session.Session, ti int, t session.Turn, p *proje
 				a.mcp[key] = map[string]int{}
 			}
 			a.mcp[key][tool]++
-		}
-		if call.InputHash == "" || pollingTools[name] {
-			run, last = 0, ""
-			continue
-		}
-		a.friction.RepeatKnown = true
-		key := name + "\x00" + call.InputHash
-		if key == last {
-			run++
-			tf.Repeats++
-		} else {
-			run, last = 1, key
-		}
-		if run == LoopRepeats && !flagged[key] {
-			flagged[key] = true
-			a.friction.Loops = append(a.friction.Loops, Loop{Agent: s.Agent, SessionID: s.ID, Title: s.Title, CWD: s.CWD, TurnID: t.ID, Tool: name, Repeats: run, At: call.Start, TurnNumber: ti + 1})
-		} else if run > LoopRepeats {
-			a.friction.Loops[len(a.friction.Loops)-1].Repeats = run
 		}
 	}
 }
@@ -557,7 +516,6 @@ func (a *analysis) finish() Report {
 	slices.SortFunc(r.Friction.MCP, func(x, y MCPUsage) int {
 		return cmp.Or(cmp.Compare(y.Calls, x.Calls), strings.Compare(x.Server, y.Server))
 	})
-	slices.SortStableFunc(r.Friction.Loops, func(x, y Loop) int { return y.At.Compare(x.At) })
 
 	for _, p := range a.projects {
 		if p.project.Sessions == 0 && p.project.Tokens.Total() == 0 && p.project.ToolCalls == 0 {

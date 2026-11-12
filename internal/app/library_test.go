@@ -133,6 +133,13 @@ func TestUsagePage(t *testing.T) {
 	if timing.turns == 0 {
 		t.Fatal("fixture has no timed turns")
 	}
+	if _, ok := tt.Find("耗时构成"); ok {
+		t.Fatal("home still shows the timing breakdown")
+	}
+	click(t, tt, "用量")
+	if a.page != usagePage {
+		t.Fatalf("usage entry opened %s", a.page)
+	}
 	if _, ok := tt.Find("耗时构成"); !ok {
 		t.Fatalf("usage page misses timing: %q", tt.Texts())
 	}

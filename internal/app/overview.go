@@ -32,8 +32,6 @@ type overviewData struct {
 	series            []session.Agent // chart series; "" collects the rest
 	days              []overviewDay
 	recent            []session.Session
-	anomalies         map[string]bool
-	anomalyCount      map[string]int
 	timing            *usageTimingData // filled when a usage page first asks
 }
 
@@ -62,7 +60,7 @@ func (a *App) overviewData() *overviewData {
 	if d := s.overview; d != nil && d.snapshot == s.snapshot && d.period == s.period && d.agent == agentFilter && d.date == date {
 		return d
 	}
-	d := &overviewData{snapshot: s.snapshot, period: s.period, agent: agentFilter, date: date, anomalies: map[string]bool{}, anomalyCount: map[string]int{}}
+	d := &overviewData{snapshot: s.snapshot, period: s.period, agent: agentFilter, date: date}
 	f := overviewFilter(s.period, agentFilter, now)
 	d.summary = session.Aggregate(s.snapshot, f)
 	if !f.From.IsZero() {
@@ -71,19 +69,8 @@ func (a *App) overviewData() *overviewData {
 		previous.From = f.From.AddDate(0, 0, -[]int{1, 7, 30}[s.period])
 		d.previous = session.Aggregate(s.snapshot, previous)
 	}
-	owners := map[string]string{}
-	var own func(session.Session, string)
-	own = func(s session.Session, owner string) {
-		owners[string(s.Agent)+":"+s.ID] = owner
-		for _, t := range s.Turns {
-			for _, child := range t.Subagents {
-				own(child.Session, owner)
-			}
-		}
-	}
 	if s.snapshot != nil {
 		for _, sess := range s.snapshot.Sessions {
-			own(sess, string(sess.Agent)+":"+sess.ID)
 			if sess.UnsupportedReason != "" || f.Agent != "" && sess.Agent != f.Agent {
 				continue
 			}
@@ -92,17 +79,6 @@ func (a *App) overviewData() *overviewData {
 			}
 			d.recent = append(d.recent, sess)
 		}
-		for _, child := range s.snapshot.UnlinkedSubagents {
-			own(child, string(child.Agent)+":"+child.ParentID)
-		}
-	}
-	for _, an := range d.summary.Anomalies {
-		key := string(an.Agent) + ":" + an.SessionID
-		if owner := owners[key]; owner != "" {
-			key = owner
-		}
-		d.anomalies[key] = true
-		d.anomalyCount[key]++
 	}
 	slices.SortStableFunc(d.recent, func(a, b session.Session) int { return b.End.Compare(a.End) })
 	for _, info := range session.Agents() {

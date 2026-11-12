@@ -7,15 +7,12 @@ import (
 )
 
 func TestAggregate(t *testing.T) {
-	t.Run("normalized usage, percentiles, models and anomalies", func(t *testing.T) {
+	t.Run("normalized usage, percentiles, models and skills", func(t *testing.T) {
 		at := time.Date(2026, 11, 1, 17, 0, 0, 0, time.UTC)
 		turn := Turn{ID: "turn", Start: at}
 		for i := 1; i <= 10; i++ {
 			turn.Requests = append(turn.Requests, Request{ID: fmt.Sprint(i), Model: "test-model", End: at, UsageKnown: true, Tokens: Tokens{Input: 10, Output: int64(i), CacheRead: 30, CacheWrite: 10}, Generation: estimated(time.Second), Elapsed: estimated(2 * time.Minute)})
 		}
-		turn.Tools = []ToolCall{{ID: "slow-tool", End: at, Elapsed: estimated(2 * time.Minute)}}
-		turn.Waits = []Wait{{Kind: "permission", ToolID: "slow-tool", End: at, Elapsed: estimated(2 * time.Minute)}}
-		turn.Events = []Event{{Kind: "timeout", At: at}, {Kind: "away_summary", At: at}}
 		turn.Skills = []SkillCall{{Name: "build", At: at}, {Name: "build", At: at}}
 		snap := &Snapshot{Sessions: []Session{{ID: "one", Agent: Claude, Start: at, End: at, Turns: []Turn{turn}}}}
 		s := Aggregate(snap, Filter{Location: time.FixedZone("UTC+8", 8*3600)})
@@ -31,8 +28,8 @@ func TestAggregate(t *testing.T) {
 		if len(s.ByModel) != 1 || s.ByModel[0].Sessions != 1 || s.ByModel[0].OutputRate.P90 != 9 || s.ByAgent[0].Sessions != 1 {
 			t.Fatal("group summaries")
 		}
-		if len(s.Skills) != 1 || s.Skills[0].Calls != 2 || s.Skills[0].Sessions != 1 || len(s.Anomalies) != 13 {
-			t.Fatalf("skills/anomalies %+v", s)
+		if len(s.Skills) != 1 || s.Skills[0].Calls != 2 || s.Skills[0].Sessions != 1 {
+			t.Fatalf("skills %+v", s)
 		}
 		for _, filter := range []Filter{{From: at.Add(time.Nanosecond)}, {To: at}, {Agent: Codex}} {
 			out := Aggregate(snap, filter)

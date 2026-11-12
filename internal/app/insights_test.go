@@ -58,9 +58,8 @@ func TestInsightsTabs(t *testing.T) {
 		{"首个请求输入 · 中位", "32.0K", "按项目", "app"},
 		{"已加载的技能", "90 天未调用 · 按常驻开销排序", "idle"},
 		{"技能加载", "按加载次数", "pdf"},
-		{"工具调用", "疑似循环", "Bash", "×3", "WebFetch", "没有 allow 规则"},
 		{"项目", "app", "Claude"},
-		{"指令文件 · 按加载顺序", "~/.claude/CLAUDE.md", "github", "unused", "notify"},
+		{"指令文件 · 按加载顺序", "~/.claude/CLAUDE.md", "github", "unused", "notify", "没有 allow 规则：WebFetch"},
 	}
 	for i, texts := range want {
 		a.insights.tab = i

@@ -162,43 +162,6 @@ func (a *App) paintIssueRow(c *ui.Context, r row, selected bool) {
 	})
 }
 
-// anomalyGroup closes the issues list with the sessions whose timing looks
-// wrong; they are fixed by reading the session, not by a file change.
-func (a *App) anomalyGroup(c *ui.Context) {
-	if a.filter != 0 || a.query != "" || a.sessions.snapshot == nil {
-		return
-	}
-	d := a.overviewData()
-	n := len(d.anomalies)
-	if n == 0 {
-		return
-	}
-	t := c.Theme()
-	ui.Column(c).Shrink(0).Padding(0, 8, 8, 8).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Children(func() {
-		issueHeading(c, t.Warning, "耗时异常", n)
-		a.anomalyRow(c, d, n)
-	})
-}
-
-func (a *App) anomalyRow(c *ui.Context, d *overviewData, n int) {
-	t := c.Theme()
-	b := ui.ButtonBase(c.Key("issue-anomalies")).Label("在会话中查看耗时异常").Padding(8, 10, 8, 23).Gap(10).Radius(8).AlignItems(ui.Center)
-	if b.Hovered() {
-		b.Background(t.SurfaceHover)
-	}
-	b.Children(func() {
-		ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
-			ui.Textf(c, "%d 个会话有耗时异常", n).FontSize(13).FontWeight(500).SingleLine()
-			ui.Text(c, "慢步骤、重试和中断，在会话中逐轮查看").FontSize(12).TextColor(token(t, "ink-3")).SingleLine()
-		})
-		ui.Text(c, "在会话中查看 →").FontSize(12).TextColor(t.TextMuted).Shrink(0)
-	})
-	if b.Clicked() {
-		a.openSessionAnomalies(d)
-		c.Invalidate()
-	}
-}
-
 // repairBar sits at the foot of the issues list: the fixes that lose
 // nothing in one click, and the ones that replace a different copy.
 func (a *App) repairBar(c *ui.Context) {

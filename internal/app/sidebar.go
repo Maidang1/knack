@@ -64,6 +64,7 @@ func (a *App) sidebar(c *ui.Context) {
 					count = groupDigits(len(s.Sessions))
 				}
 				a.navItem(c, "sessions", "messages", "全部会话", count)
+				a.navItem(c, usagePage, "chart", "用量", "")
 			}
 			if !a.hidden[insightsPage] {
 				a.navItem(c, insightsPage, "wave", "诊断", "")

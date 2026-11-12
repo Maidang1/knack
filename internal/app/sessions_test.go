@@ -112,13 +112,9 @@ func TestSessionBrowser(t *testing.T) {
 				if revealed != d.session.Path {
 					t.Fatal("source log action selected wrong file")
 				}
-				// The page opens on the turn of the longest concern, marked in the chart.
-				concern := d.concerns[0]
-				if a.sessions.selectedTurn != d.turns[concern.turn].turn.ID {
-					t.Fatal("page did not open on the concern's turn")
-				}
-				if _, ok := tt.Find("本轮有耗时异常"); !ok {
-					t.Fatal("turn list hides the concern")
+				// The page opens on the first turn.
+				if a.sessions.selectedTurn != d.turns[0].turn.ID {
+					t.Fatal("page did not open on the first turn")
 				}
 				// The list's rows take the arrows, and the choice follows the focus.
 				focusSessionControl(t, tt, turnLabel(d.turns[0]))
@@ -164,17 +160,6 @@ func TestSessionHomeLinks(t *testing.T) {
 	if a.page != "sessions" || a.sessions.selected != "claude:parent" || !a.sessions.open {
 		t.Fatal("recent session link")
 	}
-	click(t, tt, "首页")
-	click(t, tt, "查看耗时异常会话")
-	d := a.sessions.detail
-	if a.page != "sessions" || !a.sessions.open || !a.sessions.anomaliesOnly || a.sessions.selectedTurn != d.turns[d.concerns[0].turn].turn.ID {
-		t.Fatal("anomaly metric link must open the turn of the longest concern")
-	}
-	for _, row := range a.sessionRows() {
-		if !a.overviewData().anomalies[sessionID(row)] {
-			t.Fatal("anomaly filter includes healthy session")
-		}
-	}
 	// Native list navigation must update the stable selection key and detail.
 	tt.Key(0, ui.KeyEscape)
 	if a.sessions.open {
@@ -183,7 +168,6 @@ func TestSessionHomeLinks(t *testing.T) {
 	click(t, tt, "搜索会话")
 	tt.Key(ui.Cmd, ui.KeyA)
 	tt.Type("")
-	a.sessions.anomaliesOnly = false
 	a.sessions.browser = nil
 	tt.Frame()
 	rows := a.sessionRows()

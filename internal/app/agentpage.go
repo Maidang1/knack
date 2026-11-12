@@ -151,6 +151,7 @@ func (a *App) usageBody(c *ui.Context, key string, agent session.Agent) {
 		}
 	}
 	right := func() {
+		a.profileRhythm(c, a.profileData())
 		ui.Column(c).Label("Skill 调用排行").Children(func() {
 			a.sessionCalls(c, "常用技能", skills, skillNote != "", t.Text)
 			if skillNote != "" {

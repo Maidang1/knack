@@ -162,11 +162,8 @@ func (a *App) replayMap(c *ui.Context, d *sessionDetailData, content *replayInde
 					length = replayMapLength(i - hover)
 				}
 				color := fade(muted, 150)
-				switch {
-				case on:
+				if on {
 					color = accent
-				case turn.warning:
-					color = t.Warning
 				}
 				b := withTip(c, ui.ButtonBase(c.Key("replay-turn:"+turn.turn.ID)).Width(replayMapWidth).Height(replayMapStep).
 					Padding(0, 0, 0, replayMapIndent).Radius(4).Justify(ui.Start).

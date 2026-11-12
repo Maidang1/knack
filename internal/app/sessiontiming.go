@@ -128,24 +128,3 @@ func clockText(at time.Time) string {
 	}
 	return at.Local().Format("15:04")
 }
-
-// The longest concern of each turn; concerns are sorted longest first.
-func turnConcerns(d *sessionDetailData) []*sessionConcern {
-	out := make([]*sessionConcern, len(d.turns))
-	for i := range d.concerns {
-		if c := &d.concerns[i]; c.turn >= 0 && out[c.turn] == nil {
-			out[c.turn] = c
-		}
-	}
-	return out
-}
-
-func unlinkedConcerns(d *sessionDetailData) int {
-	n := 0
-	for _, c := range d.concerns {
-		if c.turn < 0 {
-			n++
-		}
-	}
-	return n
-}

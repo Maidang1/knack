@@ -21,7 +21,6 @@ const (
 	heatMaxCell   = float32(14)
 	heatMinCell   = float32(8)
 	peakHours     = 4
-	callPreview   = 5
 )
 
 // Steps of the heatmap, none to most. They are fills under a text-free
@@ -450,57 +449,6 @@ func heatDescription(p *profileData, day profileDay) string {
 	return day.date + " · " + heatAmountLong(p, day)
 }
 
-// profileMix is where the period's tokens and active time went.
-func (a *App) profileMix(c *ui.Context, d *overviewData) {
-	t := c.Theme()
-	muted := token(t, "ink-3")
-	sum := d.summary
-	agent := overviewFilter(d.period, d.agent, time.Now()).Agent
-	color := token(t, "ink-2")
-	reason := "当前范围没有可识别的请求用量"
-	if agent != "" {
-		color = agentColor(agent, t.Dark)
-		reason = cmp.Or(session.LookupAgent(agent).UsageNote, reason)
-	}
-	caption := func(title, note string, link func()) {
-		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-			overviewTitle(c, title)
-			if note != "" {
-				number(c, note).FontSize(12).TextColor(muted).MinWidth(0)
-			}
-			ui.Spacer(c)
-			if link != nil {
-				link()
-			}
-		})
-	}
-	ui.Column(c).Gap(10).Label("Token 构成").Children(func() {
-		caption("Token 构成", periodText(d.period), func() { overviewLink(c, "费用明细 →", a.openCostDetail) })
-		if sum.Requests <= sum.UnmeteredRequests {
-			ui.Text(c, "暂不支持 · "+reason).FontSize(13).TextColor(t.TextMuted)
-			return
-		}
-		tokenBar(c, sum, color, 10)
-	})
-	timing := a.usageTimingFor("", d)
-	ui.Column(c).Gap(10).Label("耗时构成").Children(func() {
-		note := ""
-		if timing.turns > 0 {
-			note = fmt.Sprintf("%d 轮 · 活跃 ≈ %s", timing.turns, session.FormatDuration(timing.phases.total))
-		}
-		caption("时间都花在哪", note, nil)
-		if timing.turns == 0 {
-			ui.Text(c, "这段时间没有可识别的轮次").FontSize(13).TextColor(t.TextMuted)
-			return
-		}
-		phaseBar(c, timing.phases, timing.waiting, timing.away)
-		if note := session.LookupAgent(agent).TimingNote; agent != "" && note != "" {
-			ui.Text(c, note).FontSize(11.5).TextColor(muted)
-		}
-		ui.Text(c, "按轮累加活跃时间，与会话详情同一口径；轮与轮之间的等待不计入。模型时间为估算。").FontSize(11.5).TextColor(muted).MaxLines(2)
-	})
-}
-
 // profileRhythm is when in the day the turns start, in the local zone.
 func (a *App) profileRhythm(c *ui.Context, p *profileData) {
 	t := c.Theme()
@@ -543,59 +491,5 @@ func (a *App) profileRhythm(c *ui.Context, p *profileData) {
 				number(c, tick).FontSize(11).TextColor(muted)
 			}
 		})
-	})
-}
-
-// profileRanking is what the period reached for, Skills or tools under one
-// heading. The list shows its head and opens in place.
-func (a *App) profileRanking(c *ui.Context, p *profileData) {
-	t := c.Theme()
-	s := &a.sessions
-	muted := token(t, "ink-3")
-	agent := overviewFilter(p.period, p.agent, time.Now()).Agent
-	skillNote := ""
-	if agent != "" {
-		skillNote = skillSupport(agent)
-	}
-	calls, noun, color := p.skills, "技能", t.Text
-	if s.profileTab == 1 {
-		calls, noun, color = p.tools, "工具", sessionColor("phase-tool", t.Dark)
-	}
-	total := 0
-	for _, call := range calls {
-		total += call.count
-	}
-	unsupported := s.profileTab == 0 && skillNote != ""
-	ui.Column(c).Gap(9).Label("常用排行").Children(func() {
-		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-			overviewTitle(c, "常用")
-			if total > 0 {
-				number(c, fmt.Sprintf("%d 次 · %d 个%s", total, len(calls), noun)).FontSize(12).TextColor(muted).MinWidth(0)
-			}
-			ui.Spacer(c)
-			segmented(c, "常用类别", &s.profileTab, "技能", "工具")
-		})
-		if unsupported {
-			ui.Text(c, skillNote).FontSize(11.5).TextColor(muted).MaxLines(3)
-			return
-		}
-		if len(calls) == 0 {
-			ui.Text(c, "没有记录到调用").FontSize(12).TextColor(t.TextMuted)
-			return
-		}
-		limit := callPreview
-		if s.profileOpen[s.profileTab] {
-			limit = 0
-		}
-		callRows(c, calls, color, limit, 104)
-		if len(calls) > callPreview {
-			label := fmt.Sprintf("全部 %d 个%s →", len(calls), noun)
-			if s.profileOpen[s.profileTab] {
-				label = "收起"
-			}
-			ui.Row(c).Children(func() {
-				overviewLink(c, label, func() { s.profileOpen[s.profileTab] = !s.profileOpen[s.profileTab] })
-			})
-		}
 	})
 }

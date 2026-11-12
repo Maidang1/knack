@@ -9,55 +9,6 @@ import (
 	"knack/internal/session"
 )
 
-func TestDiagnoseSession(t *testing.T) {
-	at := func(m int) time.Time { return t0.Add(time.Duration(m) * time.Minute) }
-	r := func(id string, m int, tok session.Tokens) session.Request {
-		return session.Request{ID: id, Model: "claude-opus-5-5", Start: at(m), End: at(m), Tokens: tok, UsageKnown: true}
-	}
-	same := func(id string) session.ToolCall {
-		return session.ToolCall{ID: id, Name: "Bash", Start: at(2), End: at(2), InputHash: "h"}
-	}
-	s := session.Session{ID: "s", Agent: session.Claude, Turns: []session.Turn{
-		{ID: "t1", Start: at(0),
-			Requests: []session.Request{r("r1", 0, session.Tokens{CacheWrite: 30_000}), r("r2", 1, session.Tokens{CacheRead: 30_000}), r("r3", 3, session.Tokens{CacheRead: 60_000})},
-			Tools: []session.ToolCall{{ID: "big", Name: "Read", Start: at(1), End: at(1), OutputBytes: 120_000}, same("l1"), same("l2"), same("l3"),
-				{ID: "f1", Name: "Bash", Start: at(3), Failed: true}, {ID: "f2", Name: "Bash", Start: at(3), Failed: true}, {ID: "f3", Name: "Bash", Start: at(3), Failed: true}},
-		},
-		// Twenty minutes later the cache is written again.
-		{ID: "t2", Start: at(23), Interrupted: true, Requests: []session.Request{r("r4", 23, session.Tokens{CacheWrite: 62_000, CacheRead: 1_000})},
-			Skills: []session.SkillCall{{Name: "pdf", At: at(23), Tokens: 900}},
-			Tools:  []session.ToolCall{{ID: "x", Name: "Bash", Start: at(24), Failed: true}}},
-		{ID: "t3", Start: at(30), Corrects: true, Events: []session.Event{{Kind: "compact", At: at(30)}},
-			Requests: []session.Request{r("r5", 31, session.Tokens{CacheWrite: 15_000})}},
-	}}
-	d := DiagnoseSession(s)
-	if len(d.Points) != 5 || d.Peak != 63_000 {
-		t.Fatalf("points %d peak %d", len(d.Points), d.Peak)
-	}
-	if d.Points[3].Rebuild == "" || !strings.Contains(d.Points[3].Rebuild, "20") || !strings.Contains(d.Points[4].Rebuild, "压缩") || d.Points[1].Rebuild != "" {
-		t.Fatalf("rebuilds %q %q %q", d.Points[1].Rebuild, d.Points[3].Rebuild, d.Points[4].Rebuild)
-	}
-	kinds := map[string]SessionFinding{}
-	for _, f := range d.Findings {
-		kinds[f.Kind] = f
-	}
-	for _, k := range []string{FindingRebuild, FindingLargeOut, FindingLoop, FindingFailures, FindingInterrupt, FindingCorrected, FindingSkill} {
-		if _, ok := kinds[k]; !ok {
-			t.Errorf("missing %s in %+v", k, d.Findings)
-		}
-	}
-	// Read at minute 1 is carried by r3 and r4; compaction ends it before r5.
-	if out := kinds[FindingLargeOut]; out.ToolID != "big" || out.Tokens != 2*30_000 {
-		t.Fatalf("carried output %+v", out)
-	}
-	if l := kinds[FindingLoop]; l.ToolID != "l1" || l.Turn != 0 {
-		t.Fatalf("loop %+v", l)
-	}
-	if d.Findings[0].Kind != FindingLoop {
-		t.Fatalf("loops rank first: %+v", d.Findings[0])
-	}
-}
-
 func TestEvaluateSkills(t *testing.T) {
 	turn := func(id string, at time.Time, skills []session.SkillCall, tools []session.ToolCall, interrupted, corrects bool) session.Turn {
 		return session.Turn{ID: id, Start: at, Skills: skills, Tools: tools, Interrupted: interrupted, Corrects: corrects,

@@ -13,14 +13,14 @@ import (
 	"github.com/lobehub/lobe-mygo/pkg/display"
 )
 
-// The home page is flat on the window background: who and what the period
-// amounted to, a row of figures between hairlines, then a wide column of how
-// the Agents were used beside a narrow one of what waits and what was recent.
-// The two columns stack independently, so neither leaves a gap; narrow panes
-// merge them into one.
+// The home page answers three things and leaves the rest to 用量: what the
+// period amounted to (a greeting and four figures), when the person worked
+// (the year of days) and which Agents did it, beside what waits for them and
+// what ran last. The two columns stack independently, so neither leaves a
+// gap; narrow panes merge them into one.
 const (
 	homeSide = 342
-	homeGap  = 40
+	homeGap  = 48
 )
 
 func (a *App) overviewPane(c *ui.Context) {
@@ -34,23 +34,15 @@ func (a *App) overviewPane(c *ui.Context) {
 	if wide {
 		heatWidth -= homeSide + homeGap
 	}
-	color := token(t, "ink-2")
-	if agent := overviewFilter(d.period, d.agent, time.Now()).Agent; agent != "" {
-		color = agentColor(agent, t.Dark)
-	}
 	block := func(body func()) func() {
 		return func() { ui.Column(c).Children(body) }
 	}
 	heat := func() { a.profileHeatmap(c, p, heatWidth) }
-	mix := func() { ui.Column(c).Gap(22).Children(func() { a.profileMix(c, d) }) }
 	agents := block(func() { a.agentUsage(c, d) })
-	models := block(func() { a.sessionModelSpeeds(c, &sessionDetailData{models: p.models}, color) })
 	inbox := block(func() { a.overviewIssues(c, d) })
 	recent := block(func() { a.recentSessions(c, d) })
-	rhythm := func() { a.profileRhythm(c, p) }
-	ranking := func() { a.profileRanking(c, p) }
 	ui.Scroll(c.Key("overview-scroll")).Grow(1).MinHeight(0).Label("总览内容").Children(func() {
-		ui.Column(c).Padding(26, 32, 24, 32).Gap(24).Children(func() {
+		ui.Column(c).Padding(28, 32, 28, 32).Gap(28).Children(func() {
 			if a.sessions.err != "" {
 				ui.Text(c, a.sessions.err).FontSize(13).TextColor(t.Warning)
 			}
@@ -58,27 +50,28 @@ func (a *App) overviewPane(c *ui.Context) {
 			a.homeHero(c, d, p)
 			a.metricStrip(c, d, contentW < 640)
 			stack := func(e ui.Element, sections ...func()) {
-				e.Gap(30).Children(func() {
+				e.Gap(36).Children(func() {
 					for _, section := range sections {
 						section()
 					}
 				})
 			}
 			if wide {
-				ui.Row(c).Gap(homeGap).AlignItems(ui.Start).Children(func() {
-					stack(ui.Column(c).Grow(1).MinWidth(0), heat, mix, agents, models)
-					stack(ui.Column(c).Width(homeSide).Shrink(0), inbox, recent, rhythm, ranking)
+				ui.Row(c).Gap(homeGap).AlignItems(ui.Start).Padding(8, 0, 0, 0).Children(func() {
+					stack(ui.Column(c).Grow(1).MinWidth(0), heat, agents)
+					stack(ui.Column(c).Width(homeSide).Shrink(0), inbox, recent)
 				})
 			} else {
-				stack(ui.Column(c), heat, inbox, mix, agents, recent, models, rhythm, ranking)
+				stack(ui.Column(c), heat, inbox, agents, recent)
 			}
 			a.overviewNotes(c, d)
 		})
 	})
 }
 
-// homeHero greets the person with what the period amounted to, then what
-// needs them, then what is true of all their history.
+// homeHero greets the person with what the period amounted to, and what is
+// true of all their history under it. What needs them is the 待处理 list's
+// to say, the breakdowns the 用量 page's.
 func (a *App) homeHero(c *ui.Context, d *overviewData, p *profileData) {
 	t := c.Theme()
 	muted := token(t, "ink-3")
@@ -93,45 +86,25 @@ func (a *App) homeHero(c *ui.Context, d *overviewData, p *profileData) {
 	if d.summary.Sessions == 0 {
 		title = p.name + "，" + span + "没有本地会话"
 	}
-	var habits []string
-	if total := d.summary.Tokens.Total(); total > 0 && len(d.agents) > 1 && d.agents[0].summary.Tokens.Total() > 0 {
-		top := d.agents[0]
-		habits = append(habits, fmt.Sprintf("%s 占用 %.0f%% Token", sessionAgentName(top.id), 100*float64(top.summary.Tokens.Total())/float64(total)))
-	}
-	habits = append(habits, homeHabits(d.summary, p.tools)...)
-	var waiting []string
-	if n := a.countKind(skill.IssueBroken); n > 0 {
-		waiting = append(waiting, fmt.Sprintf("%d 个技能断链", n))
-	}
-	if n := len(d.anomalies); n > 0 {
-		waiting = append(waiting, fmt.Sprintf("%d 个会话有耗时异常", n))
-	}
-	settled := "没有需要处理的事"
-	if len(waiting) > 0 {
-		settled = "有 " + strings.Join(waiting, "、") + "等你处理"
-	}
-	line := settled + "。"
-	if len(habits) > 0 {
-		line = strings.Join(habits, "，") + "；" + line
-	}
 	lifetime := []string{fmt.Sprintf("累计 %s 个会话", groupDigits(p.sessions)), fmt.Sprintf("%s 个技能", groupDigits(len(a.libraryEntries())))}
 	if !p.first.IsZero() {
 		lifetime = append(lifetime, "首次记录 "+p.first.Local().Format("2006/01/02"))
 	}
-	ui.Row(c).Gap(18).AlignItems(ui.Center).Label("个人资料").Children(func() {
-		display.Avatar(c, p.name, display.AvatarProps{Size: 68, Shape: display.AvatarCircle, Fallback: display.AvatarText}).Shrink(0)
-		ui.Column(c).Grow(1).MinWidth(0).Gap(5).Children(func() {
-			ui.Text(c, title).FontSize(22).FontWeight(600).MaxLines(2)
-			ui.Text(c, line).FontSize(13.5).TextColor(t.TextMuted).MaxLines(2)
+	ui.Row(c).Gap(14).AlignItems(ui.Center).Label("个人资料").Children(func() {
+		display.Avatar(c, p.name, display.AvatarProps{Size: 44, Shape: display.AvatarCircle, Fallback: display.AvatarText}).Shrink(0)
+		ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
+			ui.Text(c, title).FontSize(20).FontWeight(600).MaxLines(2)
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				withTip(c, ui.Row(c).Shrink(0).Gap(4).Padding(2, 7).Radius(5).Background(t.SurfaceHover).AlignItems(ui.Center),
-					"统计只读取本机日志，不联网").Children(func() {
+				withTip(c, ui.Row(c).Shrink(0).Gap(4).AlignItems(ui.Center), "统计只读取本机日志，不联网").Children(func() {
 					ui.Icon(c, glyph("lock")).FontSize(11).TextColor(muted)
-					ui.Text(c, "仅存于本机").FontSize(11).TextColor(t.TextMuted).SingleLine()
+					ui.Text(c, "仅存于本机").FontSize(12).TextColor(muted).SingleLine()
 				})
-				ui.Text(c, strings.Join(lifetime, " · ")).FontSize(12).TextColor(muted).SingleLine().Shrink(1).MinWidth(0)
+				ui.Text(c, "· "+strings.Join(lifetime, " · ")).FontSize(12).TextColor(muted).SingleLine().Shrink(1).MinWidth(0)
 			})
 		})
+		if !a.hidden["sessions"] {
+			overviewLink(c, "用量明细 →", func() { a.page = usagePage })
+		}
 	})
 }
 
@@ -142,8 +115,7 @@ func (a *App) overviewNotes(c *ui.Context, d *overviewData) {
 	if d.summary.Incomplete {
 		notes = append(notes, "部分日志或用量暂不支持，Token 为已识别部分")
 	}
-	notes = append([]string{"全部数据只来自本机日志，不会上传"}, notes...)
-	notes = append(notes, "速率与时长均为估算", "缓存命中 = 缓存读取 / 全部输入 Token")
+	notes = append(notes, "活跃时长与费用均为估算")
 	ui.Column(c).Gap(4).Children(func() {
 		ui.Text(c, strings.Join(notes, " · ")).FontSize(11.5).TextColor(muted).MaxLines(2)
 		if n := len(a.sessions.agentProblems); n > 0 {
@@ -184,7 +156,6 @@ func (a *App) metrics(c *ui.Context, d *overviewData) []metric {
 		{label: "Token", value: tokenNumber(s.Tokens.Total()), note: fmt.Sprintf("输入 %s · 输出 %s", tokenNumber(s.Tokens.InputTotal()), tokenNumber(s.Tokens.Output)), noteColor: muted},
 		{label: "活跃时长", value: "—", note: "没有可识别的轮次", noteColor: muted},
 		{label: "估算费用", value: "—", note: "没有记录", noteColor: muted},
-		{label: "耗时异常", value: fmt.Sprint(len(d.anomalies)), note: fmt.Sprintf("共 %d 处 · 慢步骤 / 重试 / 中断", len(s.Anomalies)), noteColor: muted, warn: len(d.anomalies) > 0},
 	}
 	if d.period < 3 {
 		span := []string{"昨天", "前 7 天", "前 30 天"}[d.period]
@@ -209,7 +180,7 @@ func (a *App) metrics(c *ui.Context, d *overviewData) []metric {
 	}
 	if timing := a.usageTimingFor("", d); timing.turns > 0 {
 		m[2].value = "≈ " + session.FormatDuration(timing.phases.total)
-		m[2].note = fmt.Sprintf("%d 轮 · 平均每轮 ≈ %s", timing.turns, session.FormatDuration(timing.phases.total/time.Duration(timing.turns)))
+		m[2].note = fmt.Sprintf("%d 轮", timing.turns)
 	}
 	if cost := a.insightData().Cost; cost.Total > 0 || cost.UnpricedTokens.Total() > 0 {
 		m[3].value, m[3].note = dollars(cost.Total), "按官方 API 价格估算"
@@ -217,66 +188,46 @@ func (a *App) metrics(c *ui.Context, d *overviewData) []metric {
 			m[3].note = tokenNumber(n) + " Token 未定价"
 		}
 	}
-	if m[4].warn {
-		m[4].noteColor = t.Warning
-	}
 	return m
 }
 
 // metricStrip is a row of figures between hairlines; narrow panes wrap it
-// into rows of three.
+// into rows of two.
 func (a *App) metricStrip(c *ui.Context, d *overviewData, narrow bool) {
 	t := c.Theme()
 	m := a.metrics(c, d)
-	rows := [][]int{{0, 1, 2, 3, 4}}
+	rows := [][]int{{0, 1, 2, 3}}
 	if narrow {
-		rows = [][]int{{0, 1, 2}, {3, 4}}
+		rows = [][]int{{0, 1}, {2, 3}}
 	}
 	ui.Column(c).BorderWidth(1, 0, 1, 0).BorderColor(t.Border).Children(func() {
 		for r, row := range rows {
-			line := ui.Row(c).Padding(12, 0)
+			line := ui.Row(c).Padding(16, 0)
 			if r > 0 {
 				line.BorderWidth(1, 0, 0, 0).BorderColor(t.Border)
 			}
 			line.Children(func() {
 				for j, i := range row {
-					a.metricCell(c, d, m[i], i, j)
-				}
-				if narrow {
-					for range 3 - len(row) {
-						ui.Box(c).Grow(1).Basis(0)
-					}
+					metricCell(c, m[i], j)
 				}
 			})
 		}
 	})
 }
 
-func (a *App) metricCell(c *ui.Context, d *overviewData, m metric, i, j int) {
+func metricCell(c *ui.Context, m metric, j int) {
 	t := c.Theme()
-	var box ui.Element
-	if i == 4 {
-		box = ui.ButtonBase(c.Key(m.label)).Column().Label("查看耗时异常会话").Disabled(len(d.anomalies) == 0).AlignItems(ui.Stretch).Justify(ui.Start)
-	} else {
-		box = ui.Column(c.Key(m.label))
-	}
-	box.Grow(1).Basis(0).MinWidth(0).Gap(4).Padding(0, 20)
+	box := ui.Column(c.Key(m.label)).Grow(1).Basis(0).MinWidth(0).Gap(6).Padding(0, 24)
 	if j == 0 {
-		box.Padding(0, 20, 0, 0)
+		box.Padding(0, 24, 0, 0)
 	} else {
 		box.BorderWidth(0, 0, 0, 1).BorderColor(t.Border)
 	}
 	box.Children(func() {
-		ui.Text(c, m.label).FontSize(13).TextColor(t.TextMuted).SingleLine()
-		v := number(c, m.value).FontSize(24).FontWeight(600)
-		if m.warn {
-			v.TextColor(t.Warning)
-		}
-		withTip(c, ui.Text(c, m.note).FontSize(12).LineHeight(1.4).TextColor(m.noteColor).MaxLines(2), m.note)
+		ui.Text(c, m.label).FontSize(12.5).TextColor(t.TextMuted).SingleLine()
+		number(c, m.value).FontSize(26).FontWeight(600)
+		withTip(c, ui.Text(c, m.note).FontSize(12).TextColor(m.noteColor).SingleLine(), m.note)
 	})
-	if i == 4 && box.Clicked() {
-		a.openSessionAnomalies(d)
-	}
 }
 
 // listRow is a borderless, full-width row button over a hairline, the dense
@@ -321,9 +272,6 @@ func (a *App) overviewIssues(c *ui.Context, d *overviewData) {
 	add(skill.IssueStale, "组同名副本存在差异", "副本与共享池内容不一致", "比较", "copy", "warn-bg", t.Warning)
 	add(skill.IssueOrphan, "个共享技能未挂出", "没有任何 Agent 在使用", "挂载", "link", "hover", t.TextMuted)
 	add(skill.IssueEmpty, "个技能目录为空", "目录里没有 SKILL.md", "查看", "empty", "hover", t.TextMuted)
-	if n := len(d.anomalies); n > 0 {
-		items = append(items, inboxItem{"anomalies", fmt.Sprintf("%d 个会话有耗时异常", n), "慢步骤、重试和中断，在会话中逐轮查看", "查看", "alert", "warn-bg", t.Warning, func() { a.openSessionAnomalies(d) }})
-	}
 	link := ""
 	if a.snap != nil && len(a.snap.Issues) > 0 {
 		link = fmt.Sprintf("全部 %d 项 →", len(a.snap.Issues))
@@ -364,9 +312,6 @@ func (a *App) recentSessions(c *ui.Context, d *overviewData) {
 				withTip(c, ui.Text(c, recentLabel(s)).FontSize(13).SingleLine(), recentLabel(s))
 				ui.Text(c, recentMeta(s)).FontSize(11.5).TextColor(token(t, "ink-3")).SingleLine()
 			})
-			if d.anomalies[sessionID(s)] {
-				ui.Icon(c, glyph("issues")).FontSize(15).TextColor(t.Warning).Label("有耗时异常").Shrink(0)
-			}
 		})
 		if row.Clicked() {
 			a.openSession(sessionID(s))

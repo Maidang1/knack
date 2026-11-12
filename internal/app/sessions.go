@@ -11,7 +11,6 @@ import (
 	"knack/internal/session"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/lobehub/lobe-mygo/pkg/choice"
 	"github.com/lobehub/lobe-mygo/pkg/feedback"
 	"github.com/lobehub/lobe-mygo/pkg/field"
 )
@@ -26,15 +25,12 @@ type sessionState struct {
 	day             int
 	overview        *overviewData
 	profile         *profileData
-	profileDay      string  // the heatmap's chosen date; "" follows the latest active day
-	profileTab      int     // the home page ranks Skills or tools
-	profileOpen     [2]bool // that ranking shows every row
+	profileDay      string // the heatmap's chosen date; "" follows the latest active day
 	agentCounts     map[session.Agent]int
 	agentCountsOf   *session.Snapshot
 	browser         *sessionBrowserData
 	query           string
 	hits            sessionHits // sessions the sidebar's query matches
-	anomaliesOnly   bool
 	selected        string
 	index           int
 	list            ui.ListState
@@ -46,9 +42,8 @@ type sessionState struct {
 	selectedStep    int
 	stepOpen        bool // the chosen step shows its content under its row
 	focusTurn       bool
-	turnFilter      int    // the turn list shows all, sub-Agent or confirmation turns
-	allTurns        bool   // a long turn list shows every turn
-	allFindings     string // the session whose findings all show
+	turnFilter      int  // the turn list shows all, sub-Agent or confirmation turns
+	allTurns        bool // a long turn list shows every turn
 	detail          *sessionDetailData
 	detailSource    *session.Snapshot
 	replay          []*replayState
@@ -123,19 +118,18 @@ func (a *App) startSessionScan() {
 }
 
 type sessionBrowserData struct {
-	view          *overviewData
-	query         string
-	anomaliesOnly bool
-	rows          []session.Session
+	view  *overviewData
+	query string
+	rows  []session.Session
 }
 
 func (a *App) sessionRows() []session.Session {
 	s := &a.sessions
 	view := a.overviewData()
-	if s.browser != nil && s.browser.view == view && s.browser.query == s.query && s.browser.anomaliesOnly == s.anomaliesOnly {
+	if s.browser != nil && s.browser.view == view && s.browser.query == s.query {
 		return s.browser.rows
 	}
-	cache := &sessionBrowserData{view: view, query: s.query, anomaliesOnly: s.anomaliesOnly}
+	cache := &sessionBrowserData{view: view, query: s.query}
 	f := overviewFilter(s.period, a.sessionAgentFilter(), time.Now())
 	if s.snapshot != nil {
 		for _, row := range s.snapshot.Sessions {
@@ -143,9 +137,6 @@ func (a *App) sessionRows() []session.Session {
 				continue
 			}
 			if !f.From.IsZero() && row.End.Before(f.From) || !f.To.IsZero() && !row.Start.Before(f.To) {
-				continue
-			}
-			if s.anomaliesOnly && !view.anomalies[sessionID(row)] {
 				continue
 			}
 			if !matchSession(s.query, row) {
@@ -169,8 +160,8 @@ func (a *App) sessionRows() []session.Session {
 	return cache.rows
 }
 
-// openSession shows a session's page. Its turn is the one with the longest
-// concern unless one is chosen after.
+// openSession shows a session's page, on its first turn unless one is
+// chosen after.
 func (a *App) openSession(id string) {
 	s := &a.sessions
 	a.page = "sessions"
@@ -178,27 +169,11 @@ func (a *App) openSession(id string) {
 	s.open = true
 	s.replayOpen = false
 	s.query = ""
-	s.anomaliesOnly = false
 	s.browser = nil
 	s.selectedTurn = ""
 	// Direct links must also work after a narrower list filter was selected.
 	s.period = 3
 	s.agent = allAgents
-}
-
-func (a *App) openSessionAnomalies(view *overviewData) {
-	for _, row := range view.recent {
-		if view.anomalies[sessionID(row)] {
-			a.openSession(sessionID(row))
-			a.sessions.anomaliesOnly = true
-			return
-		}
-	}
-	a.page = "sessions"
-	a.sessions.open = false
-	a.sessions.anomaliesOnly = true
-	a.sessions.browser = nil
-	a.notice = "当前日志中没有可打开的主会话；子 Agent 可能缺少父会话日志"
 }
 
 func (a *App) selectedSessionData(rows []session.Session) *sessionDetailData {
@@ -281,14 +256,12 @@ func (a *App) sessionList(c *ui.Context, rows []session.Session) {
 	s := &a.sessions
 	t := c.Theme()
 	muted := token(t, "ink-3")
-	view := a.overviewData()
 	ui.Column(c).Fill().Padding(20, 32, 0, 32).Gap(12).Children(func() {
 		ui.Row(c).Gap(14).AlignItems(ui.Center).Children(func() {
 			search := searchField(c, &s.query, "搜索会话", 300, field.SearchBarProps{Placeholder: "标题、Agent、仓库或分支"})
 			if search.Changed() {
 				a.query = s.query
 			}
-			choice.Checkbox(c, &s.anomaliesOnly, "只看耗时异常", choice.CheckboxProps{})
 			ui.Spacer(c)
 			ui.Textf(c, "%d 个会话 · 按最近活跃排序", len(rows)).FontSize(13).TextColor(muted)
 		})
@@ -323,7 +296,6 @@ func (a *App) sessionList(c *ui.Context, rows []session.Session) {
 		ui.Themed(c, quietList(t)).Grow(1).MinHeight(0).Background(ui.Transparent).Children(func() {
 			list := ui.List(c, &s.list, len(rows), func(i int) {
 				row := rows[i]
-				warning := view.anomalies[sessionID(row)]
 				line := ui.Row(c.Key("row:"+sessionID(row))).Height(52).Gap(12).Padding(0, 8).Radius(6).AlignItems(ui.Center).Border(1, ui.Transparent)
 				switch {
 				case i == s.index:
@@ -336,12 +308,7 @@ func (a *App) sessionList(c *ui.Context, rows []session.Session) {
 				line.Children(func() {
 					ui.Box(c).Width(3).Height(30).Radius(2).Shrink(0).Background(agentColor(row.Agent, t.Dark))
 					ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
-						ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-							withTip(c, ui.Text(c, recentLabel(row)).FontSize(13).MinWidth(0).SingleLine(), recentLabel(row))
-							if warning {
-								ui.Icon(c, glyph("issues")).FontSize(13).TextColor(t.Warning).Label("有耗时异常").Shrink(0)
-							}
-						})
+						withTip(c, ui.Text(c, recentLabel(row)).FontSize(13).MinWidth(0).SingleLine(), recentLabel(row))
 						meta := []string{}
 						if row.CWD != "" {
 							meta = append(meta, filepath.Base(row.CWD))
@@ -359,10 +326,7 @@ func (a *App) sessionList(c *ui.Context, rows []session.Session) {
 					}
 					ui.Text(c, sessionAgentName(row.Agent)).FontSize(13).TextColor(t.TextMuted).Width(sessionColumns[0].width).Shrink(0).SingleLine()
 					cell(1, fmt.Sprint(len(row.Turns)))
-					span := cell(2, strings.TrimPrefix(sessionSpan(row), "≈ "))
-					if warning {
-						span.TextColor(t.Warning)
-					}
+					cell(2, strings.TrimPrefix(sessionSpan(row), "≈ "))
 					tokens := "—"
 					if total, known := sessionTokens(row); known {
 						tokens = tokenNumber(total)

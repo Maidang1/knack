@@ -35,7 +35,7 @@ const (
 )
 
 // sessionTurnIndex is the turn the page shows: the one chosen, else the
-// turn with the longest concern, else the first.
+// first.
 func (a *App) sessionTurnIndex(d *sessionDetailData) int {
 	if len(d.turns) == 0 {
 		return -1
@@ -45,12 +45,8 @@ func (a *App) sessionTurnIndex(d *sessionDetailData) int {
 			return i
 		}
 	}
-	index := 0
-	if len(d.concerns) > 0 && d.concerns[0].turn >= 0 {
-		index = d.concerns[0].turn
-	}
-	a.chooseSessionTurn(d, index)
-	return index
+	a.chooseSessionTurn(d, 0)
+	return 0
 }
 
 func (a *App) sessionPage(c *ui.Context, d *sessionDetailData, width float32) {
@@ -69,7 +65,6 @@ func (a *App) sessionPage(c *ui.Context, d *sessionDetailData, width float32) {
 			}
 			a.sessionPhases(c, d)
 			index := a.sessionTurnIndex(d)
-			a.sessionDiagnosis(c, d, index)
 			switch {
 			case index < 0:
 				ui.Text(c, "没有可识别的轮次").FontSize(13).TextColor(t.TextMuted)
@@ -220,9 +215,6 @@ func (a *App) sessionPhases(c *ui.Context, d *sessionDetailData) {
 		phaseBar(c, p, waiting, away)
 		if !session.LookupAgent(d.session.Agent).PermissionWait {
 			ui.Text(c, "模型时间按输入完成到响应结束的间隔估算；权限等待暂不支持").FontSize(11.5).TextColor(muted).MaxLines(2)
-		}
-		if unlinked := unlinkedConcerns(d); unlinked > 0 {
-			ui.Textf(c, "另有 %d 处子 Agent 耗时异常无法关联到轮次，见下方的 Agent 调用", unlinked).FontSize(11.5).TextColor(muted).MaxLines(2)
 		}
 	})
 }

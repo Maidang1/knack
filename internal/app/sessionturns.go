@@ -54,7 +54,6 @@ func turnShown(filter int, b turnBadges) bool {
 func (a *App) turnList(c *ui.Context, d *sessionDetailData, index int) {
 	t := c.Theme()
 	content := a.sessionReplay(d).ready()
-	concerns := turnConcerns(d)
 	badges := make([]turnBadges, len(d.turns))
 	subs, waits := 0, 0
 	peak := time.Duration(0)
@@ -100,7 +99,7 @@ func (a *App) turnList(c *ui.Context, d *sessionDetailData, index int) {
 			ui.Text(c, "没有符合筛选的轮次").FontSize(13).TextColor(t.TextMuted).Padding(8, 10)
 		}
 		for _, i := range shown {
-			a.turnRow(c, d, i, i == index, badges[i], concerns[i] != nil, peak, content)
+			a.turnRow(c, d, i, i == index, badges[i], peak, content)
 		}
 	})
 	switch {
@@ -111,7 +110,7 @@ func (a *App) turnList(c *ui.Context, d *sessionDetailData, index int) {
 	}
 }
 
-func (a *App) turnRow(c *ui.Context, d *sessionDetailData, i int, on bool, badge turnBadges, concern bool, peak time.Duration, content *replayIndex) {
+func (a *App) turnRow(c *ui.Context, d *sessionDetailData, i int, on bool, badge turnBadges, peak time.Duration, content *replayIndex) {
 	t := c.Theme()
 	muted := token(t, "ink-3")
 	turn := d.turns[i]
@@ -152,9 +151,6 @@ func (a *App) turnRow(c *ui.Context, d *sessionDetailData, i int, on bool, badge
 			}
 			if badge.retries > 0 {
 				turnBadge(c, "refresh", fmt.Sprint(badge.retries), sessionColor("phase-retry", t.Dark), fmt.Sprintf("%d 次重试或压缩", badge.retries))
-			}
-			if concern {
-				withTip(c, ui.Icon(c, glyph("issues")).FontSize(11.5).TextColor(t.Warning).Label("本轮有耗时异常"), "本轮有耗时异常")
 			}
 		})
 	})

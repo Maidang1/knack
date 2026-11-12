@@ -165,10 +165,7 @@ func TestAnalyzeFriction(t *testing.T) {
 	if r.PermissionWaits != 1 || r.PermissionTime != time.Second { // questions are answers, not permission prompts
 		t.Fatalf("permission %+v", r)
 	}
-	if !r.RepeatKnown || len(r.Loops) != 1 || r.Loops[0].Tool != "Bash" /* polling is not a loop */ || r.Loops[0].Repeats != 4 || r.Loops[0].TurnNumber != 1 {
-		t.Fatalf("loops %+v", r.Loops)
-	}
-	if r.Tools[0].Name != "Bash" || r.Tools[0].Repeats != 3 || r.Tools[0].FailureRate() != 0.25 {
+	if r.Tools[0].Name != "Bash" || r.Tools[0].FailureRate() != 0.25 {
 		t.Fatalf("tools %+v", r.Tools)
 	}
 	if len(r.MCP) != 1 || r.MCP[0].Server != "github" || r.MCP[0].Calls != 2 || len(r.MCP[0].Tools) != 2 {

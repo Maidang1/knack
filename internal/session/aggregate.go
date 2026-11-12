@@ -56,14 +56,6 @@ type SkillUsage struct {
 	Calls, Sessions int
 }
 
-type Anomaly struct {
-	Agent                     Agent
-	SessionID, TurnID, ItemID string
-	Kind                      string // slow_model, slow_tool, permission_wait, retry, api_error, compact, interrupted, timeout
-	At                        time.Time
-	Elapsed                   Duration
-}
-
 type Summary struct {
 	Sessions, Subagents, Requests, UnmeteredRequests int
 	Tokens                                           Tokens
@@ -73,7 +65,6 @@ type Summary struct {
 	ByAgent, ByModel                                 []Group
 	Daily                                            []Daily
 	Skills                                           []SkillUsage
-	Anomalies                                        []Anomaly
 	Incomplete                                       bool
 }
 
@@ -136,11 +127,6 @@ func Aggregate(snapshot *Snapshot, filter Filter) Summary {
 			out.Incomplete = out.Incomplete || s.Incomplete
 		}
 		for _, t := range s.Turns {
-			anomaly := func(kind, id string, at time.Time, d Duration) {
-				if filter.includes(at) {
-					out.Anomalies = append(out.Anomalies, Anomaly{Agent: s.Agent, SessionID: s.ID, TurnID: t.ID, ItemID: id, Kind: kind, At: at, Elapsed: d})
-				}
-			}
 			for _, r := range t.Requests {
 				if !filter.includes(r.End) {
 					continue
@@ -175,30 +161,6 @@ func Aggregate(snapshot *Snapshot, filter Filter) Summary {
 					}
 					day.Tokens.add(r.Tokens)
 					day.Requests++
-				}
-				if r.Elapsed.Known && r.Elapsed.Value > time.Minute {
-					anomaly("slow_model", r.ID, r.End, r.Elapsed)
-				}
-				if r.Retry {
-					anomaly("retry", r.ID, r.End, r.Elapsed)
-				}
-			}
-			for _, tool := range t.Tools {
-				if tool.Elapsed.Known && tool.Elapsed.Value > time.Minute {
-					anomaly("slow_tool", tool.ID, tool.End, tool.Elapsed)
-				}
-			}
-			for _, wait := range t.Waits {
-				if wait.Kind == "permission" && wait.Elapsed.Known && wait.Elapsed.Value > time.Minute {
-					anomaly("permission_wait", wait.ToolID, wait.End, wait.Elapsed)
-				}
-			}
-			for _, ev := range t.Events {
-				if ev.Kind == "compact" && (!ev.Duration.Known || ev.Duration.Value <= time.Minute) {
-					continue
-				}
-				if ev.Kind != "away_summary" {
-					anomaly(ev.Kind, "", ev.At, ev.Duration)
 				}
 			}
 			for _, sk := range t.Skills {
@@ -264,7 +226,6 @@ func Aggregate(snapshot *Snapshot, filter Filter) Summary {
 		}
 		return strings.Compare(a.Name, b.Name)
 	})
-	slices.SortStableFunc(out.Anomalies, func(a, b Anomaly) int { return b.At.Compare(a.At) })
 	return out
 }
 

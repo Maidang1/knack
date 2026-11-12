@@ -145,7 +145,7 @@ func TestProfilePage(t *testing.T) {
 				if a.page != "overview" || tt.HasText("个人主页") || tt.HasText("用量与耗时") {
 					t.Fatalf("page %s: %q", a.page, tt.Texts())
 				}
-				for _, label := range []string{"个人资料", "活跃足迹", "活跃足迹图表", "个人纪录", "Token 构成", "耗时构成", "一天中的节奏", "每小时轮次", "常用排行"} {
+				for _, label := range []string{"个人资料", "活跃足迹", "活跃足迹图表", "个人纪录"} {
 					r, ok := tt.Find(label)
 					if !ok || r.W <= 0 || r.X < 0 || r.X+r.W > float32(width)+1 {
 						t.Fatalf("clipped %s: %+v (%v)", label, r, ok)
@@ -190,18 +190,23 @@ func TestProfilePage(t *testing.T) {
 					t.Fatalf("selection %q", a.sessions.profileDay)
 				}
 
-				// One ranking, Skills or tools, previews its head and opens in place.
-				if tt.HasText("skill-7") || tt.HasText("tool-1 ×") {
-					t.Fatal("ranking not previewed")
+				// The breakdowns live on the usage page, one link away.
+				for _, label := range []string{"耗时构成", "一天中的节奏", "常用排行"} {
+					if _, ok := tt.Find(label); ok {
+						t.Fatalf("home still shows %s", label)
+					}
 				}
-				click(t, tt, "全部 10 个技能 →")
-				if !tt.HasText("skill-7") || !tt.HasText("收起") {
-					t.Fatalf("ranking did not open: %q", tt.Texts())
+				click(t, tt, "用量明细 →")
+				if a.page != usagePage {
+					t.Fatalf("usage link opened %s", a.page)
 				}
-				click(t, tt, "工具")
-				if a.sessions.profileTab != 1 || !tt.HasText("全部 10 个工具 →") {
-					t.Fatalf("tools not shown: %d %q", a.sessions.profileTab, tt.Texts())
+				for _, label := range []string{"Agent Token 明细", "耗时构成", "一天中的节奏", "每小时轮次", "Skill 调用排行", "工具调用排行"} {
+					r, ok := tt.Find(label)
+					if !ok || r.W <= 0 || r.X < 0 || r.X+r.W > float32(width)+1 {
+						t.Fatalf("usage page clipped %s: %+v (%v)", label, r, ok)
+					}
 				}
+				exportSessionPreview(t, tt, fmt.Sprintf("usage-%d-dark-%t.png", width, dark))
 			})
 		}
 	}
@@ -378,7 +383,7 @@ func TestProfileEmpty(t *testing.T) {
 	a := New(t.TempDir())
 	a.startScan()
 	tt := ui.NewTester(a.View, 1280, 900)
-	for _, text := range []string{"没有本地会话", "这段时间没有可识别的轮次"} {
+	for _, text := range []string{"没有本地会话", "没有可识别的轮次"} {
 		if !tt.HasText(text) {
 			t.Fatalf("missing %q: %q", text, tt.Texts())
 		}

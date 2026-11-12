@@ -66,6 +66,7 @@ func (a *App) railSidebar(c *ui.Context) {
 				}
 				if !a.hidden["sessions"] {
 					a.railItem(c, "sessions", "messages", "全部会话", ui.Color{})
+					a.railItem(c, usagePage, "chart", "用量", ui.Color{})
 				}
 				if !a.hidden[insightsPage] {
 					a.railItem(c, insightsPage, "wave", "诊断", ui.Color{})

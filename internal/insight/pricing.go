@@ -1,6 +1,6 @@
 // Package insight turns local session statistics and skill scans into
 // diagnoses: what the sessions cost, how much context each starts with,
-// where work stalls, and which skills earn their keep. It reads only the
+// and which skills earn their keep. It reads only the
 // session and skill snapshots, plus the user's own configuration files.
 package insight
 

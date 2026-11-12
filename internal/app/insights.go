@@ -16,18 +16,17 @@ import (
 )
 
 // insightsPage is the sidebar's 诊断: what the sessions cost, the context
-// each starts with, which skills earn their keep, where work stalls, and
-// the configuration behind it. Everything is read-only.
+// each starts with, which skills earn their keep, and the configuration
+// behind it. Everything is read-only.
 const insightsPage = "insights"
 
-var insightTabs = []string{"费用", "上下文", "技能", "技能评测", "摩擦", "项目", "配置"}
+var insightTabs = []string{"费用", "上下文", "技能", "技能评测", "项目", "配置"}
 
 const (
 	tabCost = iota
 	tabContext
 	tabSkills
 	tabEval
-	tabFriction
 	tabProjects
 	tabConfig
 )
@@ -44,7 +43,6 @@ type insightsState struct {
 	configGen  int
 	configDir  string
 	allUnused  bool
-	allLoops   bool
 	allSkills  bool
 	allProject bool
 	allRoots   bool
@@ -136,8 +134,6 @@ func (a *App) insightsPane(c *ui.Context) {
 				a.insightSkills(c)
 			case tabEval:
 				a.insightEval(c)
-			case tabFriction:
-				a.insightFriction(c)
 			case tabProjects:
 				a.insightProjects(c)
 			case tabConfig:
